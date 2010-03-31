@@ -1,0 +1,178 @@
+package lbms.plugins.mldht.kad.messages;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.gudy.azureus2.core3.util.BEncoder;
+
+import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.DHTConstants;
+import lbms.plugins.mldht.kad.Key;
+
+/**
+ * Base class for all RPC messages.
+ *
+ * @author Damokles
+ */
+public abstract class MessageBase {
+	
+	public static final String	VERSION_KEY = "v";
+	public static final String	TRANSACTION_KEY = "t";
+
+	protected byte[]			mtid;
+	protected Method			method;
+	protected Type				type;
+	protected Key				id;
+	protected InetSocketAddress	origin;
+	protected String			version;
+
+	public MessageBase (byte[] mtid, Method m, Type type, Key id) {
+		this.mtid = mtid;
+		this.method = m;
+		this.type = type;
+		this.id = id;
+	}
+
+	/**
+	 * When this message arrives this function will be called upon the DHT.
+	 * The message should then call the appropriate DHT function (double dispatch)
+	 * @param dh_table Pointer to DHT
+	 */
+	public void apply (DHT dh_table) {
+	}
+
+	/**
+	 * BEncode the message.
+	 * @return Data array
+	 */
+	public byte[] encode() throws IOException
+	{
+		return BEncoder.encode(getBase());
+	}
+	
+	public Map<String, Object> getBase()
+	{
+		Map<String, Object> base = new HashMap<String, Object>();
+		Map<String, Object> inner = getInnerMap();
+		if(inner != null)
+			base.put(getType().innerKey(), inner);
+		
+		// transaction ID
+		base.put(TRANSACTION_KEY, mtid);
+		// version
+		base.put(VERSION_KEY, DHTConstants.getVersion());
+		
+	
+		// message type
+		base.put(Type.TYPE_KEY, getType().getRPCTypeName());
+		// message method if we're a request
+		if(getType() == Type.REQ_MSG)
+			base.put(getType().getRPCTypeName(), getMethod().getRPCName());
+
+
+		return base;
+	}
+	
+	public Map<String, Object> getInnerMap()
+	{
+		return null;
+	}
+
+
+	/// Set the origin (i.e. where the message came from)
+	public void setOrigin (InetSocketAddress o) {
+		origin = o;
+	}
+
+	/// Get the origin
+	public InetSocketAddress getOrigin () {
+		return origin;
+	}
+
+	/// Set the origin (i.e. where the message came from)
+	public void setDestination (InetSocketAddress o) {
+		origin = o;
+	}
+
+	/// Get the origin
+	public InetSocketAddress getDestination () {
+		return origin;
+	}
+
+	/// Get the MTID
+	public byte[] getMTID () {
+		return mtid;
+	}
+
+	/// Set the MTID
+	public void setMTID (byte[] m) {
+		mtid = m;
+	}
+
+	public void setMTID (short m) {
+		mtid = new byte[] {(byte)(m>>8),(byte)(m&0xff)};
+	}
+
+	public String getVersion () {
+    	return version;
+    }
+
+	public void setVersion (String version) {
+    	this.version = version;
+    }
+
+	/// Get the id of the sender
+	public Key getID () {
+		return id;
+	}
+
+	/// Get the type of the message
+	public Type getType () {
+		return type;
+	}
+
+	/// Get the message it's method
+	public Method getMethod () {
+		return method;
+	}
+	
+	@Override
+	public String toString() {
+		return " Method:" + method + " Type:" + type + " MessageID:" + new String(mtid)+(version != null ? " version:"+version : "")+"  ";
+	}
+
+	public static enum Type {
+		REQ_MSG {
+			String innerKey() {	return "a";	}
+			String getRPCTypeName() { return "q"; }
+		}, RSP_MSG {
+			String innerKey() {	return "r";	}
+			String getRPCTypeName() { return "r"; }
+		}, ERR_MSG {
+			String getRPCTypeName() { return "e"; }
+			String innerKey() {	return "e";	}
+		}, INVALID;
+		
+		String innerKey() {
+			return null;
+		}
+		
+		String getRPCTypeName()	{
+			return null;
+		}
+		
+		public static final String TYPE_KEY = "y";
+	};
+
+	public static enum Method {
+		PING, FIND_NODE, GET_PEERS, ANNOUNCE_PEER, NONE;
+		
+		String getRPCName()	{
+			return name().toLowerCase();						
+		}
+	};
+}

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<jardesc>
+    <jar path="mldht/DHTIndexer.jar"/>
+    <options buildIfNeeded="true" compress="true" descriptionLocation="/mldht/DHTIndexer.jardesc" exportErrors="true" exportWarnings="true" includeDirectoryEntries="true" overwrite="true" saveDescription="true" storeRefactorings="false" useSourceFolders="false"/>
+    <storedRefactorings deprecationInfo="true" structuralOnly="false"/>
+    <selectedProjects/>
+    <manifest generateManifest="true" mainClassHandleIdentifier="=mldht/&lt;lbms.plugins.mldht.indexer{IndexingService.java[IndexingService" manifestLocation="" manifestVersion="1.0" reuseManifest="false" saveManifest="false" usesManifest="true">
+        <sealing sealJar="false">
+            <packagesToSeal/>
+            <packagesToUnSeal/>
+        </sealing>
+    </manifest>
+    <selectedElements exportClassFiles="true" exportJavaFiles="false" exportOutputFolder="false">
+        <file path="/mldht/plugin.properties"/>
+        <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.indexer"/>
+        <file path="/mldht/dht-plugin.jardesc"/>
+        <file path="/mldht/.project"/>
+        <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad"/>
+        <javaElement handleIdentifier="=azureus_clean/azureus2&lt;org.gudy.azureus2.core3.util"/>
+        <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.messages"/>
+        <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht"/>
+        <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.tasks"/>
+        <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.utils"/>
+        <file path="/mldht/.classpath"/>
+    </selectedElements>
+</jardesc>

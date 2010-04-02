@@ -8,8 +8,6 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
 
-import org.gudy.azureus2.core3.util.BEncoder;
-
 /**
  * @author Damokles
  *
@@ -20,8 +18,8 @@ public class AnnounceResponse extends MessageBase {
 	 * @param mtid
 	 * @param id
 	 */
-	public AnnounceResponse (byte[] mtid, Key id) {
-		super(mtid, Method.ANNOUNCE_PEER, Type.RSP_MSG, id);
+	public AnnounceResponse (byte[] mtid) {
+		super(mtid, Method.ANNOUNCE_PEER, Type.RSP_MSG);
 	}
 
 	/* (non-Javadoc)

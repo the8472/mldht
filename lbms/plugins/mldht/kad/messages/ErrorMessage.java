@@ -9,8 +9,6 @@ import java.util.Map;
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
 
-import org.gudy.azureus2.core3.util.BEncoder;
-
 /**
  * @author Damokles
  *
@@ -26,7 +24,7 @@ public class ErrorMessage extends MessageBase {
 	 * @param msg
 	 */
 	public ErrorMessage (byte[] mtid, int code, String msg) {
-		super(mtid, Method.NONE, Type.ERR_MSG, null);
+		super(mtid, Method.NONE, Type.ERR_MSG);
 		this.msg = msg;
 		this.code = code;
 	}

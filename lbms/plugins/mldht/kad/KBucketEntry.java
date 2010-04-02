@@ -2,7 +2,10 @@ package lbms.plugins.mldht.kad;
 
 import java.io.Serializable;
 import java.net.InetSocketAddress;
+import java.text.DateFormat;
 import java.util.Comparator;
+
+import org.gudy.azureus2.core3.util.TimeFormatter;
 
 /**
  * Entry in a KBucket, it basically contains an ip_address of a node,
@@ -165,6 +168,11 @@ public class KBucketEntry implements Serializable {
 	public int getFailedQueries () {
 		return failedQueries;
 	}
+	
+	public String toString() {
+		long now = System.currentTimeMillis();
+		return nodeID+"/"+addr+";seen:"+TimeFormatter.format(now-lastSeen)+";age:"+TimeFormatter.format(now-timeCreated)+(failedQueries>0?";fail:"+failedQueries:"");
+	}
 
 	/**
 	 * Checks if the node is Good.
@@ -208,12 +216,22 @@ public class KBucketEntry implements Serializable {
 	}
 
 	/**
-	 * Should be called to signal that the peer has responded
+	 * Should be called to signal that the peer has sent a message to us, not necesarly a response to a query
 	 */
-	public void signalLastSeen () {
+	public void signalLastSeen() {
 		lastSeen = System.currentTimeMillis();
 	}
 	
+	public void mergeTimestamps (KBucketEntry entry) {
+		if(!this.equals(entry))
+			return;
+		lastSeen = Math.max(lastSeen, entry.getLastSeen());
+		timeCreated = Math.min(timeCreated, entry.getCreationTime());
+	}
+
+	/**
+	 * Should be called to signal that the peer has responded
+	 */
 	public void signalResponse() {
 		lastSeen = System.currentTimeMillis();
 		failedQueries = 0;		

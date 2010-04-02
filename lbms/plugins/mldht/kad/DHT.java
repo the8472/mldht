@@ -7,7 +7,10 @@ import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import lbms.plugins.mldht.DHTConfiguration;
+import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.messages.AnnounceRequest;
 import lbms.plugins.mldht.kad.messages.AnnounceResponse;
 import lbms.plugins.mldht.kad.messages.ErrorMessage;
@@ -91,9 +94,9 @@ public class DHT implements DHTBase {
 	private boolean							bootstrapping;
 	private long							lastBootstrap;
 
-	private int								port;
+	private DHTConfiguration					config;
 	private Node							node;
-	private RPCServer						srv;
+	private List<RPCServer>					servers;
 	private Database						db;
 	private TaskManager						tman;
 	private File							table_file;
@@ -101,10 +104,13 @@ public class DHT implements DHTBase {
 
 	private List<DHTStatsListener>			statsListeners;
 	private List<DHTStatusListener>			statusListeners;
+	private List<DHTIndexingListener>		indexingListeners;
 	private DHTStats						stats;
 	private DHTStatus						status;
 	private PopulationEstimator				estimator;
 	private AnnounceNodeCache				cache;
+	
+	private RPCStats						serverStats;
 
 	private final DHTtype					type;
 	private List<ScheduledFuture<?>>		scheduledActions = new ArrayList<ScheduledFuture<?>>();
@@ -137,8 +143,9 @@ public class DHT implements DHTBase {
 		status = DHTStatus.Stopped;
 		statsListeners = new ArrayList<DHTStatsListener>(2);
 		statusListeners = new ArrayList<DHTStatusListener>(2);
+		indexingListeners = new ArrayList<DHTIndexingListener>();
 		estimator = new PopulationEstimator();
-
+		servers = new ArrayList<RPCServer>();
 	}
 
 	public void ping (PingRequest r) {
@@ -147,13 +154,13 @@ public class DHT implements DHTBase {
 		}
 
 		// ignore requests we get from ourself
-		if (r.getID().equals(node.getOurID())) {
+		if (node.allLocalIDs().contains(r.getID())) {
 			return;
 		}
 
-		PingResponse rsp = new PingResponse(r.getMTID(), node.getOurID());
+		PingResponse rsp = new PingResponse(r.getMTID());
 		rsp.setOrigin(r.getOrigin());
-		srv.sendMessage(rsp);
+		r.getServer().sendMessage(rsp);
 		node.recieved(this, r);
 	}
 
@@ -163,7 +170,7 @@ public class DHT implements DHTBase {
 		}
 
 		// ignore requests we get from ourself
-		if (r.getID().equals(node.getOurID())) {
+		if (node.allLocalIDs().contains(r.getID())) {
 			return;
 		}
 
@@ -177,10 +184,9 @@ public class DHT implements DHTBase {
 		kns4.fill(DHTtype.IPV4_DHT != type);
 		kns6.fill(DHTtype.IPV6_DHT != type);
 
-		FindNodeResponse fnr = new FindNodeResponse(r.getMTID(), node
-				.getOurID(), r.doesWant4() ? kns4.pack() : null,r.doesWant6() ? kns6.pack() : null);
+		FindNodeResponse fnr = new FindNodeResponse(r.getMTID(), r.doesWant4() ? kns4.pack() : null,r.doesWant6() ? kns6.pack() : null);
 		fnr.setOrigin(r.getOrigin());
-		srv.sendMessage(fnr);
+		r.getServer().sendMessage(fnr);
 	}
 
 	public void response (MessageBase r) {
@@ -197,11 +203,15 @@ public class DHT implements DHTBase {
 		}
 
 		// ignore requests we get from ourself
-		if (r.getID().equals(node.getOurID())) {
+		if (node.allLocalIDs().contains(r.getID())) {
 			return;
 		}
 
 		node.recieved(this, r);
+		
+		for(DHTIndexingListener listener : indexingListeners)
+			listener.incomingPeersRequest(r.getInfoHash(), r.getOrigin().getAddress(), r.getID());
+		
 		List<DBItem> dbl = db.sample(r.getInfoHash(), 50,type, r.isNoSeeds());
 
 		// generate a token
@@ -215,7 +225,7 @@ public class DHT implements DHTBase {
 		kns4.fill(DHTtype.IPV4_DHT != type);
 		kns6.fill(DHTtype.IPV6_DHT != type);
 		
-		GetPeersResponse resp = new GetPeersResponse(r.getMTID(), node.getOurID(),
+		GetPeersResponse resp = new GetPeersResponse(r.getMTID(), 
 			r.doesWant4() ? kns4.pack() : null,
 			r.doesWant6() ? kns6.pack() : null,
 			db.insertForKeyAllowed(r.getInfoHash()) ? token.arr : null);
@@ -229,7 +239,7 @@ public class DHT implements DHTBase {
 		
 		resp.setPeerItems(dbl);
 		resp.setDestination(r.getOrigin());
-		srv.sendMessage(resp);
+		r.getServer().sendMessage(resp);
 	}
 
 	public void announce (AnnounceRequest r) {
@@ -238,7 +248,7 @@ public class DHT implements DHTBase {
 		}
 
 		// ignore requests we get from ourself
-		if (r.getID().equals(node.getOurID())) {
+		if (node.allLocalIDs().contains(r.getID())) {
 			return;
 		}
 
@@ -262,10 +272,9 @@ public class DHT implements DHTBase {
 		bb.putShort((short) r.getOrigin().getPort());
 		db.store(r.getInfoHash(), new DBItem(tdata));
 		// send a proper response to indicate everything is OK
-		AnnounceResponse rsp = new AnnounceResponse(r.getMTID(), node
-				.getOurID());
+		AnnounceResponse rsp = new AnnounceResponse(r.getMTID());
 		rsp.setOrigin(r.getOrigin());
-		srv.sendMessage(rsp);
+		r.getServer().sendMessage(rsp);
 	}
 
 	public void error (ErrorMessage r) {
@@ -293,7 +302,7 @@ public class DHT implements DHTBase {
 		if (!addr.isUnresolved()) {
 			if(!type.PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress()) || node.getNumEntriesInRoutingTable() > DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS)
 				return;
-			srv.ping(node.getOurID(), addr);
+			getRandomServer().ping(addr);
 		}
 
 	}
@@ -309,7 +318,7 @@ public class DHT implements DHTBase {
 		}
 		Key id = new Key(info_hash);
 
-		PeerLookupTask lookupTask = new PeerLookupTask(srv, node, id);
+		PeerLookupTask lookupTask = new PeerLookupTask(getRandomServer(), node, id);
 		tman.addTask(lookupTask);
 
 		return lookupTask;
@@ -320,7 +329,7 @@ public class DHT implements DHTBase {
 			return null;
 		}
 		
-		AnnounceTask announce = new AnnounceTask(srv, node, lookup.getInfoHash(), btPort);
+		AnnounceTask announce = new AnnounceTask(getRandomServer(), node, lookup.getInfoHash(), btPort);
 		announce.setSeed(isSeed);
 		for (KBucketEntryAndToken kbe : lookup.getAnnounceCanidates())
 		{
@@ -334,62 +343,29 @@ public class DHT implements DHTBase {
 	
 	
 
-	public PingRefreshTask refreshBuckets (KBucket[] buckets,
+	public PingRefreshTask refreshBuckets (List<RoutingTableEntry> buckets,
 			boolean cleanOnTimeout) {
-		PingRefreshTask prt = new PingRefreshTask(srv, node, buckets,
+		PingRefreshTask prt = new PingRefreshTask(getRandomServer(), node, buckets,
 				cleanOnTimeout);
 
 		tman.addTask(prt, true);
 		return prt;
 	}
 	
+	public DHTConfiguration getConfig() {
+		return config;
+	}
+	
 	public AnnounceNodeCache getCache() {
 		return cache;
 	}
 	
-	public RPCServer getServer() {
-		return srv;
+	public List<RPCServer> getServers() {
+		return servers;
 	}
-
-	/*
-	 * (non-Javadoc)
-	 * 
-	 * @see lbms.plugins.mldht.kad.DHTBase#getClosestGoodNodes(int)
-	 */
-	public Map<String, Integer> getClosestGoodNodes (int maxNodes) {
-		Map<String, Integer> map = new HashMap<String, Integer>();
-
-		if (node == null) {
-			return map;
-		}
-
-		int max = 0;
-		KClosestNodesSearch kns = new KClosestNodesSearch(node.getOurID(), maxNodes * 2,this);
-		kns.fill();
-
-		for (KBucketEntry e : kns.getEntries()) {
-
-			if (!e.isGood()) {
-				continue;
-			}
-
-			InetSocketAddress a = e.getAddress();
-
-			map.put(a.getHostName(), a.getPort());
-			if (++max >= maxNodes) {
-				break;
-			}
-		}
-		return map;
-	}
-
-	/*
-	 * (non-Javadoc)
-	 * 
-	 * @see lbms.plugins.mldht.kad.DHTBase#getPort()
-	 */
-	public int getPort () {
-		return port;
+	
+	public RPCServer getRandomServer() {
+		return servers.get(rand.nextInt(servers.size()));
 	}
 
 	public PopulationEstimator getEstimator() {
@@ -435,9 +411,9 @@ public class DHT implements DHTBase {
 			return;
 		}
 
-		PingRequest r = new PingRequest(node.getOurID());
+		PingRequest r = new PingRequest();
 		r.setOrigin(new InetSocketAddress(ip, port));
-		srv.doCall(r);
+		getRandomServer().doCall(r);
 
 	}
 
@@ -446,13 +422,15 @@ public class DHT implements DHTBase {
 	 * 
 	 * @see lbms.plugins.mldht.kad.DHTBase#start(java.lang.String, int)
 	 */
-	public void start (File table, int port, boolean peerBootstrapOnly)
+	public void start (DHTConfiguration config)
 			throws SocketException {
 		if (running) {
 			return;
 		}
 
-		useRouterBootstrapping = !peerBootstrapOnly;
+		this.config = config;
+		useRouterBootstrapping = !config.noRouterBootstrap();
+		int port = config.getListeningPort();
 
 		if (port == 0) {
 			port = 49001;
@@ -460,14 +438,24 @@ public class DHT implements DHTBase {
 		setStatus(DHTStatus.Initializing);
 		stats.resetStartedTimestamp();
 
-		table_file = table;
-		this.port = port;
+		table_file = config.getNodeCachePath();
+		Node.initDataStore(config);
+
 		logInfo("Starting DHT on port " + port);
 		resolveBootstrapAddresses();
-		srv = new RPCServer(this, port);
+		
+		serverStats = new RPCStats();
+		int srvIdx = 0;
+		for(InetAddress addr : RPCServer.getAvailableAddrs(config.allowMultiHoming(), type))
+		{
+			DHT.logInfo("Creating RPC server for "+addr);
+			servers.add(new RPCServer(this, port,serverStats,srvIdx++));
+		}
+			
+		
 		cache = new AnnounceNodeCache();
-		stats.setRpcStats(srv.getStats());
-		node = new Node(srv);
+		stats.setRpcStats(serverStats);
+		node = new Node(this);
 		db = new Database();
 		stats.setDbStats(db.getStats());
 		tman = new TaskManager();
@@ -484,9 +472,10 @@ public class DHT implements DHTBase {
 			}	
 		}, 5000, DHTConstants.DHT_UPDATE_INTERVAL, TimeUnit.MILLISECONDS));
 		
-		srv.start();
+		for(RPCServer s : servers)
+			s.start();
 		bootstrapping = true;
-		node.loadTable(table, this, new Runnable() {
+		node.loadTable(new Runnable() {
 			public void run () {
 				started();				
 			}
@@ -617,7 +606,8 @@ public class DHT implements DHTBase {
 		scheduler.getQueue().removeAll(scheduledActions);
 		scheduledActions.clear();
 
-		srv.stop();
+		for(RPCServer s : servers)
+			s.stop();
 		try {
 			node.saveTable(table_file);
 		} catch (IOException e) {
@@ -629,7 +619,7 @@ public class DHT implements DHTBase {
 		db = null;
 		node = null;
 		cache = null;
-		srv = null;
+		servers = null;
 		setStatus(DHTStatus.Stopped);
 	}
 
@@ -679,7 +669,7 @@ public class DHT implements DHTBase {
 				bootstrap();
 			} else if (now - lastBootstrap > DHTConstants.SELF_LOOKUP_INTERVAL) {
 				//update stale entries
-				PingRefreshTask prt = new PingRefreshTask(srv, node, false);
+				PingRefreshTask prt = new PingRefreshTask(getRandomServer(), node, false);
 				prt.setInfo("Refreshing old entries.");
 				if (canStartTask()) {
 					prt.start();
@@ -733,7 +723,10 @@ public class DHT implements DHTBase {
 		}
 		
 		if (useRouterBootstrapping || node.getNumEntriesInRoutingTable() > 1) {
+			
+			final AtomicInteger finishCount = new AtomicInteger();
 			bootstrapping = true;
+			
 			TaskListener bootstrapListener = new TaskListener() {
 				/*
 				 * (non-Javadoc)
@@ -741,9 +734,9 @@ public class DHT implements DHTBase {
 				 * @see lbms.plugins.mldht.kad.TaskListener#finished(lbms.plugins.mldht.kad.Task)
 				 */
 				public void finished (Task t) {
+					int count = finishCount.decrementAndGet();
 					bootstrapping = false;
-					if (running
-							&& node.getNumEntriesInRoutingTable() > DHTConstants.USE_BT_ROUTER_IF_LESS_THAN_X_PEERS) {
+					if (count == 0 && running && node.getNumEntriesInRoutingTable() > DHTConstants.USE_BT_ROUTER_IF_LESS_THAN_X_PEERS) {
 						node.fillBuckets(DHT.this);
 					}
 				}
@@ -752,43 +745,49 @@ public class DHT implements DHTBase {
 			logInfo("Bootstrapping...");
 			lastBootstrap = System.currentTimeMillis();
 
-			NodeLookup nl = findNode(node.getOurID(), true, true, true);
-			if (nl == null) {
-				bootstrapping = false;
-			} else if (node.getNumEntriesInRoutingTable() < DHTConstants.USE_BT_ROUTER_IF_LESS_THAN_X_PEERS) {
-				if (useRouterBootstrapping) {
-					resolveBootstrapAddresses();
-					List<InetSocketAddress> addrs = new ArrayList<InetSocketAddress>(DHTConstants.BOOTSTRAP_NODE_ADDRESSES);
-					Collections.shuffle(addrs);
-					
-					for (InetSocketAddress addr : addrs)
-					{
-						if (!type.PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress()))
-							continue;
-						nl.addDHTNode(addr.getAddress(),addr.getPort());
-						break;
+			for(RPCServer srv : servers)
+			{
+				finishCount.incrementAndGet();
+				NodeLookup nl = findNode(srv.getDerivedID(), true, true, true,srv);
+				if (nl == null) {
+					bootstrapping = false;
+					break;
+				} else if (node.getNumEntriesInRoutingTable() < DHTConstants.USE_BT_ROUTER_IF_LESS_THAN_X_PEERS) {
+					if (useRouterBootstrapping) {
+						resolveBootstrapAddresses();
+						List<InetSocketAddress> addrs = new ArrayList<InetSocketAddress>(DHTConstants.BOOTSTRAP_NODE_ADDRESSES);
+						Collections.shuffle(addrs);
+						
+						for (InetSocketAddress addr : addrs)
+						{
+							if (!type.PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress()))
+								continue;
+							nl.addDHTNode(addr.getAddress(),addr.getPort());
+							break;
+						}
 					}
+					nl.addListener(bootstrapListener);
+					nl.setInfo("Bootstrap: Find Peers.");
+
+					tman.removeFinishedTasks(this);
+
+				} else {
+					nl.setInfo("Bootstrap: search for ourself.");
+					nl.addListener(bootstrapListener);
+					tman.removeFinishedTasks(this);
 				}
-				nl.addListener(bootstrapListener);
-				nl.setInfo("Bootstrap: Find Peers.");
-
-				tman.removeFinishedTasks(this);
-
-			} else {
-				nl.setInfo("Bootstrap: search for ourself.");
-				nl.addListener(bootstrapListener);
-				tman.removeFinishedTasks(this);
+				
 			}
 		}
 	}
 
 	private NodeLookup findNode (Key id, boolean isBootstrap,
-			boolean isPriority, boolean queue) {
+			boolean isPriority, boolean queue, RPCServer server) {
 		if (!running) {
 			return null;
 		}
 
-		NodeLookup at = new NodeLookup(id, srv, node, isBootstrap);
+		NodeLookup at = new NodeLookup(id, server, node, isBootstrap);
 		if (!queue && canStartTask()) {
 			at.start();
 		}
@@ -802,7 +801,7 @@ public class DHT implements DHTBase {
 	 * @param id The id of the key to search
 	 */
 	public NodeLookup findNode (Key id) {
-		return findNode(id, false, false, true);
+		return findNode(id, false, false, true, getRandomServer());
 	}
 
 	/*
@@ -812,7 +811,7 @@ public class DHT implements DHTBase {
 	 */
 	public NodeLookup fillBucket (Key id, KBucket bucket) {
 		bucket.updateRefreshTimer();
-		return findNode(id, false, true, true);
+		return findNode(id, false, true, true, getRandomServer());
 	}
 
 	public PingRefreshTask refreshBucket (KBucket bucket) {
@@ -820,7 +819,7 @@ public class DHT implements DHTBase {
 			return null;
 		}
 
-		PingRefreshTask prt = new PingRefreshTask(srv, node, bucket, false);
+		PingRefreshTask prt = new PingRefreshTask(getRandomServer(), node, bucket, false);
 		if (canStartTask()) {
 			prt.start();
 		}
@@ -830,11 +829,11 @@ public class DHT implements DHTBase {
 	}
 
 	public void sendError (MessageBase origMsg, int code, String msg) {
-		sendError(origMsg.getOrigin(), origMsg.getMTID(), code, msg);
+		sendError(origMsg.getOrigin(), origMsg.getMTID(), code, msg, origMsg.getServer());
 	}
 
 	public void sendError (InetSocketAddress target, byte[] mtid, int code,
-			String msg) {
+			String msg, RPCServer srv) {
 		ErrorMessage errMsg = new ErrorMessage(mtid, code, msg);
 		errMsg.setDestination(target);
 		srv.sendMessage(errMsg);
@@ -845,15 +844,13 @@ public class DHT implements DHTBase {
 		// there are at least 16 RPC slots available
 		if (tman.getNumTasks() >= DHTConstants.MAX_ACTIVE_TASKS) {
 			return false;
-		} else if (DHTConstants.MAX_ACTIVE_CALLS - srv.getNumActiveRPCCalls() <= 16) {
-			return false;
-		}
+		} 
 		return true;
 	}
 
 	public Key getOurID () {
 		if (running) {
-			return node.getOurID();
+			return node.getRootID();
 		}
 		return null;
 	}
@@ -865,9 +862,16 @@ public class DHT implements DHTBase {
 	private void onStatsUpdate () {
 		stats.setNumTasks(tman.getNumTasks() + tman.getNumQueuedTasks());
 		stats.setNumPeers(node.getNumEntriesInRoutingTable());
-		stats.setNumSentPackets(srv.getNumSent());
-		stats.setNumReceivedPackets(srv.getNumReceived());
-		stats.setNumRpcCalls(srv.getNumActiveRPCCalls());
+		int numSent = 0;int numReceived = 0;int activeCalls = 0;
+		for(RPCServer s : servers)
+		{
+			numSent += s.getNumSent();
+			numReceived += s.getNumReceived();
+			activeCalls += s.getNumActiveRPCCalls();
+		}
+		stats.setNumSentPackets(numSent);
+		stats.setNumReceivedPackets(numReceived);
+		stats.setNumRpcCalls(activeCalls);
 
 		for (int i = 0; i < statsListeners.size(); i++) {
 			statsListeners.get(i).statsUpdated(stats);
@@ -894,6 +898,10 @@ public class DHT implements DHTBase {
 
 	public void removeStatsListener (DHTStatsListener listener) {
 		statsListeners.remove(listener);
+	}
+
+	public void addIndexingLinstener(DHTIndexingListener listener) {
+		indexingListeners.add(listener);
 	}
 
 	public void addStatusListener (DHTStatusListener listener) {

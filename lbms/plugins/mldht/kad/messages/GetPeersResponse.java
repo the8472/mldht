@@ -10,8 +10,6 @@ import java.util.Map;
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 
-import org.gudy.azureus2.core3.util.BEncoder;
-
 /**
  * @author Damokles
  *
@@ -32,8 +30,8 @@ public class GetPeersResponse extends MessageBase {
 	 * @param nodes
 	 * @param token
 	 */
-	public GetPeersResponse (byte[] mtid, Key id, byte[] nodes, byte[] nodes6, byte[] token) {
-		super(mtid, Method.GET_PEERS, Type.RSP_MSG, id);
+	public GetPeersResponse (byte[] mtid, byte[] nodes, byte[] nodes6, byte[] token) {
+		super(mtid, Method.GET_PEERS, Type.RSP_MSG);
 		this.nodes = nodes;
 		this.nodes6 = nodes6;
 		this.token = token;

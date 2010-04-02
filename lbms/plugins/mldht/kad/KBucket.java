@@ -22,18 +22,16 @@ import lbms.plugins.mldht.kad.tasks.Task;
 public class KBucket implements Externalizable {
 
 	private static final long	serialVersionUID	= -5507455162198975209L;
-
-	// any modifying actions to entries must happen through removeAndInsert (which is synchronized)!
-	private LinkedList<KBucketEntry>					entries;
-	// this is synchronized on entries, not on replacementBucket!
-	private LinkedList<KBucketEntry>					replacementBucket;
-	private transient RPCServerBase						srv;
-	private transient Node								node;
-	private transient Set<KBucketEntry>					pendingPings;
-	private long										last_modified;
-
-	private transient Task								refresh_task;
 	
+	// any modifying actions to entries must happen through removeAndInsert (which is synchronized)!
+	private LinkedList<KBucketEntry>	entries;
+	// this is synchronized on entries, not on replacementBucket!
+	private LinkedList<KBucketEntry>	replacementBucket;
+	
+	private Node						node;
+	private Set<KBucketEntry>			pendingPings;
+	private long						last_modified;
+	private Task						refresh_task;
 	
 	public KBucket () {
 		entries = new LinkedList<KBucketEntry>();
@@ -41,11 +39,10 @@ public class KBucket implements Externalizable {
 		pendingPings = Collections.synchronizedSet(new HashSet<KBucketEntry>());	
 	}
 
-	public KBucket (RPCServerBase srv, Node node) {
+	public KBucket (Node node) {
 		this();
-		last_modified = System.currentTimeMillis();
+		//last_modified = System.currentTimeMillis();
 		this.node = node;
-		this.srv = srv;
 	}
 
 	/**
@@ -94,7 +91,7 @@ public class KBucket implements Externalizable {
 				}
 				
 				// only refresh the last seen time if it already exists
-				oldEntry.signalLastSeen();
+				oldEntry.mergeTimestamps(newEntry);
 				adjustTimerOnInsert(oldEntry);
 				break insertTests;
 			}
@@ -131,7 +128,11 @@ public class KBucket implements Externalizable {
 		}
 	}
 	
-	private void sortedInsert(KBucketEntry toInsert) {
+	/**
+	 * mostly meant for internal use or transfering entries into a new bucket.
+	 * to update a bucket properly use {@link #insert(KBucketEntry)} 
+	 */
+	public void sortedInsert(KBucketEntry toInsert) {
 		if(toInsert == null)
 			return;
 		synchronized (entries)
@@ -141,6 +142,9 @@ public class KBucket implements Externalizable {
 			adjustTimerOnInsert(toInsert);
 			if (youngest != null && toInsert.getCreationTime() < youngest.getCreationTime())
 				Collections.sort(entries, KBucketEntry.AGE_ORDER);
+			while(entries.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET)
+				insertInReplacementBucket(entries.removeLast());
+				
 		}
 	}
 
@@ -158,6 +162,10 @@ public class KBucket implements Externalizable {
 	 */
 	public List<KBucketEntry> getEntries () {
 		return new ArrayList<KBucketEntry>(entries);
+	}
+	
+	public List<KBucketEntry> getReplacementEntries() {
+		return new ArrayList<KBucketEntry>(replacementBucket);
 	}
 
 	/**
@@ -228,6 +236,11 @@ public class KBucket implements Externalizable {
 	public void updateRefreshTimer () {
 		last_modified = System.currentTimeMillis();
 	}
+	
+
+	public String toString() {
+		return "entries: "+entries+" replacements: "+replacementBucket;
+	}
 
 	private void adjustTimerOnInsert(KBucketEntry entry)
 	{
@@ -249,9 +262,9 @@ public class KBucket implements Externalizable {
 	        return false;
         }
 
-		PingRequest p = new PingRequest(node.getOurID());
+		PingRequest p = new PingRequest();
 		p.setDestination(entry.getAddress());
-		RPCCall c = srv.doCall(p);
+		RPCCall c = node.getDHT().getRandomServer().doCall(p);
 		if (c != null) {
 			pendingPings.add(entry);
 			c.addListener(listener);
@@ -343,14 +356,15 @@ public class KBucket implements Externalizable {
 			//if it is already inserted remove it and add it to the end
 			int idx = replacementBucket.indexOf(entry);
 			if (idx != -1) {
-				entry = replacementBucket.get(idx);
-				replacementBucket.remove(idx);
+				KBucketEntry newEntry = entry;
+				entry = replacementBucket.remove(idx);
+				entry.mergeTimestamps(newEntry);
 			}
+			
 			replacementBucket.addLast(entry);
-			if (replacementBucket.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET) {
-				//remove the least recently seen one
-				replacementBucket.removeFirst();
-			}
+			
+			while (replacementBucket.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET)
+				replacementBucket.removeFirst(); //remove the least recently seen one
 		}
 	}
 	
@@ -394,10 +408,10 @@ public class KBucket implements Externalizable {
 				{
 					removeEntry(entry, true); //remove and replace from replacement bucket
 					DHT.log("Node " + entry.getAddress() + " changed ID from " + entry.getID() + " to " + msg.getID(), LogLevel.Info);
-					entry = new KBucketEntry(entry.getAddress(), msg.getID(), entry.getCreationTime());
-					entry.signalLastSeen();
+					KBucketEntry newEntry = new KBucketEntry(entry.getAddress(), msg.getID(), entry.getCreationTime());
+					newEntry.mergeTimestamps(entry);
 					// insert into appropriate bucket for the new ID
-					node.insertEntry(entry);
+					node.insertEntry(newEntry,false);
 					return true;
 				}
 				
@@ -433,14 +447,6 @@ public class KBucket implements Externalizable {
 	}
 
 	/**
-	 * @param srv
-	 *            the srv to set
-	 */
-	public void setServer (RPCServerBase srv) {
-		this.srv = srv;
-	}
-
-	/**
 	 * @param node the node to set
 	 */
 	public void setNode (Node node) {
@@ -465,6 +471,7 @@ public class KBucket implements Externalizable {
 		obj = serialized.get("lastModifiedTime");
 		if(obj instanceof Long)
 			last_modified = (Long)obj;
+		obj = serialized.get("prefix");
 		
 		entries.removeAll(Collections.singleton(null));
 		replacementBucket.removeAll(Collections.singleton(null));
@@ -478,6 +485,7 @@ public class KBucket implements Externalizable {
 		serialized.put("mainBucket", entries);
 		serialized.put("replacementBucket", replacementBucket);
 		serialized.put("lastModifiedTime", last_modified);
+
 		synchronized (entries)
 		{
 			out.writeObject(serialized);

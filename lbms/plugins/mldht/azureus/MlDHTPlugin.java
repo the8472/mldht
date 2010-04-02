@@ -6,6 +6,7 @@ import java.io.StringWriter;
 import java.net.SocketException;
 import java.util.Map;
 
+import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.azureus.gui.DHTView;
 import lbms.plugins.mldht.azureus.gui.SWTHelper;
 import lbms.plugins.mldht.kad.DHT;
@@ -406,19 +407,35 @@ public class MlDHTPlugin implements UnloadablePlugin, PluginListener {
 	//-------------------------------------------------------------------
 
 	public void startDHT () {
+		
+		DHTConfiguration config = new DHTConfiguration() {
+			public boolean noRouterBootstrap() {
+				return pluginInterface.getPluginconfig()
+				.getPluginBooleanParameter(
+					"onlyPeerBootstrap");
+			}
+			
+			public boolean isPersistingID() {
+				return pluginInterface.getPluginconfig().getPluginBooleanParameter("alwaysRestoreID");
+			}
+			
+			public File getNodeCachePath() {
+				return new File(pluginInterface.getPluginDirectoryName()+ "/dht.cache");
+			}
+			
+			public int getListeningPort() {
+				return pluginInterface.getPluginconfig().getPluginIntParameter("port");
+			}
+			
+			public boolean allowMultiHoming() {
+				return true;
+			}
+		}; 
+		
 		view_model.getStatus().setText("Initializing");
 		try {
 			for (Map.Entry<DHTtype, DHT> e : dhts.entrySet()) {
-				e.getValue()
-						.start(
-								new File(pluginInterface
-										.getPluginDirectoryName()
-										+ "/dht.cache"),
-								pluginInterface.getPluginconfig()
-										.getPluginIntParameter("port"),
-								pluginInterface.getPluginconfig()
-										.getPluginBooleanParameter(
-												"onlyPeerBootstrap"));
+				e.getValue().start(config);
 
 				e.getValue().bootstrap();
 			}

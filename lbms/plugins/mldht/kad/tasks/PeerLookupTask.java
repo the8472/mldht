@@ -95,7 +95,7 @@ public class PeerLookupTask extends Task {
 					{
 						// add node to todo list
 						KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-						if(!visited.contains(e))
+						if(!node.allLocalIDs().contains(e.getID()) && !visited.contains(e))
 							todo.add(e);
 					}
 				}
@@ -190,7 +190,7 @@ public class PeerLookupTask extends Task {
 				// only send a findNode if we haven't allready visited the node
 				if (!visited.contains(e)) {
 					// send a findNode to the node
-					GetPeersRequest gpr = new GetPeersRequest(node.getOurID(),targetKey);
+					GetPeersRequest gpr = new GetPeersRequest(targetKey);
 					gpr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					gpr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					gpr.setDestination(e.getAddress());

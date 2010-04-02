@@ -8,8 +8,6 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
 
-import org.gudy.azureus2.core3.util.BEncoder;
-
 /**
  * @author Damokles
  *
@@ -20,8 +18,8 @@ public class FindNodeRequest extends AbstractLookupRequest {
 	 * @param id
 	 * @param target
 	 */
-	public FindNodeRequest (Key id, Key target) {
-		super(id,target,Method.FIND_NODE);
+	public FindNodeRequest (Key target) {
+		super(target,Method.FIND_NODE);
 	}
 
 	/* (non-Javadoc)

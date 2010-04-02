@@ -1,16 +1,11 @@
 package lbms.plugins.mldht.kad.messages;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import lbms.plugins.mldht.kad.DHT;
-import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
-
-import org.gudy.azureus2.core3.util.BEncoder;
 
 /**
  * @author Damokles
@@ -26,8 +21,8 @@ public abstract class AbstractLookupRequest extends MessageBase {
 	 * @param id
 	 * @param info_hash
 	 */
-	public AbstractLookupRequest (Key id, Key target, Method m) {
-		super(new byte[] {(byte) 0xFF}, m, Type.REQ_MSG, id);
+	public AbstractLookupRequest (Key target, Method m) {
+		super(new byte[] {(byte) 0xFF}, m, Type.REQ_MSG);
 		this.target = target;
 	}
 	

@@ -12,6 +12,7 @@ import org.gudy.azureus2.core3.util.BEncoder;
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.RPCServer;
 
 /**
  * Base class for all RPC messages.
@@ -29,12 +30,12 @@ public abstract class MessageBase {
 	protected Key				id;
 	protected InetSocketAddress	origin;
 	protected String			version;
+	protected RPCServer			srv;
 
-	public MessageBase (byte[] mtid, Method m, Type type, Key id) {
+	public MessageBase (byte[] mtid, Method m, Type type) {
 		this.mtid = mtid;
 		this.method = m;
 		this.type = type;
-		this.id = id;
 	}
 
 	/**
@@ -124,6 +125,19 @@ public abstract class MessageBase {
 	public void setVersion (String version) {
     	this.version = version;
     }
+	
+	public void setServer(RPCServer srv)
+	{
+		this.srv = srv;
+	}
+	
+	public RPCServer getServer() {
+		return srv;
+	}
+	
+	public void setID(Key id) {
+		this.id = id;
+	}
 
 	/// Get the id of the sender
 	public Key getID () {

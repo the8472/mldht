@@ -85,10 +85,12 @@ public class KClosestNodesSearch {
 	public void fill(boolean includeOurself) {
 		owner.getNode().findKClosestNodes(this);
 		
-		if(includeOurself && owner.getServer().getPublicAddress() != null && entries.size() < max_entries)
+		if(includeOurself && owner.getRandomServer().getPublicAddress() != null && entries.size() < max_entries)
 		{
-			InetSocketAddress sockAddr = new InetSocketAddress(owner.getServer().getPublicAddress(), owner.getServer().getPort());
-			entries.put(targetKey.distance(owner.getOurID()), new KBucketEntry(sockAddr, owner.getOurID()));
+			RPCServer srv = owner.getRandomServer();
+			
+			InetSocketAddress sockAddr = new InetSocketAddress(srv.getPublicAddress(), srv.getPort());
+			entries.put(targetKey.distance(srv.getDerivedID()), new KBucketEntry(sockAddr, srv.getDerivedID()));
 		}
 	}
 

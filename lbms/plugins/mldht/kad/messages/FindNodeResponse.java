@@ -9,8 +9,6 @@ import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 
-import org.gudy.azureus2.core3.util.BEncoder;
-
 /**
  * @author Damokles
  *
@@ -25,8 +23,8 @@ public class FindNodeResponse extends MessageBase {
 	 * @param id
 	 * @param nodes
 	 */
-	public FindNodeResponse (byte[] mtid, Key id, byte[] nodes, byte[] nodes6) {
-		super(mtid, Method.FIND_NODE, Type.RSP_MSG, id);
+	public FindNodeResponse (byte[] mtid, byte[] nodes, byte[] nodes6) {
+		super(mtid, Method.FIND_NODE, Type.RSP_MSG);
 		this.nodes = nodes;
 		this.nodes6 = nodes6;
 	}

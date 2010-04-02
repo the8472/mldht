@@ -8,8 +8,6 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
 
-import org.gudy.azureus2.core3.util.BEncoder;
-
 /**
  * @author Damokles
  *
@@ -26,8 +24,8 @@ public class AnnounceRequest extends GetPeersRequest {
 	 * @param port
 	 * @param token
 	 */
-	public AnnounceRequest (Key id, Key info_hash, int port, byte[] token) {
-		super(id, info_hash);
+	public AnnounceRequest (Key info_hash, int port, byte[] token) {
+		super(info_hash);
 		this.port = port;
 		this.token = token;
 		this.method = Method.ANNOUNCE_PEER;

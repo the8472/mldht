@@ -6,6 +6,7 @@ import java.util.Set;
 
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
+import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.messages.FindNodeRequest;
 import lbms.plugins.mldht.kad.messages.FindNodeResponse;
 import lbms.plugins.mldht.kad.messages.MessageBase;
@@ -40,7 +41,7 @@ public class KeyspaceCrawler extends Task {
 					// send a findNode to the node
 					FindNodeRequest fnr;
 
-					fnr = new FindNodeRequest(node.getOurID(),Key.createRandomKey());
+					fnr = new FindNodeRequest(Key.createRandomKey());
 					fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setDestination(e.getAddress());
@@ -49,7 +50,7 @@ public class KeyspaceCrawler extends Task {
 
 					if(canDoRequest())
 					{
-						fnr = new FindNodeRequest(node.getOurID(),e.getID());
+						fnr = new FindNodeRequest(e.getID());
 						fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 						fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 						fnr.setDestination(e.getAddress());
@@ -98,7 +99,7 @@ public class KeyspaceCrawler extends Task {
 						{
 							// add node to todo list
 							KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-							if (!e.getID().equals(node.getOurID()) && !todo.contains(e) && !visited.contains(e))
+							if (!node.allLocalIDs().contains(e.getID()) && !todo.contains(e) && !visited.contains(e))
 							{
 								todo.add(e);
 							}
@@ -145,16 +146,13 @@ public class KeyspaceCrawler extends Task {
 
 		// delay the filling of the todo list until we actually start the task
 		
-		KBucket[] buckets = node.getBuckets();
-		outer: for (int i = buckets.length -1; i >= 1; i--)
-			if (buckets[i] != null)
-				for (KBucketEntry e : buckets[i].getEntries())
-					if (!e.isBad())
-					{
-						todo.add(e);
-						added++;
-					}
-
+		outer: for (RoutingTableEntry bucket : node.getBuckets())
+			for (KBucketEntry e : bucket.getBucket().getEntries())
+				if (!e.isBad())
+				{
+					todo.add(e);
+					added++;
+				}
 		super.start();
 	}
 

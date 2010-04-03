@@ -179,24 +179,6 @@ public class KBucket implements Externalizable {
 	}
 
 	/**
-	 * Find the K closest entries to a key and store them in the KClosestNodesSearch
-	 * object.
-	 * @param kns The object to storre the search results
-	 * @return true if at least one Node was inserted successully
-	 */
-	public boolean findKClosestNodes (KClosestNodesSearch kns) {
-		//return true if bucket was empty
-		//otherwise Node.findKClosestNodes will break
-		boolean successfulInsert = entries.size() == 0;
-		for (int i = 0; i < entries.size(); i++) {
-			if (!entries.get(i).isBad() && kns.tryInsert(entries.get(i))) {
-				successfulInsert = true;
-			}
-		}
-		return successfulInsert;
-	}
-
-	/**
 	 * A peer failed to respond
 	 * @param addr Address of the peer
 	 */

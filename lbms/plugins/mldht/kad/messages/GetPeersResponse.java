@@ -110,7 +110,7 @@ public class GetPeersResponse extends MessageBase {
 
 
 	public void setScrapePeers(BloomFilter scrapePeers) {
-		this.scrapePeers = scrapePeers.serialize();
+		this.scrapePeers = scrapePeers != null ? scrapePeers.serialize() : null;
 	}
 
 	public byte[] getToken () {

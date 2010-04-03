@@ -70,7 +70,7 @@ public class RoutingTableView implements UISWTViewEventListener {
 			return;
 		}
 		//plugin.getDHT().removeStatsListener(dhtStatsListener);
-		rtc.setBucketList(null);
+		rtc.setNode(null);
 		isActivated = false;
 	}
 
@@ -81,7 +81,7 @@ public class RoutingTableView implements UISWTViewEventListener {
 		if (!isCreated || isActivated) {
 			return;
 		}
-		rtc.setBucketList(plugin.getDHT(type).getNode().getBuckets());
+		rtc.setNode(plugin.getDHT(type).getNode());
 		if (display != null && !display.isDisposed()) {
 			display.timerExec(UPDATE_INTERVAL, updateCanvas);
 		}

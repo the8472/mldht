@@ -74,17 +74,27 @@ public class Key implements Comparable<Key>, Serializable {
 		}
 		return 0;
 	}
+	
+	public int threeWayDistance(Key k1, Key k2)
+	{
+		for (int i = 0; i < hash.length; i++) {
+			//needs & 0xFF since bytes are signed in Java
+			//so we must convert to int to compare it unsigned
+			if (((k1.hash[i] ^ hash[i]) & 0xFF) < ((k2.hash[i] ^ hash[i]) & 0xFF)) {
+				return -1;
+			} else if (((k1.hash[i] ^ hash[i]) & 0xFF) > ((k2.hash[i] ^ hash[i]) & 0xFF)) {
+				return 1;
+			}
+		}
+		return 0;
+	}
 
-	/*
-	 * (non-Javadoc)
-	 *
-	 * @see java.lang.Object#equals(java.lang.Object)
-	 */
-	@Override
-	public boolean equals (Object obj) {
-		if (obj instanceof Key)
-			return Arrays.equals(hash, ((Key)obj).hash);
-		return super.equals(obj);
+
+	public boolean equals (Key otherKey) {
+		for(int i=0;i<hash.length;i++)
+			if(hash[i] != otherKey.hash[i])
+				return false;
+		return true;
 	}
 
 	/**
@@ -215,5 +225,20 @@ public class Key implements Comparable<Key>, Serializable {
 		Key x = new Key();
 		DHT.rand.nextBytes(x.hash);
 		return x;
+	}
+	
+	public static void main(String[] args) {
+		Key target = new Key();
+		target.hash[0] = (byte) 0xF0;
+		Key test1 = new Key();
+		test1.hash[0] = (byte) 0x80;
+		Key test2 = new Key();
+		test2.hash[0] = 0x03;
+		
+		System.out.println(test1.compareTo(test2));
+		System.out.println(target.distance(test1).compareTo(target.distance(test2)));
+		System.out.println(target.threeWayDistance(test1, test2));
+		
+	
 	}
 }

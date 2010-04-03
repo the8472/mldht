@@ -7,9 +7,7 @@ import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import lbms.plugins.mldht.kad.DHTConstants;
-import lbms.plugins.mldht.kad.KBucket;
-import lbms.plugins.mldht.kad.KBucketEntry;
+import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 
 import org.eclipse.swt.SWT;
@@ -58,7 +56,7 @@ public class RoutingTableCanvas {
 	private boolean					disposed;
 	private int						peerWidth;
 	private int						lineSpacing;
-	private List<RoutingTableEntry>	routingTable;
+	private Node					routingTable;
 
 	public RoutingTableCanvas(Composite parent) {
 		this(parent, null);
@@ -280,9 +278,11 @@ public class RoutingTableCanvas {
 		bucketOffset += 2* bucketBorderLineWidth;
 		bucketOffset += bucketSpacing;
 		
+		List<RoutingTableEntry> buckets = routingTable.getBuckets(); 
 		
-		for (int i = 0; i < routingTable.size(); i++) {
-			RoutingTableEntry rtEntry = routingTable.get(i);
+		
+		for (int i = 0; i < buckets.size(); i++) {
+			RoutingTableEntry rtEntry = buckets.get(i);
 			
 			int currentBucketOffsetX = i * bucketOffset;
 			int currentBucketOffsetY = rtEntry.prefix.getDepth() * 5; 
@@ -345,8 +345,8 @@ public class RoutingTableCanvas {
 		}
 	}
 
-	public void setBucketList (List<RoutingTableEntry> buckets) {
-		routingTable = buckets;
+	public void setNode (Node bucketHolder) {
+		routingTable = bucketHolder;
 	}
 
 	public synchronized void dispose () {

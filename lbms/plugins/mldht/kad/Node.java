@@ -38,7 +38,7 @@ public class Node {
 	}
 
 	private Object routingTableCoWLock = new Object();
-	private List<RoutingTableEntry> routingTable = new ArrayList<RoutingTableEntry>();
+	private volatile List<RoutingTableEntry> routingTable = new ArrayList<RoutingTableEntry>();
 	private DHT dht;
 	private int num_receives;
 	
@@ -97,7 +97,7 @@ public class Node {
 	}
 
 	public void insertEntry (KBucketEntry entry, boolean internalInsert) {
-		if(allLocalIDs().contains(entry.getID()))
+		if(usedIDs.containsValue(entry.getID()))
 			return;
 		
 		Key nodeID = entry.getID();
@@ -142,16 +142,28 @@ public class Node {
 		
 	}
 	
-	public RoutingTableEntry findBucketForId(Key id) {
+	public static int findIdxForId(List<RoutingTableEntry> table, Key id) {
+        int lowerBound = 0;
+        int upperBound = table.size()-1;
 
-		for(int i = 0;i<routingTable.size();i++)
-		{
-			RoutingTableEntry entry = routingTable.get(i);
-			if(entry.prefix.isPrefixOf(id))
-				return entry;
-		}
-		// should not happen
-		return null;
+        while (lowerBound <= upperBound) {
+            int pivotIdx = (lowerBound + upperBound) >>> 1;
+            Prefix pivot = table.get(pivotIdx).prefix;
+
+            if(pivot.isPrefixOf(id))
+            	return pivotIdx;
+
+            if (pivot.compareTo(id) < 0)
+           		lowerBound = pivotIdx + 1;
+           	else
+           		upperBound = pivotIdx - 1;
+        }
+        throw new IllegalStateException("This shouldn't happen, really");
+	}
+	
+	public RoutingTableEntry findBucketForId(Key id) {
+		List<RoutingTableEntry> table = routingTable;
+		return table.get(findIdxForId(table, id));
 	}
 
 	/**
@@ -178,22 +190,6 @@ public class Node {
 	
 	public DHT getDHT() {
 		return dht;
-	}
-
-	/**
-	 * Find the K closest entries to a key and store them in the KClosestNodesSearch
-	 * object.
-	 * @param kns The object to store the search results
-	 */
-	public void findKClosestNodes (KClosestNodesSearch kns) {
-		/*
-		RoutingTableEntry target = findBucketForId(kns.getSearchTarget());
-		target.bucket.findKClosestNodes(kns);
-		*/
-		
-		for(RoutingTableEntry e : routingTable)
-			e.bucket.findKClosestNodes(kns);
-		
 	}
 
 	/**

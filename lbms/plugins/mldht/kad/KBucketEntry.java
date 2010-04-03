@@ -42,7 +42,8 @@ public class KBucketEntry implements Serializable {
 		}
 	
 		public int compare(KBucketEntry o1, KBucketEntry o2) {
-			return target.distance(o1.getID()).compareTo(target.distance(o2.getID()));
+			//return target.distance(o1.getID()).compareTo(target.distance(o2.getID()));
+			return target.threeWayDistance(o1.getID(), o2.getID());
 		}
 	}
 

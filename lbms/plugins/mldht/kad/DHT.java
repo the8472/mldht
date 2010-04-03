@@ -177,14 +177,21 @@ public class DHT implements DHTBase {
 		node.recieved(this, r);
 		// find the K closest nodes and pack them
 
-		KClosestNodesSearch kns4 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV4_DHT));
-		KClosestNodesSearch kns6 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV6_DHT));
+		KClosestNodesSearch kns4 = null; 
+		KClosestNodesSearch kns6 = null;
 		
 		// add our local address of the respective DHT for cross-seeding, but not for local requests
-		kns4.fill(DHTtype.IPV4_DHT != type);
-		kns6.fill(DHTtype.IPV6_DHT != type);
+		if(r.doesWant4()) {
+			kns4 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV4_DHT));
+			kns4.fill(DHTtype.IPV4_DHT != type);
+		}
+		if(r.doesWant6()) {
+			kns6 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV6_DHT));
+			kns6.fill(DHTtype.IPV6_DHT != type);
+		}
 
-		FindNodeResponse fnr = new FindNodeResponse(r.getMTID(), r.doesWant4() ? kns4.pack() : null,r.doesWant6() ? kns6.pack() : null);
+
+		FindNodeResponse fnr = new FindNodeResponse(r.getMTID(), kns4 != null ? kns4.pack() : null,kns6 != null ? kns6.pack() : null);
 		fnr.setOrigin(r.getOrigin());
 		r.getServer().sendMessage(fnr);
 	}
@@ -218,16 +225,23 @@ public class DHT implements DHTBase {
 		ByteWrapper token = db.genToken(r.getOrigin().getAddress(), r
 				.getOrigin().getPort(), r.getInfoHash());
 
-		KClosestNodesSearch kns4 = new KClosestNodesSearch(r.getInfoHash(),DHTConstants.MAX_ENTRIES_PER_BUCKET,getDHT(DHTtype.IPV4_DHT));
-		KClosestNodesSearch kns6 = new KClosestNodesSearch(r.getInfoHash(),DHTConstants.MAX_ENTRIES_PER_BUCKET,getDHT(DHTtype.IPV6_DHT));
-
+		KClosestNodesSearch kns4 = null; 
+		KClosestNodesSearch kns6 = null;
+		
 		// add our local address of the respective DHT for cross-seeding, but not for local requests
-		kns4.fill(DHTtype.IPV4_DHT != type);
-		kns6.fill(DHTtype.IPV6_DHT != type);
+		if(r.doesWant4()) {
+			kns4 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV4_DHT));
+			kns4.fill(DHTtype.IPV4_DHT != type);
+		}
+		if(r.doesWant6()) {
+			kns6 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV6_DHT));
+			kns6.fill(DHTtype.IPV6_DHT != type);
+		}
+
 		
 		GetPeersResponse resp = new GetPeersResponse(r.getMTID(), 
-			r.doesWant4() ? kns4.pack() : null,
-			r.doesWant6() ? kns6.pack() : null,
+			kns4 != null ? kns4.pack() : null,
+			kns6 != null ? kns6.pack() : null,
 			db.insertForKeyAllowed(r.getInfoHash()) ? token.arr : null);
 		
 		if(r.isScrape())

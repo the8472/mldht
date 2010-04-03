@@ -267,7 +267,6 @@ public class KBucket implements Externalizable {
 		return false;
 	}
 	
-
 	private void pingQuestionable (final KBucketEntry replacement_entry) {
 		if (pendingPings.size() >= 2) {
 			insertInReplacementBucket(replacement_entry);
@@ -288,7 +287,7 @@ public class KBucket implements Externalizable {
 						{
 							nextReplacementEntry = replacementBucket.pollLast();
 						}
-						if (replacement_entry != null && !replaceBadEntry(nextReplacementEntry))
+						if (nextReplacementEntry != null && !replaceBadEntry(nextReplacementEntry))
 							pingQuestionable(nextReplacementEntry);
 					}
 					
@@ -334,6 +333,8 @@ public class KBucket implements Externalizable {
 	
 	private void insertInReplacementBucket(KBucketEntry entry)
 	{
+		if(entry == null)
+			return;
 		synchronized (entries) {
 			//if it is already inserted remove it and add it to the end
 			int idx = replacementBucket.indexOf(entry);

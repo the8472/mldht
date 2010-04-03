@@ -98,7 +98,7 @@ public class GetPeersResponse extends MessageBase {
 
 
 	public void setScrapeSeeds(BloomFilter scrapeSeeds) {
-		this.scrapeSeeds = scrapeSeeds.serialize();
+		this.scrapeSeeds = scrapePeers != null ? scrapeSeeds.serialize() : null;
 	}
 
 

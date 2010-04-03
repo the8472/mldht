@@ -293,7 +293,7 @@ public class Node {
 						newTable.remove(e1);
 						newTable.remove(e2);
 						newTable.add(new RoutingTableEntry(e1.prefix.getParentPrefix(), new KBucket(this)));
-						Collections.sort(routingTable);
+						Collections.sort(newTable);
 						routingTable = newTable;
 						// no need to carry over replacements. there shouldn't be any, otherwise the bucket(s) would be full
 						for(KBucketEntry e : e1.bucket.getEntries())

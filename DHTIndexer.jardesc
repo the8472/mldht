@@ -11,12 +11,11 @@
         </sealing>
     </manifest>
     <selectedElements exportClassFiles="true" exportJavaFiles="false" exportOutputFolder="false">
-        <file path="/mldht/plugin.properties"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.indexer"/>
+        <file path="/mldht/plugin.properties"/>
         <file path="/mldht/dht-plugin.jardesc"/>
         <file path="/mldht/.project"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad"/>
-        <javaElement handleIdentifier="=azureus_clean/azureus2&lt;org.gudy.azureus2.core3.util"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.messages"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.tasks"/>

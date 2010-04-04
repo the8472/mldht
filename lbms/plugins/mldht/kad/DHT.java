@@ -343,7 +343,8 @@ public class DHT implements DHTBase {
 			return null;
 		}
 		
-		AnnounceTask announce = new AnnounceTask(getRandomServer(), node, lookup.getInfoHash(), btPort);
+		// reuse the same server to make sure our tokens are still valid
+		AnnounceTask announce = new AnnounceTask(lookup.getRPC(), node, lookup.getInfoHash(), btPort);
 		announce.setSeed(isSeed);
 		for (KBucketEntryAndToken kbe : lookup.getAnnounceCanidates())
 		{
@@ -591,7 +592,8 @@ public class DHT implements DHTBase {
 		scheduledActions.add(scheduler.scheduleAtFixedRate(new Runnable() {
 			public void run () {
 				try {
-					findNode(Key.createRandomKey()).setInfo("Random Refresh Lookup");
+					for(RPCServer srv : servers)
+						findNode(Key.createRandomKey(), false, false, true, srv).setInfo("Random Refresh Lookup");
 				} catch (RuntimeException e) {
 					log(e, LogLevel.Fatal);
 				}

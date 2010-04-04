@@ -242,7 +242,8 @@ public class Node {
 			// haven't seen a packet for too long
 			// perform heroics to maintain the routing table from now on
 			survivalMode = true;
-			dht.getRandomServer().getTimeoutFilter().reset();
+			for(RPCServer server : dht.getServers())
+				server.getTimeoutFilter().reset();
 			timeOfRecovery = 0;
 		}
 		
@@ -310,48 +311,47 @@ public class Node {
 		
 		for (RoutingTableEntry e : routingTable) {
 			KBucket b = e.bucket;
-			if(b != null)
-			{
-				List<KBucketEntry> entries = b.getEntries();
-				
-				// remove boostrap nodes from our buckets
-				if (b.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
-					for (KBucketEntry entry : entries)
-						if (DHTConstants.BOOTSTRAP_NODE_ADDRESSES.contains(entry.getAddress()))
-							b.removeEntry(entry, true);
-				
-				if (b.needsToBeRefreshed())
-				{
-					// clean out buckets full of bad nodes. merge operations will do the rest
-					if(!survivalMode)
-					{
-						boolean allBad = true;
-						for(KBucketEntry entry : entries)
-							allBad &= entry.isBad();
-						
-						if(allBad)
-							e.bucket = new KBucket(this);
-						
-						continue;
-					}
-					
-					// if the bucket survived that test, ping it
-					DHT.logDebug("Refreshing Bucket: " + e.prefix);
-					// the key needs to be the refreshed
-					PingRefreshTask nl = dht.refreshBucket(b);
-					if (nl != null)
-					{
-						b.setRefreshTask(nl);
-						nl.setInfo("Refreshing Bucket #" + e.prefix);
-					}
 
-				} else if(!survivalMode)
+			List<KBucketEntry> entries = b.getEntries();
+
+			// remove boostrap nodes from our buckets
+			if (b.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
+				for (KBucketEntry entry : entries)
+					if (DHTConstants.BOOTSTRAP_NODE_ADDRESSES.contains(entry.getAddress()))
+						b.removeEntry(entry, true);
+
+			if (b.needsToBeRefreshed())
+			{
+				// clean out buckets full of bad nodes. merge operations will do the rest
+				if(!survivalMode)
 				{
-					// only replace 1 bad entry with a replacement bucket entry at a time (per bucket)
-					b.checkBadEntries();
-				}					
-				
-			}
+					boolean allBad = true;
+					for(KBucketEntry entry : entries)
+						allBad &= entry.isBad();
+
+					if(allBad)
+						e.bucket = new KBucket(this);
+
+					continue;
+				}
+
+				// if the bucket survived that test, ping it
+				DHT.logDebug("Refreshing Bucket: " + e.prefix);
+				// the key needs to be the refreshed
+				PingRefreshTask nl = dht.refreshBucket(b);
+				if (nl != null)
+				{
+					b.setRefreshTask(nl);
+					nl.setInfo("Refreshing Bucket #" + e.prefix);
+				}
+
+			} else if(!survivalMode)
+			{
+				// only replace 1 bad entry with a replacement bucket entry at a time (per bucket)
+				b.checkBadEntries();
+			}					
+
+
 		}
 
 	}

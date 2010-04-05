@@ -111,13 +111,18 @@ public class RPCServer implements Runnable, RPCServerBase {
 	
 	private synchronized void createSocket() throws SocketException
 	{
-		InetAddress addr = getAvailableAddrs(dh_table.getConfig().allowMultiHoming(), dh_table.getType()).peekFirst();
-		
 		if(sock != null)
 		{
 			sock.close();
-			interfacesInUse.remove(sock.getLocalAddress());
+			for(Iterator<RPCServer> it = interfacesInUse.values().iterator();it.hasNext();)
+			{
+				RPCServer srv = it.next();
+				if(srv == this)
+					it.remove();
+			}
 		}
+		
+		InetAddress addr = getAvailableAddrs(dh_table.getConfig().allowMultiHoming(), dh_table.getType()).peekFirst();
 		
 		timeoutFilter.reset();
 
@@ -161,6 +166,7 @@ public class RPCServer implements Runnable, RPCServerBase {
 		while (running)
 		{
 			DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+			
 			try
 			{
 				if(sock.isClosed())
@@ -327,6 +333,9 @@ public class RPCServer implements Runnable, RPCServerBase {
 	public RPCStats getStats () {
 		return stats;
 	}
+	
+	// we only decode in the listening thread, so reused the decoder
+	private BDecoder decoder = new BDecoder();
 
 	private void handlePacket (DatagramPacket p) {
 		numReceived++;
@@ -342,7 +351,8 @@ public class RPCServer implements Runnable, RPCServerBase {
 		}
 
 		try {
-			Map<String, Object> bedata = BDecoder.decode(p.getData(),0,p.getLength());
+			// TODO disable interning once API is available in Az
+			Map<String, Object> bedata = decoder.decodeByteArray(p.getData(), 0, p.getLength() /*, false*/);
 			MessageBase msg = MessageDecoder.parseMessage(bedata, this);
 			if (msg != null) {
 				DHT.logDebug("RPC received message ["+p.getAddress().getHostAddress()+"] "+msg.toString());

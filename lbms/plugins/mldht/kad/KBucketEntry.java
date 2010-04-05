@@ -209,8 +209,8 @@ public class KBucketEntry implements Serializable {
 		if (failedQueries >= DHTConstants.KBE_BAD_IMMEDIATLY_ON_FAILED_QUERIES) {
 	        return true;
         }
-		if(System.currentTimeMillis() - lastSeen > DHTConstants.KBE_QUESTIONABLE_TIME &&
-			failedQueries > DHTConstants.KBE_BAD_IF_FAILED_QUERIES_LARGER_THAN) {
+		if(failedQueries > DHTConstants.KBE_BAD_IF_FAILED_QUERIES_LARGER_THAN && 
+			System.currentTimeMillis() - lastSeen > DHTConstants.KBE_QUESTIONABLE_TIME) {
 	        return true;
         }
 		return false;

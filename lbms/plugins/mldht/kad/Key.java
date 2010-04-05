@@ -91,6 +91,8 @@ public class Key implements Comparable<Key>, Serializable {
 
 
 	public boolean equals (Key otherKey) {
+		if(this == otherKey)
+			return true;
 		for(int i=0;i<hash.length;i++)
 			if(hash[i] != otherKey.hash[i])
 				return false;

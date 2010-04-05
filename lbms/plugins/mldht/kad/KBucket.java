@@ -23,9 +23,11 @@ public class KBucket implements Externalizable {
 
 	private static final long	serialVersionUID	= -5507455162198975209L;
 	
-	// any modifying actions to entries must happen through removeAndInsert (which is synchronized)!
-	private LinkedList<KBucketEntry>	entries;
-	// this is synchronized on entries, not on replacementBucket!
+	/**
+	 * use {@link #removeAndInsert}, {@link #sortedInsert} or {@link #removeEntry} to handle this, avoid modifying operations elsewhere when possible 
+	 */
+	private List<KBucketEntry>	entries;
+	// replacements are synchronized on entries, not on replacementBucket! using a liked list since we use it as queue, not as stack
 	private LinkedList<KBucketEntry>	replacementBucket;
 	
 	private Node						node;
@@ -34,7 +36,7 @@ public class KBucket implements Externalizable {
 	private Task						refresh_task;
 	
 	public KBucket () {
-		entries = new LinkedList<KBucketEntry>();
+		entries = new ArrayList<KBucketEntry>(); // using arraylist here since reading/iterating is far more common than writing.
 		replacementBucket = new LinkedList<KBucketEntry>();
 		pendingPings = Collections.synchronizedSet(new HashSet<KBucketEntry>());	
 	}
@@ -103,12 +105,12 @@ public class KBucket implements Externalizable {
 				sortedInsert(toInsert);
 				break insertTests;
 			}
-			
+
 			if (replaceBadEntry(toInsert))
 				break insertTests;
 
 			// older entries displace younger ones (this code path is mostly used on changing node IDs)
-			KBucketEntry youngest = entries.getLast();
+			KBucketEntry youngest = entries.get(entries.size()-1);
 			
 			if (youngest.getCreationTime() > toInsert.getCreationTime())
 			{
@@ -137,14 +139,26 @@ public class KBucket implements Externalizable {
 			return;
 		synchronized (entries)
 		{
-			KBucketEntry youngest = entries.peekLast();
-			entries.addLast(toInsert);
-			adjustTimerOnInsert(toInsert);
-			if (youngest != null && toInsert.getCreationTime() < youngest.getCreationTime())
-				Collections.sort(entries, KBucketEntry.AGE_ORDER);
-			while(entries.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET)
-				insertInReplacementBucket(entries.removeLast());
-				
+			int oldSize = entries.size();
+			boolean wasFull = oldSize >= DHTConstants.MAX_ENTRIES_PER_BUCKET;
+			KBucketEntry youngest = oldSize > 0 ? entries.get(oldSize-1) : null;
+			boolean unorderedInsert = youngest != null && toInsert.getCreationTime() < youngest.getCreationTime();
+			boolean modify = !wasFull || unorderedInsert;
+			if(modify)
+			{
+				entries.add(toInsert);
+				adjustTimerOnInsert(toInsert);
+			} else
+			{
+				insertInReplacementBucket(toInsert);
+			}
+			
+			if(unorderedInsert)
+				Collections.sort(entries,KBucketEntry.AGE_ORDER);
+			
+			if(wasFull && modify)
+				while(entries.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET)
+					insertInReplacementBucket(entries.remove(entries.size()-1));
 		}
 	}
 

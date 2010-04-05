@@ -315,26 +315,26 @@ public class Node {
 			List<KBucketEntry> entries = b.getEntries();
 
 			// remove boostrap nodes from our buckets
-			if (b.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
-				for (KBucketEntry entry : entries)
-					if (DHTConstants.BOOTSTRAP_NODE_ADDRESSES.contains(entry.getAddress()))
-						b.removeEntry(entry, true);
+			boolean wasFull = b.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET;
+			boolean allBad = true;
+			for (KBucketEntry entry : entries)
+			{
+				if (wasFull && DHTConstants.BOOTSTRAP_NODE_ADDRESSES.contains(entry.getAddress()))
+					b.removeEntry(entry, true);
+				allBad &= entry.isBad();
+			}
+
+			// clean out buckets full of bad nodes. merge operations will do the rest
+			if(!survivalMode && allBad)
+			{
+				e.bucket = new KBucket(this);
+				continue;
+			}
+				
+				
 
 			if (b.needsToBeRefreshed())
 			{
-				// clean out buckets full of bad nodes. merge operations will do the rest
-				if(!survivalMode)
-				{
-					boolean allBad = true;
-					for(KBucketEntry entry : entries)
-						allBad &= entry.isBad();
-
-					if(allBad)
-						e.bucket = new KBucket(this);
-
-					continue;
-				}
-
 				// if the bucket survived that test, ping it
 				DHT.logDebug("Refreshing Bucket: " + e.prefix);
 				// the key needs to be the refreshed

@@ -11,8 +11,8 @@ public class TorrentDBEntry {
 	@Id
 	String info_hash;
 	int status;
-	@Temporal(TemporalType.TIMESTAMP)
-	Date added;
+	@Column(length=10)
+	long added;
 	
 	
 }

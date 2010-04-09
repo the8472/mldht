@@ -93,7 +93,7 @@ public class IndexingService {
 				{
 					entry = new TorrentDBEntry();
 					entry.info_hash = hash;
-					entry.added = new Date();
+					entry.added = 0;
 					entry.status = 0;
 					session.save(entry);
 				}

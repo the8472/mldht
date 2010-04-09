@@ -1,8 +1,8 @@
 package lbms.plugins.mldht.indexer;
 
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.Table;
+import java.util.Date;
+
+import javax.persistence.*;
 
 
 @Entity(name="ihdata")
@@ -11,7 +11,8 @@ public class TorrentDBEntry {
 	@Id
 	String info_hash;
 	int status;
-	long added;
+	@Temporal(TemporalType.TIMESTAMP)
+	Date added;
 	
 	
 }

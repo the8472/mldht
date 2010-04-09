@@ -3,6 +3,7 @@ package lbms.plugins.mldht.indexer;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.net.InetAddress;
+import java.util.Date;
 import java.util.Map;
 
 import org.hibernate.Session;
@@ -92,7 +93,7 @@ public class IndexingService {
 				{
 					entry = new TorrentDBEntry();
 					entry.info_hash = hash;
-					entry.added = System.currentTimeMillis();
+					entry.added = new Date();
 					entry.status = 0;
 					session.save(entry);
 				}

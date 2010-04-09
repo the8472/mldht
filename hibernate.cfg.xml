@@ -31,7 +31,5 @@
 		<!-- <property name="hbm2ddl.auto">validate</property> -->
 		<property name="hbm2ddl.auto">create</property>
 
-		<!-- Mapping class. -->
-		<mapping class="lbms.plugins.mldht.indexer.TorrentDBEntry" />
 	</session-factory>
 </hibernate-configuration>

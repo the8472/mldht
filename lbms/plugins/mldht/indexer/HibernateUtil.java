@@ -12,7 +12,9 @@ public class HibernateUtil {
 		try
 		{
 			//By default it will look for hibernate.cfg.xml in the class path
-			sessionFactory = new AnnotationConfiguration().configure().buildSessionFactory();
+			AnnotationConfiguration config = new AnnotationConfiguration().configure();
+			config.addAnnotatedClass(TorrentDBEntry.class);
+			sessionFactory = config.buildSessionFactory();
 		} catch (Throwable ex)
 		{
 			throw new ExceptionInInitializerError(ex);

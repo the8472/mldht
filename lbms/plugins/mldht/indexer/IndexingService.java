@@ -77,12 +77,12 @@ public class IndexingService {
 			}
 		});
 		
-		final PrintWriter hashWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream("./infohashQueries.log",true))),true);
+		//final PrintWriter hashWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream("./infohashQueries.log",true))),true);
 		
 		DHTIndexingListener listener = new DHTIndexingListener() {
 			@Override
 			public void incomingPeersRequest(Key infoHash, InetAddress sourceAddress, Key nodeID) {
-				hashWriter.println(infoHash.toString(false)+"\tfrom: "+sourceAddress.getHostAddress()+"/"+nodeID.toString(false));
+				//hashWriter.println(infoHash.toString(false)+"\tfrom: "+sourceAddress.getHostAddress()+"/"+nodeID.toString(false));
 				
 				Session session = HibernateUtil.getSessionFactory().openSession();
 				Transaction tx = session.beginTransaction();

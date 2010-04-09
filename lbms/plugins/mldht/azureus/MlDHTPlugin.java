@@ -428,7 +428,7 @@ public class MlDHTPlugin implements UnloadablePlugin, PluginListener {
 			}
 			
 			public boolean allowMultiHoming() {
-				return true;
+				return false;
 			}
 		}; 
 		

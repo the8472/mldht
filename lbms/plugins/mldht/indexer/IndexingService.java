@@ -5,6 +5,9 @@ import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.util.Map;
 
+import org.hibernate.Session;
+import org.hibernate.Transaction;
+
 import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTIndexingListener;
@@ -80,6 +83,24 @@ public class IndexingService {
 			@Override
 			public void incomingPeersRequest(Key infoHash, InetAddress sourceAddress, Key nodeID) {
 				hashWriter.println(infoHash.toString(false)+"\tfrom: "+sourceAddress.getHostAddress()+"/"+nodeID.toString(false));
+				
+				Session session = HibernateUtil.getSessionFactory().openSession();
+				Transaction tx = session.beginTransaction();
+				String hash = infoHash.toString(false);
+				TorrentDBEntry entry = (TorrentDBEntry) session.get(TorrentDBEntry.class, hash);
+				if(entry == null)
+				{
+					entry = new TorrentDBEntry();
+					entry.info_hash = hash;
+					entry.added = System.currentTimeMillis();
+					entry.status = 0;
+					session.save(entry);
+				}
+				
+				tx.commit();
+				session.close();
+				
+				
 			}
 		};
 		
@@ -105,6 +126,8 @@ public class IndexingService {
 			DHT dht = e.getValue();
 			dht.stop();
 		}
+		
+		HibernateUtil.shutdown();
 		
 	}
 	

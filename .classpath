@@ -4,5 +4,15 @@
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry kind="lib" path="/azureus_clean/azureus2/build/libs/swt-win32.jar" sourcepath="/azureus_clean/azureus2/build/libs/swt-win32-src.zip"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/azureus_clean"/>
+	<classpathentry kind="lib" path="libs/hibernate/antlr-2.7.6.jar"/>
+	<classpathentry kind="lib" path="libs/hibernate/commons-collections-3.1.jar"/>
+	<classpathentry kind="lib" path="libs/hibernate/dom4j-1.6.1.jar"/>
+	<classpathentry kind="lib" path="libs/hibernate/hibernate3.jar"/>
+	<classpathentry kind="lib" path="libs/hibernate/javassist-3.9.0.GA.jar"/>
+	<classpathentry kind="lib" path="libs/hibernate/jta-1.1.jar"/>
+	<classpathentry kind="lib" path="libs/hibernate/slf4j-api-1.5.8.jar"/>
+	<classpathentry kind="lib" path="libs/hsqldb.jar"/>
+	<classpathentry kind="lib" path="libs/hibernate/hibernate-jpa-2.0-api-1.0.0.Final.jar"/>
+	<classpathentry kind="lib" path="libs/hibernate/slf4j-simple-1.5.11.jar"/>
 	<classpathentry kind="output" path="dist"/>
 </classpath>

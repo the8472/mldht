@@ -7,8 +7,8 @@ import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import lbms.plugins.mldht.kad.*;
-import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
+import lbms.plugins.mldht.kad.KBucket;
+import lbms.plugins.mldht.kad.KBucketEntry;
 
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.ScrolledComposite;
@@ -49,14 +49,16 @@ public class RoutingTableCanvas {
 																+ HEADER_HEIGHT
 																+ 5;
 
-	private Canvas					canvas;
-	private Image					img;
-	private Display					display;
-	private Shell					toolTipShell;
-	private boolean					disposed;
-	private int						peerWidth;
-	private int						lineSpacing;
-	private Node					routingTable;
+	private Canvas				canvas;
+	private Image				img;
+	private Display				display;
+	private Shell				toolTipShell;
+
+	private boolean				disposed;
+
+	private int					peerWidth;
+	private int					lineSpacing;
+	private KBucket[]			bucketList;
 
 	public RoutingTableCanvas(Composite parent) {
 		this(parent, null);
@@ -145,7 +147,7 @@ public class RoutingTableCanvas {
 			toolTipShell.dispose();
 		}
 
-		if (routingTable == null || disposed) {
+		if (bucketList == null || disposed) {
 			return;
 		}
 
@@ -196,11 +198,10 @@ public class RoutingTableCanvas {
 			return null;
 		}
 		KBucketEntry e = null;
-		/*
-		if (i < 160 && i >= 0 && bucket[i] != null
-				&& bucket[i].getNumEntries() > j) {
-			e = bucket[i].getEntries().get(j);
-		}*/
+		if (i < 160 && i >= 0 && bucketList[i] != null
+				&& bucketList[i].getNumEntries() > j) {
+			e = bucketList[i].getEntries().get(j);
+		}
 		if (e == null) {
 			return null;
 		}
@@ -239,8 +240,9 @@ public class RoutingTableCanvas {
 		}
 		GC gc = new GC(img);
 		printBackground(gc);
-		if (routingTable != null) {
-			printPeers(gc);
+		printLines(gc);
+		if (bucketList != null) {
+			printPeers(gc, bucketList);
 		}
 		canvas.redraw();
 		gc.dispose();
@@ -251,8 +253,7 @@ public class RoutingTableCanvas {
 		gc.fillRectangle(img.getBounds());
 	}
 
-	private void printBuckets (GC gc) {
-		/*
+	private void printLines (GC gc) {
 		gc.setForeground(display.getSystemColor(SWT.COLOR_BLACK));
 		gc.setBackground(display.getSystemColor(SWT.COLOR_GRAY));
 		for (int i = 1; i < 160; i++) {
@@ -264,65 +265,14 @@ public class RoutingTableCanvas {
 			gc.drawLine(lineSpacing * i, HEADER_HEIGHT, lineSpacing * i,
 					(PEER_HEIGHT + Y_SPACING) * 8 + HEADER_HEIGHT);
 		}
-		*/
 	}
 
-	private void printPeers (GC gc) {
-		
-		int bucketSpacing = 4;
-		int bucketPadding = 2;
-		int bucketBorderLineWidth = 1;
-		int bucketContentWidth = DHTConstants.MAX_ENTRIES_PER_BUCKET * peerWidth + (DHTConstants.MAX_ENTRIES_PER_BUCKET -1) * X_SPACING; 
-		int bucketOffset = bucketContentWidth;
-		bucketOffset += 2* bucketPadding;
-		bucketOffset += 2* bucketBorderLineWidth;
-		bucketOffset += bucketSpacing;
-		
-		List<RoutingTableEntry> buckets = routingTable.getBuckets(); 
-		
-		
-		for (int i = 0; i < buckets.size(); i++) {
-			RoutingTableEntry rtEntry = buckets.get(i);
-			
-			int currentBucketOffsetX = i * bucketOffset;
-			int currentBucketOffsetY = rtEntry.prefix.getDepth() * 5; 
-			
-			gc.setAlpha(255);
-			gc.drawRectangle(currentBucketOffsetX, currentBucketOffsetY , bucketContentWidth + 2* bucketPadding, 3 * PEER_HEIGHT);
-			
-			currentBucketOffsetX += bucketPadding;
-			currentBucketOffsetY += bucketPadding;
-			
-			List<KBucketEntry> entries = rtEntry.getBucket().getEntries();
-			for (int j = 0; j < entries.size(); j++) {
-				KBucketEntry e = entries.get(j);
-				if (e.isGood()) {
-					Color c = display.getSystemColor(SWT.COLOR_DARK_GREEN);
-					//gc.setForeground(c);
-					gc.setBackground(c);
-				} else if (e.isBad()) {
-					Color c = display.getSystemColor(SWT.COLOR_RED);
-					//gc.setForeground(c);
-					gc.setBackground(c);
-				} else {
-					Color c = display.getSystemColor(SWT.COLOR_BLUE);
-					//gc.setForeground(c);
-					gc.setBackground(c);
-				}
-				int xOffset = currentBucketOffsetX + j * (peerWidth + X_SPACING);
-
-				gc.fillRectangle(xOffset, currentBucketOffsetY, peerWidth, PEER_HEIGHT);
+	private void printPeers (GC gc, KBucket[] list) {
+		for (int i = 0; i < list.length; i++) {
+			if (list[i] == null) {
+				continue;
 			}
-			
-			currentBucketOffsetY += PEER_HEIGHT + Y_SPACING;
-
-			gc.setBackground(display.getSystemColor(SWT.COLOR_GRAY));
-			gc.fillRectangle(currentBucketOffsetX, currentBucketOffsetY, bucketContentWidth, PEER_HEIGHT);
-			gc.drawRectangle(currentBucketOffsetX, currentBucketOffsetY, bucketContentWidth, PEER_HEIGHT);
-			
-			gc.setAlpha(128);
-			
-			entries = rtEntry.getBucket().getReplacementEntries();
+			List<KBucketEntry> entries = list[i].getEntries();
 			for (int j = 0; j < entries.size(); j++) {
 				KBucketEntry e = entries.get(j);
 				if (e.isGood()) {
@@ -338,15 +288,19 @@ public class RoutingTableCanvas {
 					//gc.setForeground(c);
 					gc.setBackground(c);
 				}
-				int xOffset = currentBucketOffsetX + j * (peerWidth + X_SPACING);
-
-				gc.fillRectangle(xOffset, currentBucketOffsetY, peerWidth, PEER_HEIGHT);
+				int xOffset = lineSpacing * (i - 1) + X_SPACING + 1;
+				int yOffset = j * (PEER_HEIGHT + Y_SPACING) + Y_SPACING
+						+ HEADER_HEIGHT;
+				gc.fillRectangle(xOffset, yOffset, peerWidth, PEER_HEIGHT);
 			}
 		}
 	}
 
-	public void setNode (Node bucketHolder) {
-		routingTable = bucketHolder;
+	/**
+	 * @param bucketList the bucketList to set
+	 */
+	public void setBucketList (KBucket[] bucketList) {
+		this.bucketList = bucketList;
 	}
 
 	public synchronized void dispose () {

@@ -33,7 +33,7 @@ public interface RPCServerBase {
 	 * Ping a node, we don't care about the MTID.
 	 * @param addr The address
 	 */
-	public void ping (InetSocketAddress addr);
+	public void ping (Key our_id, InetSocketAddress addr);
 
 	/**
 	 * Find a RPC call, based on the mtid

@@ -23,8 +23,9 @@ public class Key implements Comparable<Key>, Serializable {
 	}
 
 	private static final long	serialVersionUID	= -1180893806923345652L;
-	public static final int		SHA1_HASH_LENGTH	= 20;
-	protected byte[]			hash				= new byte[SHA1_HASH_LENGTH];
+
+	public static final int	SHA1_HASH_LENGTH	= 20;
+	private byte[]			hash				= new byte[SHA1_HASH_LENGTH];
 
 	/**
 	 * A Key in the DHT.
@@ -32,7 +33,7 @@ public class Key implements Comparable<Key>, Serializable {
 	 * Key's in the distributed hash table are just SHA-1 hashes.
 	 * Key provides all necesarry operators to be used as a value.
 	 */
-	protected Key () {
+	private Key () {
 	}
 
 	/**
@@ -74,29 +75,17 @@ public class Key implements Comparable<Key>, Serializable {
 		}
 		return 0;
 	}
-	
-	public int threeWayDistance(Key k1, Key k2)
-	{
-		for (int i = 0; i < hash.length; i++) {
-			//needs & 0xFF since bytes are signed in Java
-			//so we must convert to int to compare it unsigned
-			if (((k1.hash[i] ^ hash[i]) & 0xFF) < ((k2.hash[i] ^ hash[i]) & 0xFF)) {
-				return -1;
-			} else if (((k1.hash[i] ^ hash[i]) & 0xFF) > ((k2.hash[i] ^ hash[i]) & 0xFF)) {
-				return 1;
-			}
-		}
-		return 0;
-	}
 
-
-	public boolean equals (Key otherKey) {
-		if(this == otherKey)
-			return true;
-		for(int i=0;i<hash.length;i++)
-			if(hash[i] != otherKey.hash[i])
-				return false;
-		return true;
+	/*
+	 * (non-Javadoc)
+	 *
+	 * @see java.lang.Object#equals(java.lang.Object)
+	 */
+	@Override
+	public boolean equals (Object obj) {
+		if (obj instanceof Key)
+			return Arrays.equals(hash, ((Key)obj).hash);
+		return super.equals(obj);
 	}
 
 	/**
@@ -104,16 +93,6 @@ public class Key implements Comparable<Key>, Serializable {
 	 */
 	public byte[] getHash () {
 		return hash.clone();
-	}
-	
-	public Key getDerivedKey(int idx) {
-		Key k = new Key(this);
-		byte[] data = k.hash;
-		for(int i=0;i<32;i++)
-			if(((0x01 << i) & idx) != 0)
-				data[i/8] ^= 0x80 >> (i % 8);
-		
-		return k;
 	}
 
 	/*
@@ -150,6 +129,44 @@ public class Key implements Comparable<Key>, Serializable {
 			b.append((char)(nibble < 0x0A ? '0'+nibble : 'A'+nibble-10 ));
 		}
 		return b.toString();		
+	}
+
+	/**
+	 * Generates a Key that has b equal bits in the beginning.
+	 *
+	 * @param b equal bits
+	 * @return A Key which has b equal bits with this Key.
+	 */
+	public Key createKeyWithDistance (int b) {
+		// first generate a random one
+		Key r = Key.createRandomKey();
+		byte[] data = r.getHash();
+		//need to map to the correct coordinates
+		b = 159 - b;
+		// before we hit bit b, everything needs to be equal to our_id
+		int nb = b / 8;
+		for (int i = 0; i < nb; i++) {
+			data[i] = hash[i];
+		}
+
+		// copy all bits of ob, until we hit the bit which needs to be different
+		int ob = hash[nb];
+		for (int j = 0; j < b % 8; j++) {
+			if (((0x80 >> j) & ob) != 0) {
+				data[nb] |= (0x80 >> j);
+			} else {
+				data[nb] &= ~(0x80 >> j);
+			}
+		}
+
+		// if the bit b is on turn it off else turn it on
+		if (((0x80 >> (b % 8)) & ob) != 0) {
+			data[nb] &= ~(0x80 >> (b % 8));
+		} else {
+			data[nb] |= (0x80 >> (b % 8));
+		}
+
+		return new Key(data);
 	}
 
 	/**
@@ -202,6 +219,19 @@ public class Key implements Comparable<Key>, Serializable {
 
 
 	/**
+	 *
+	 * @param Key to be checked
+	 * @return true if this key is a prefix of the provided key
+	 */
+	public boolean isPrefixOf(Key k)
+	{
+		List<Key> keys = new ArrayList<Key>(2);
+		keys.add(this);
+		keys.add(k);
+		return getCommonPrefix(keys).equals(this);
+	}
+
+	/**
 	 * Calculates the distance between two Keys.
 	 *
 	 * The distance is basically a XOR of both key hashes.
@@ -217,6 +247,37 @@ public class Key implements Comparable<Key>, Serializable {
 		}
 		return x;
 	}
+
+	public static Key getCommonPrefix(Collection<Key> keys)
+	{
+		Key first = Collections.min(keys);
+		Key last = Collections.max(keys);
+
+		Key prefix = new Key();
+		byte[] newHash = prefix.hash;
+
+		outer: for(int i=0;i<SHA1_HASH_LENGTH;i++)
+		{
+			if(first.hash[i] == last.hash[i])
+			{
+				newHash[i] = first.hash[i];
+				continue;
+			}
+			// first differing byte
+			newHash[i] = (byte)(first.hash[i] & last.hash[i]);
+			for(int j=0;j<8;j++)
+			{
+				int mask = 0x80 >> j;
+				// find leftmost differing bit and then zero out all following bits
+				if(((first.hash[i] ^ last.hash[i]) & mask) != 0)
+				{
+					newHash[i] = (byte)(newHash[i] & ~(0xFF >> j));
+					break outer;
+				}
+			}
+		}
+		return prefix;
+	}
 	
 	/**
 	 * Creates a random Key
@@ -227,20 +288,5 @@ public class Key implements Comparable<Key>, Serializable {
 		Key x = new Key();
 		DHT.rand.nextBytes(x.hash);
 		return x;
-	}
-	
-	public static void main(String[] args) {
-		Key target = new Key();
-		target.hash[0] = (byte) 0xF0;
-		Key test1 = new Key();
-		test1.hash[0] = (byte) 0x80;
-		Key test2 = new Key();
-		test2.hash[0] = 0x03;
-		
-		System.out.println(test1.compareTo(test2));
-		System.out.println(target.distance(test1).compareTo(target.distance(test2)));
-		System.out.println(target.threeWayDistance(test1, test2));
-		
-	
 	}
 }

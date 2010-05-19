@@ -7,7 +7,6 @@ import java.util.*;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.Key;
-import lbms.plugins.mldht.kad.Prefix;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.Key.DistanceOrder;
 
@@ -32,7 +31,7 @@ public class PopulationEstimator {
 	private List<PopulationListener>	listeners						= new ArrayList<PopulationListener>(1);
 
 	private static final int			MAX_RECENT_LOOKUP_CACHE_SIZE	= 40;
-	private Deque<Prefix>					recentlySeenPrefixes			= new LinkedList<Prefix>();
+	private Deque<Key>					recentlySeenPrefixes			= new LinkedList<Key>();
 
 	public long getEstimate () {
 		/* corrective term chosen based on simulations for updates with the 8 closest nodes
@@ -59,11 +58,11 @@ public class PopulationEstimator {
 		double[] distances = new double[neighbors.size() - 1];
 		
 		DHT.log("Estimator: new node group of "+neighbors.size(), LogLevel.Debug);
-		Prefix prefix = Prefix.getCommonPrefix(neighbors);
+		Key prefix = Key.getCommonPrefix(neighbors);
 		
 		synchronized (recentlySeenPrefixes)
 		{
-			for(Prefix oldPrefix : recentlySeenPrefixes)
+			for(Key oldPrefix : recentlySeenPrefixes)
 			{
 				if(oldPrefix.isPrefixOf(prefix))
 				{

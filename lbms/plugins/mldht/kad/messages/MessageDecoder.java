@@ -2,6 +2,8 @@ package lbms.plugins.mldht.kad.messages;
 
 import java.util.*;
 
+import org.gudy.azureus2.core3.util.BEncoder;
+
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -124,22 +126,17 @@ public class MessageDecoder {
 		}
 
 		Key id = new Key(hash);
-		
-		MessageBase msg = null;
 
 		switch (msgMethod) {
 		case PING:
-			msg = new PingResponse(mtid);
-			break;
+			return new PingResponse(mtid, id);
 		case ANNOUNCE_PEER:
-			msg = new AnnounceResponse(mtid);
-			break;
+			return new AnnounceResponse(mtid, id);
 		case FIND_NODE:
 			if (!args.containsKey("nodes") && !args.containsKey("nodes6"))
 				return null;
 			
-			msg = new FindNodeResponse(mtid, (byte[]) args.get("nodes"),(byte[])args.get("nodes6"));
-			break;
+			return new FindNodeResponse(mtid, id, (byte[]) args.get("nodes"),(byte[])args.get("nodes6"));
 		case GET_PEERS:
 			byte[] token = (byte[]) args.get("token");
 			byte[] nodes = (byte[]) args.get("nodes");
@@ -161,10 +158,9 @@ public class MessageDecoder {
 
 			if (dbl != null || nodes != null || nodes6 != null)
 			{
-				GetPeersResponse resp = new GetPeersResponse(mtid, nodes, nodes6, token);
+				GetPeersResponse resp = new GetPeersResponse(mtid, id, nodes, nodes6, token);
 				resp.setPeerItems(dbl);
-				msg = resp; 
-				break;
+				return resp;
 			}
 			DHT.logDebug("No nodes or values in get_peers response");
 			return null;
@@ -172,10 +168,6 @@ public class MessageDecoder {
 		default:
 			return null;
 		}
-		
-		msg.setID(id);
-		
-		return msg;
 	}
 
 	/**
@@ -201,7 +193,7 @@ public class MessageDecoder {
 
 		String requestMethod = getStringFromBytes((byte[]) rawRequestMethod);
 		if (Method.PING.getRPCName().equals(requestMethod)) {
-			msg = new PingRequest();
+			msg = new PingRequest(id);
 		} else if (Method.FIND_NODE.getRPCName().equals(requestMethod) || Method.GET_PEERS.getRPCName().equals(requestMethod)) {
 			hash = (byte[]) args.get("target");
 			if (hash == null)
@@ -210,7 +202,7 @@ public class MessageDecoder {
 			{
 				return null;
 			}
-			AbstractLookupRequest req = Method.FIND_NODE.getRPCName().equals(requestMethod) ? new FindNodeRequest(new Key(hash)) : new GetPeersRequest(new Key(hash));
+			AbstractLookupRequest req = Method.FIND_NODE.getRPCName().equals(requestMethod) ? new FindNodeRequest(id, new Key(hash)) : new GetPeersRequest(id, new Key(hash));
 			req.setWant4(srv.getDHT().getType() == DHTtype.IPV4_DHT);
 			req.setWant6(srv.getDHT().getType() == DHTtype.IPV6_DHT);
 			req.decodeWant((List<byte[]>) args.get("want"));
@@ -232,7 +224,7 @@ public class MessageDecoder {
 
 				byte[] token = (byte[]) args.get("token");
 				
-				AnnounceRequest ann = new AnnounceRequest(infoHash, ((Long) args.get("port")).intValue(), token);
+				AnnounceRequest ann = new AnnounceRequest(id, infoHash, ((Long) args.get("port")).intValue(), token);
 				ann.setSeed(Long.valueOf(1).equals(args.get("seed")));
 
 				msg = ann;
@@ -243,7 +235,6 @@ public class MessageDecoder {
 
 		if (msg != null) {
 			msg.setMTID(mtid);
-			msg.setID(id);
 		}
 
 		return msg;

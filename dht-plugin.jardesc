@@ -13,7 +13,6 @@
     <selectedElements exportClassFiles="true" exportJavaFiles="false" exportOutputFolder="false">
         <file path="/mldht/plugin.properties"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad"/>
-        <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.messages"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.tasks"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.utils"/>

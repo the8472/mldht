@@ -47,7 +47,7 @@ public class AnnounceTask extends Task {
 				KBucketEntryAndToken e = (KBucketEntryAndToken) todo.first();
 				todo.remove(e);
 				if (!visited.contains(e)) {
-					AnnounceRequest anr = new AnnounceRequest(targetKey, port, e.getToken());
+					AnnounceRequest anr = new AnnounceRequest(node.getOurID(), targetKey, port, e.getToken());
 					//System.out.println("sending announce to ID:"+e.getID()+" addr:"+e.getAddress());
 					anr.setDestination(e.getAddress());
 					anr.setSeed(isSeed);

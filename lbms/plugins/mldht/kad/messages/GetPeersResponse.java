@@ -10,6 +10,8 @@ import java.util.Map;
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 
+import org.gudy.azureus2.core3.util.BEncoder;
+
 /**
  * @author Damokles
  *
@@ -30,8 +32,8 @@ public class GetPeersResponse extends MessageBase {
 	 * @param nodes
 	 * @param token
 	 */
-	public GetPeersResponse (byte[] mtid, byte[] nodes, byte[] nodes6, byte[] token) {
-		super(mtid, Method.GET_PEERS, Type.RSP_MSG);
+	public GetPeersResponse (byte[] mtid, Key id, byte[] nodes, byte[] nodes6, byte[] token) {
+		super(mtid, Method.GET_PEERS, Type.RSP_MSG, id);
 		this.nodes = nodes;
 		this.nodes6 = nodes6;
 		this.token = token;
@@ -98,7 +100,7 @@ public class GetPeersResponse extends MessageBase {
 
 
 	public void setScrapeSeeds(BloomFilter scrapeSeeds) {
-		this.scrapeSeeds = scrapePeers != null ? scrapeSeeds.serialize() : null;
+		this.scrapeSeeds = scrapeSeeds.serialize();
 	}
 
 
@@ -110,7 +112,7 @@ public class GetPeersResponse extends MessageBase {
 
 
 	public void setScrapePeers(BloomFilter scrapePeers) {
-		this.scrapePeers = scrapePeers != null ? scrapePeers.serialize() : null;
+		this.scrapePeers = scrapePeers.serialize();
 	}
 
 	public byte[] getToken () {

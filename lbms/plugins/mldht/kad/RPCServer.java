@@ -24,8 +24,6 @@ import org.gudy.azureus2.core3.util.BDecoder;
  */
 public class RPCServer implements Runnable, RPCServerBase {
 	
-	static Map<InetAddress,RPCServer> interfacesInUse = new HashMap<InetAddress, RPCServer>(); 
-	
 	private DatagramSocket							sock;
 	private DHT										dh_table;
 	private ConcurrentMap<ByteWrapper, RPCCallBase>	calls;
@@ -37,18 +35,15 @@ public class RPCServer implements Runnable, RPCServerBase {
 	private int										port;
 	private RPCStats								stats;
 	private ResponseTimeoutFilter					timeoutFilter;
-	
-	private int										serverIndex;
 
-	public RPCServer (DHT dh_table, int port, RPCStats stats, int index) throws SocketException { //, Object parent
+	public RPCServer (DHT dh_table, int port) throws SocketException { //, Object parent
 		this.port = port;
 		this.dh_table = dh_table;
 		timeoutFilter = new ResponseTimeoutFilter();
 		createSocket();
 		calls = new ConcurrentHashMap<ByteWrapper, RPCCallBase>(80,0.75f,3);
 		call_queue = new ConcurrentLinkedQueue<RPCCallBase>();
-		this.stats = stats;
-		this.serverIndex = index;
+		stats = new RPCStats();
 	}
 	
 	public DHT getDHT()
@@ -56,73 +51,60 @@ public class RPCServer implements Runnable, RPCServerBase {
 		return dh_table;
 	}
 	
-	public static LinkedList<InetAddress> getAvailableAddrs(boolean multiHoming, DHTtype type) {
-		LinkedList<InetAddress> addrs = new LinkedList<InetAddress>();
-		
-		try
-		{
-			for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces()))
-			{
-				for (InterfaceAddress ifaceAddr : iface.getInterfaceAddresses())
-				{
-					if (type.PREFERRED_ADDRESS_TYPE == Inet6Address.class && ifaceAddr.getAddress() instanceof Inet6Address)
-					{
-						Inet6Address addr = (Inet6Address) ifaceAddr.getAddress();
-						// only accept globally reachable IPv6 unicast addresses
-						if (addr.isIPv4CompatibleAddress() || addr.isLinkLocalAddress() || addr.isLoopbackAddress() || addr.isMulticastAddress() || addr.isSiteLocalAddress())
-							continue;
-
-						byte[] raw = addr.getAddress();
-						// prefer other addresses over teredo
-						if (raw[0] == 0x20 && raw[1] == 0x01 && raw[2] == 0x00 && raw[3] == 0x00)
-							addrs.addLast(addr);
-						else
-							addrs.addFirst(addr);
-					}
-					
-					if(type.PREFERRED_ADDRESS_TYPE == Inet4Address.class && ifaceAddr.getAddress() instanceof Inet4Address)
-					{
-						Inet4Address addr = (Inet4Address) ifaceAddr.getAddress();
-						
-						if(addr.isLinkLocalAddress() || addr.isLoopbackAddress())
-							continue;
-						
-						addrs.add(addr);
-					}
-				}
-			}
-			
-			if(type.PREFERRED_ADDRESS_TYPE == Inet4Address.class && !multiHoming)
-				addrs.addFirst(InetAddress.getByAddress(new byte[] {0,0,0,0}));
-			
-		} catch (Exception e)
-		{
-			e.printStackTrace();
-		}
-		
-		if(!multiHoming)
-			addrs.retainAll(Collections.singleton(addrs.peekFirst()));
-		
-		addrs.removeAll(interfacesInUse.keySet());
-		
-		return addrs;
-	}
-	
 	
 	private synchronized void createSocket() throws SocketException
 	{
-		if(sock != null)
+		InetAddress addr = null;
+		
+		try
 		{
-			sock.close();
-			for(Iterator<RPCServer> it = interfacesInUse.values().iterator();it.hasNext();)
-			{
-				RPCServer srv = it.next();
-				if(srv == this)
-					it.remove();
+			switch (dh_table.getType()) {
+			case IPV4_DHT:
+				// ipv4-only any local
+				addr = InetAddress.getByAddress(new byte[] { 0, 0, 0, 0 });
+				break;
+			case IPV6_DHT:
+				for(NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces()))
+				{
+					for(InterfaceAddress ifaceAddr : iface.getInterfaceAddresses())
+					{
+						if(!(ifaceAddr.getAddress() instanceof Inet6Address))
+							continue;
+						Inet6Address tempAddr = (Inet6Address)ifaceAddr.getAddress();
+						
+						// only accept globally reachable IPv6 unicast addresses
+						if(tempAddr.isIPv4CompatibleAddress() || tempAddr.isLinkLocalAddress() || tempAddr.isLoopbackAddress() || tempAddr.isMulticastAddress() || tempAddr.isSiteLocalAddress())
+							continue;
+						
+						// found one!
+						if(addr == null)
+						{
+							addr = tempAddr;
+							continue;
+						}
+						
+						byte[] raw = addr.getAddress();
+						// prefer other addresses over teredo
+						if(raw[0] == 0x20 && raw[1] == 0x01 && raw[2] == 0x00 && raw[3] == 0x00)
+						{
+							addr = tempAddr;
+							continue;
+						}
+					}
+				}
+
+				break;
+			default:
+				break;
+
 			}
+		} catch (Exception e)
+		{
+			// should not happen
 		}
 		
-		InetAddress addr = getAvailableAddrs(dh_table.getConfig().allowMultiHoming(), dh_table.getType()).peekFirst();
+		if(sock != null)
+			sock.close();
 		
 		timeoutFilter.reset();
 
@@ -133,8 +115,6 @@ public class RPCServer implements Runnable, RPCServerBase {
 		// prevent sockets from being bound to the wrong interfaces
 		if(addr == null)
 			sock.close();
-		else
-			interfacesInUse.put(addr, this);
 	}
 	
 	public int getPort() {
@@ -166,7 +146,6 @@ public class RPCServer implements Runnable, RPCServerBase {
 		while (running)
 		{
 			DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-			
 			try
 			{
 				if(sock.isClosed())
@@ -203,10 +182,6 @@ public class RPCServer implements Runnable, RPCServerBase {
 		}
 		DHT.logInfo("Stopped RPC Server");
 	}
-	
-	public Key getDerivedID() {
-		return dh_table.getNode().getDerivedID(serverIndex);
-	}
 
 	/*
 	 * (non-Javadoc)
@@ -220,9 +195,6 @@ public class RPCServer implements Runnable, RPCServerBase {
 		thread.setPriority(Thread.MIN_PRIORITY);
 		thread.setDaemon(true);
 		thread.start();
-		
-		// touch it
-		dh_table.getNode().getDerivedID(serverIndex);
 	}
 
 	/* (non-Javadoc)
@@ -248,7 +220,7 @@ public class RPCServer implements Runnable, RPCServerBase {
 			
 			if(calls.size() >= DHTConstants.MAX_ACTIVE_CALLS)
 			{
-				DHT.logInfo("Queueing RPC call, no slots available at the moment");				
+				System.out.println("Queueing RPC call, no slots available at the moment");				
 				call_queue.add(c);
 				break;
 			}
@@ -291,9 +263,8 @@ public class RPCServer implements Runnable, RPCServerBase {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#ping(lbms.plugins.mldht.kad.Key, java.net.InetSocketAddress)
 	 */
-	public void ping (InetSocketAddress addr) {
-		PingRequest pr = new PingRequest();
-		pr.setID(dh_table.getNode().getDerivedID(serverIndex));
+	public void ping (Key our_id, InetSocketAddress addr) {
+		PingRequest pr = new PingRequest(our_id);
 		pr.setDestination(addr);
 		doCall(pr);
 	}
@@ -333,9 +304,6 @@ public class RPCServer implements Runnable, RPCServerBase {
 	public RPCStats getStats () {
 		return stats;
 	}
-	
-	// we only decode in the listening thread, so reused the decoder
-	private BDecoder decoder = new BDecoder();
 
 	private void handlePacket (DatagramPacket p) {
 		numReceived++;
@@ -351,14 +319,12 @@ public class RPCServer implements Runnable, RPCServerBase {
 		}
 
 		try {
-			// TODO disable interning once API is available in Az
-			Map<String, Object> bedata = decoder.decodeByteArray(p.getData(), 0, p.getLength() /*, false*/);
+			Map<String, Object> bedata = BDecoder.decode(p.getData(),0,p.getLength());
 			MessageBase msg = MessageDecoder.parseMessage(bedata, this);
 			if (msg != null) {
 				DHT.logDebug("RPC received message ["+p.getAddress().getHostAddress()+"] "+msg.toString());
 				stats.addReceivedMessageToCount(msg);
 				msg.setOrigin(new InetSocketAddress(p.getAddress(), p.getPort()));
-				msg.setServer(this);
 				msg.apply(dh_table);
 				// erase an existing call
 				if (msg.getType() == Type.RSP_MSG
@@ -393,8 +359,6 @@ public class RPCServer implements Runnable, RPCServerBase {
 	 */
 	public void sendMessage (MessageBase msg) {
 		try {
-			if(msg.getID() == null)
-				msg.setID(dh_table.getNode().getDerivedID(serverIndex));
 			stats.addSentMessageToCount(msg);
 			send(msg.getDestination(), msg.encode());
 			DHT.logDebug("RPC send Message: [" + msg.getDestination().getAddress().getHostAddress() + "] "+ msg.toString());

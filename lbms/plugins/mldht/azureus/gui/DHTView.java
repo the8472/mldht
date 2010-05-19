@@ -675,7 +675,7 @@ public class DHTView implements UISWTViewEventListener {
 		}
 		plugin.getDHT(type).addStatsListener(dhtStatsListener);
 		if (plugin.getDHT(type).isRunning()) {
-			rtc.setNode(plugin.getDHT(type).getNode());
+			rtc.setBucketList(plugin.getDHT(type).getNode().getBuckets());
 		}
 		updateDHTRunStatus();
 		isActivated = true;
@@ -686,7 +686,7 @@ public class DHTView implements UISWTViewEventListener {
 			return;
 		}
 		plugin.getDHT(type).removeStatsListener(dhtStatsListener);
-		rtc.setNode(null);
+		rtc.setBucketList(null);
 
 		isActivated = false;
 	}

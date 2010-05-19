@@ -8,6 +8,8 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
 
+import org.gudy.azureus2.core3.util.BEncoder;
+
 /**
  * @author Damokles
  *
@@ -17,8 +19,8 @@ public class PingRequest extends MessageBase {
 	/**
 	 * @param id
 	 */
-	public PingRequest () {
-		super(new byte[] {(byte) 0xFF}, Method.PING, Type.REQ_MSG);
+	public PingRequest (Key id) {
+		super(new byte[] {(byte) 0xFF}, Method.PING, Type.REQ_MSG, id);
 	}
 
 	/* (non-Javadoc)

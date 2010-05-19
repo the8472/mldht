@@ -1,11 +1,9 @@
 package lbms.plugins.mldht.kad.tasks;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import lbms.plugins.mldht.kad.*;
-import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.PingRequest;
 
@@ -35,7 +33,7 @@ public class PingRefreshTask extends Task {
 	 */
 	public PingRefreshTask (RPCServerBase rpc, Node node, KBucket bucket,
 			boolean cleanOnTimeout) {
-		super(node.getRootID(),rpc, node);
+		super(node.getOurID(),rpc, node);
 		this.cleanOnTimeout = cleanOnTimeout;
 		if (cleanOnTimeout) {
 			lookupMap = new HashMap<MessageBase, KBucketEntry>();
@@ -56,19 +54,23 @@ public class PingRefreshTask extends Task {
 	 * @param bucket the bucket to refresh
 	 * @param cleanOnTimeout if true Nodes that fail to respond are removed. should be false for normal use.
 	 */
-	public PingRefreshTask (RPCServerBase rpc, Node node, List<RoutingTableEntry> buckets,
+	public PingRefreshTask (RPCServerBase rpc, Node node, KBucket[] buckets,
 			boolean cleanOnTimeout) {
-		super(node.getRootID(), rpc, node,"Multi Bucket Refresh");
+		super(node.getOurID(), rpc, node,"Multi Bucket Refresh");
 		this.cleanOnTimeout = cleanOnTimeout;
 		if (cleanOnTimeout) {
 			lookupMap = new HashMap<MessageBase, KBucketEntry>();
 		}
 
-		for (RoutingTableEntry tableEntry : buckets)
-			for (KBucketEntry e : tableEntry.getBucket().getEntries())
-				if (e.isQuestionable() || cleanOnTimeout)
-					todo.add(e);
-		
+		for (int i = 1; i < buckets.length; i++) {
+			if (buckets[i] != null) {
+				for (KBucketEntry e : buckets[i].getEntries()) {
+					if (e.isQuestionable() || cleanOnTimeout) {
+						todo.add(e);
+					}
+				}
+			}
+		}
 	}
 
 	/* (non-Javadoc)
@@ -94,8 +96,8 @@ public class PingRefreshTask extends Task {
 			synchronized (lookupMap) {
 				if (lookupMap.containsKey(mb)) {
 					KBucketEntry e = lookupMap.remove(mb);
-					
-					KBucket bucket = node.findBucketForId(e.getID()).getBucket();
+					KBucket bucket = node.getBuckets()[node.getOurID().findApproxKeyDistance(
+							e.getID())];
 					if (bucket != null) {
 						DHT.logDebug("Removing invalid entry from cache.");
 						bucket.removeEntry(e, true);
@@ -122,7 +124,7 @@ public class PingRefreshTask extends Task {
 					continue;
 				}
 
-				PingRequest pr = new PingRequest();
+				PingRequest pr = new PingRequest(node.getOurID());
 				pr.setDestination(e.getAddress());
 				if (cleanOnTimeout) {
 					synchronized (lookupMap) {

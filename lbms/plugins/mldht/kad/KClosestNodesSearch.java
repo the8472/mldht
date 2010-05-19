@@ -1,10 +1,12 @@
 package lbms.plugins.mldht.kad;
 
 import java.net.InetSocketAddress;
-import java.util.*;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 import lbms.plugins.mldht.kad.DHT.DHTtype;
-import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.utils.PackUtil;
 
 /**
@@ -12,11 +14,10 @@ import lbms.plugins.mldht.kad.utils.PackUtil;
  *
  */
 public class KClosestNodesSearch {
-	private Key							targetKey;
-	private List<KBucketEntry>			entries;
-	private int							max_entries;
-	private DHT							owner;
-	private Comparator<KBucketEntry> comp;
+	private Key								targetKey;
+	private SortedMap<Key, KBucketEntry>	entries = new TreeMap<Key, KBucketEntry>();
+	private int								max_entries;
+	private DHT								owner;
 
 	/**
 	 * Constructor sets the key to compare with
@@ -28,8 +29,6 @@ public class KClosestNodesSearch {
 		this.targetKey = key;
 		this.owner = owner;
 		this.max_entries = max_entries;
-		this.comp = new KBucketEntry.DistanceOrder(key);
-		entries = new ArrayList<KBucketEntry>(max_entries + DHTConstants.MAX_ENTRIES_PER_BUCKET);
 	}
 
 	/**
@@ -46,47 +45,50 @@ public class KClosestNodesSearch {
 		return entries.size();
 	}
 
+	/**
+	 * Try to insert an entry.
+	 * @param e The entry
+	 * @return true if insert was successful
+	 */
+	public boolean tryInsert (KBucketEntry e) {
+		// calculate distance between key and e
+		Key dist = targetKey.distance(e.getID());
+
+		if (entries.size() < max_entries) {
+			// room in the map so just insert
+			entries.put(dist, e);
+			return true;
+		}
+
+		// now find the max distance
+		// seeing that the last element of the map has also
+		// the biggest distance to key (std::map is sorted on the distance)
+		// we just take the last
+		Key max = entries.lastKey();
+		if (dist.compareTo(max) == -1)
+		{
+			// insert if d is smaller then max
+			entries.put(dist, e);
+			// erase the old max value
+			entries.remove(max);
+			return true;
+		}
+		return false;
+		
+	}
+	
 	public void fill()
 	{
 		fill(false);
 	}
 	
-	/**
-	 * @return true if we're done
-	 */
-	private boolean insertBucket(KBucket bucket) {
-		Key farthest = entries.size() > 0 ? entries.get(entries.size()-1).getID() : null;
-		for(KBucketEntry e : bucket.getEntries())
-			if(!e.isBad())
-				entries.add(e);
-		Collections.sort(entries,comp);
-		for(int i=entries.size()-1;i>=max_entries;i--)
-			entries.remove(i);
-		if(entries.size() > 0 && farthest == entries.get(entries.size()-1).getID())
-			return true;
-		return false;
-		
-	}
-	
 	public void fill(boolean includeOurself) {
-		List<RoutingTableEntry> table = owner.getNode().getBuckets();
-		int center = Node.findIdxForId(table, targetKey);
-		boolean reachedMin;
-		boolean reachedMax;
-		reachedMax = reachedMin = insertBucket(table.get(center).getBucket());
-		for(int i=1;!reachedMax && !reachedMin;i++)
-		{
-			reachedMin = reachedMin || center-i < 0 || insertBucket(table.get(center-i).getBucket());
-			reachedMax = reachedMax || center+i >= table.size() || insertBucket(table.get(center+i).getBucket());
-		}
+		owner.getNode().findKClosestNodes(this);
 		
-		
-		if(includeOurself && owner.getRandomServer().getPublicAddress() != null && entries.size() < max_entries)
+		if(includeOurself && owner.getServer().getPublicAddress() != null && entries.size() < max_entries)
 		{
-			RPCServer srv = owner.getRandomServer();
-			
-			InetSocketAddress sockAddr = new InetSocketAddress(srv.getPublicAddress(), srv.getPort());
-			entries.add(new KBucketEntry(sockAddr, srv.getDerivedID()));
+			InetSocketAddress sockAddr = new InetSocketAddress(owner.getServer().getPublicAddress(), owner.getServer().getPort());
+			entries.put(targetKey.distance(owner.getOurID()), new KBucketEntry(sockAddr, owner.getOurID()));
 		}
 	}
 
@@ -109,7 +111,7 @@ public class KClosestNodesSearch {
 		int max_items = buffer.length / 26;
 		int j = 0;
 
-		for (KBucketEntry e : entries) {
+		for (KBucketEntry e : entries.values()) {
 			if (j >= max_items) {
 				break;
 			}
@@ -120,9 +122,9 @@ public class KClosestNodesSearch {
 	}
 
 	/**
-	 * @return a unmodifiable List of the entries
+	 * @return a unmodifiable Collection of the entries
 	 */
-	public List<KBucketEntry> getEntries () {
-		return Collections.unmodifiableList(entries);
+	public Collection<KBucketEntry> getEntries () {
+		return Collections.unmodifiableCollection(entries.values());
 	}
 }

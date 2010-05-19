@@ -2,11 +2,8 @@ package lbms.plugins.mldht.kad;
 
 import java.io.File;
 import java.net.SocketException;
-import java.util.List;
 import java.util.Map;
 
-import lbms.plugins.mldht.DHTConfiguration;
-import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.messages.AnnounceRequest;
 import lbms.plugins.mldht.kad.messages.ErrorMessage;
 import lbms.plugins.mldht.kad.messages.FindNodeRequest;
@@ -22,8 +19,10 @@ import lbms.plugins.mldht.kad.tasks.*;
 public interface DHTBase {
 	/**
 	 * Start the DHT
+	 * @param table File where the save table is located
+	 * @param port The port to use
 	 */
-	void start (DHTConfiguration config) throws SocketException;
+	void start (File table, int port, boolean peerBootstrapOnly) throws SocketException;
 
 	/**
 	 * Stop the DHT
@@ -60,6 +59,9 @@ public interface DHTBase {
 	 */
 	boolean isRunning ();
 
+	/// Get the DHT port
+	int getPort ();
+
 	/// Get statistics about the DHT
 	DHTStats getStats ();
 
@@ -69,6 +71,13 @@ public interface DHTBase {
 	 * @param hport The port of the host
 	 */
 	void addDHTNode (String host, int hport);
+
+	/**
+	 * Returns maxNodes number of <IP address, port> nodes
+	 * that are closest to ourselves and are good.
+	 * @param maxNodes maximum nr of nodes in QMap to return.
+	 */
+	Map<String, Integer> getClosestGoodNodes (int maxNodes);
 
 	void started ();
 
@@ -102,7 +111,7 @@ public interface DHTBase {
 
 	PingRefreshTask refreshBucket (KBucket bucket);
 
-	public PingRefreshTask refreshBuckets (List<RoutingTableEntry> buckets, boolean cleanOnTimeout);
+	public PingRefreshTask refreshBuckets (KBucket[] buckets, boolean cleanOnTimeout);
 
 	NodeLookup fillBucket (Key id, KBucket bucket);
 

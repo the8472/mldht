@@ -1,5 +1,18 @@
-/**
+/*
+ *    This file is part of mlDHT. 
  * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
  */
 package lbms.plugins.mldht.azureus.gui;
 
@@ -113,23 +126,30 @@ public class SWTHelper implements UIManagerListener, PopulationListener, DHTStat
 		if (statusEntry != null) {
 			DecimalFormat	format	= new DecimalFormat();
 			
-			final StringBuilder text = new StringBuilder("mlDHT -");
+			final StringBuilder text = new StringBuilder("mlDHT: ");
+			final StringBuilder tooltip = new StringBuilder("Node Estimate:");
 			for(DHTtype type : DHTtype.values())
 			{
-				text.append(" "+type.shortName+": ");
 				DHT dht = plugin.getDHT(type);
 				DHTStatus status = dht.getStatus();
+				text.append(" "+type.shortName+": ");
+				tooltip.append(" "+type.shortName+": ");
 				if(status == DHTStatus.Running && dht.getEstimator().getEstimate() != 0)
-					text.append(format.format(dht.getEstimator().getEstimate()));
-				else
-					text.append(dht.getStatus());
+				{
+					text.append("\u2714");
+					tooltip.append(format.format(dht.getEstimator().getEstimate()));
+				} else {
+					text.append("\u2718");
+					tooltip.append(status);
+				}
+				
 			}
 
 			if (display != null && !display.isDisposed()) {
 				display.asyncExec(new Runnable() {
 					public void run () {
 						statusEntry.setText(text.toString());
-						statusEntry.setTooltipText(text.toString());
+						statusEntry.setTooltipText(tooltip.toString());
 						statusEntry.setVisible(plugin.getPluginInterface().getPluginconfig().getPluginBooleanParameter("showStatusEntry"));
 					}
 				});

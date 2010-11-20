@@ -1,7 +1,27 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad;
 
 import java.io.Serializable;
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.util.*;
+
+import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 
 /**
  * @author Damokles
@@ -9,6 +29,9 @@ import java.util.*;
  */
 public class Key implements Comparable<Key>, Serializable {
 	
+	/**
+	 * sorts the closest entries to the head, the furthest to the tail
+	 */
 	public static final class DistanceOrder implements Comparator<Key> {
 		
 		final Key target;
@@ -18,14 +41,24 @@ public class Key implements Comparable<Key>, Serializable {
 		
 		
 		public int compare(Key o1, Key o2) {
-			return target.distance(o1).compareTo(target.distance(o2));
+			return target.threeWayDistance(o1, o2);
+			//return target.distance(o1).compareTo(target.distance(o2));
 		}
+	}
+	
+	public static final Key MIN_KEY;
+	public static final Key MAX_KEY;
+	
+	static {
+		MIN_KEY = new Key();
+		MAX_KEY = new Key();
+		Arrays.fill(MAX_KEY.hash, (byte)0xFF); 
 	}
 
 	private static final long	serialVersionUID	= -1180893806923345652L;
-
-	public static final int	SHA1_HASH_LENGTH	= 20;
-	private byte[]			hash				= new byte[SHA1_HASH_LENGTH];
+	public static final int		SHA1_HASH_LENGTH	= 20;
+	public static final int		KEY_BITS			= SHA1_HASH_LENGTH * 8;
+	protected byte[]			hash				= new byte[SHA1_HASH_LENGTH];
 
 	/**
 	 * A Key in the DHT.
@@ -33,7 +66,7 @@ public class Key implements Comparable<Key>, Serializable {
 	 * Key's in the distributed hash table are just SHA-1 hashes.
 	 * Key provides all necesarry operators to be used as a value.
 	 */
-	private Key () {
+	protected Key () {
 	}
 
 	/**
@@ -43,6 +76,16 @@ public class Key implements Comparable<Key>, Serializable {
 	 */
 	public Key (Key k) {
 		System.arraycopy(k.hash, 0, hash, 0, SHA1_HASH_LENGTH);
+	}
+	
+	public Key (String hex)
+	{
+	    if(hex.length() != 40)
+	    	throw new IllegalArgumentException("Hex String must have 40 bytes");
+	    
+	    for (int i = 0; i < hex.length(); i += 2)
+	        hash[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4) + Character.digit(hex.charAt(i+1), 16));
+
 	}
 
 	/**
@@ -59,33 +102,59 @@ public class Key implements Comparable<Key>, Serializable {
 	}
 
 	/*
-	 * (non-Javadoc)
-	 *
-	 * @see java.lang.Comparable#compareTo(java.lang.Object)
+	 * compares Keys according to their natural distance
 	 */
 	public int compareTo (Key o) {
-		for (int i = 0; i < hash.length; i++) {
+		for (int i = 0,n=hash.length; i < n; i++) {
 			//needs & 0xFF since bytes are signed in Java
 			//so we must convert to int to compare it unsigned
-			if ((hash[i] & 0xFF) < (o.hash[i] & 0xFF)) {
+			int byte1 = hash[i] & 0xFF;
+			int byte2 = o.hash[i] & 0xFF; 
+
+			if (byte1 == byte2)
+				continue;
+			if (byte1 < byte2)
 				return -1;
-			} else if ((hash[i] & 0xFF) > (o.hash[i] & 0xFF)) {
-				return 1;
-			}
+			return 1;
+		}
+		return 0;
+	}
+	
+	/**
+	 * Compares the distance of two keys relative to this one using the XOR metric
+	 * 
+	 * @return -1 if k1 is closer to this key, 0 if k1 and k2 are equidistant, 1 if k2 is closer
+	 */
+	public int threeWayDistance(Key k1, Key k2)
+	{
+		for (int i = 0,n=hash.length; i < n; i++) {
+			if(k1.hash[i] == k2.hash[i])
+				continue;
+			//needs & 0xFF since bytes are signed in Java
+			//so we must convert to int to compare it unsigned
+			int byte1 = (k1.hash[i] ^ hash[i]) & 0xFF;
+			int byte2 = (k2.hash[i] ^ hash[i]) & 0xFF; 
+			
+			if (byte1 < byte2)
+				return -1;
+			return 1;
 		}
 		return 0;
 	}
 
-	/*
-	 * (non-Javadoc)
-	 *
-	 * @see java.lang.Object#equals(java.lang.Object)
-	 */
-	@Override
-	public boolean equals (Object obj) {
-		if (obj instanceof Key)
-			return Arrays.equals(hash, ((Key)obj).hash);
-		return super.equals(obj);
+
+	public boolean equals (Object o) {
+		if(this == o)
+			return true;
+		if(o instanceof Key)
+		{
+			Key otherKey = (Key) o;
+			for(int i=0,n=hash.length;i<n;i++)
+				if(hash[i] != otherKey.hash[i])
+					return false;
+			return true;
+		}
+		return false;
 	}
 
 	/**
@@ -93,6 +162,16 @@ public class Key implements Comparable<Key>, Serializable {
 	 */
 	public byte[] getHash () {
 		return hash.clone();
+	}
+	
+	public Key getDerivedKey(int idx) {
+		Key k = new Key(this);
+		byte[] data = k.hash;
+		for(int i=0;i<32;i++)
+			if(((0x01 << i) & idx) != 0)
+				data[i/8] ^= 0x80 >> (i % 8);
+		
+		return k;
 	}
 
 	/*
@@ -129,44 +208,6 @@ public class Key implements Comparable<Key>, Serializable {
 			b.append((char)(nibble < 0x0A ? '0'+nibble : 'A'+nibble-10 ));
 		}
 		return b.toString();		
-	}
-
-	/**
-	 * Generates a Key that has b equal bits in the beginning.
-	 *
-	 * @param b equal bits
-	 * @return A Key which has b equal bits with this Key.
-	 */
-	public Key createKeyWithDistance (int b) {
-		// first generate a random one
-		Key r = Key.createRandomKey();
-		byte[] data = r.getHash();
-		//need to map to the correct coordinates
-		b = 159 - b;
-		// before we hit bit b, everything needs to be equal to our_id
-		int nb = b / 8;
-		for (int i = 0; i < nb; i++) {
-			data[i] = hash[i];
-		}
-
-		// copy all bits of ob, until we hit the bit which needs to be different
-		int ob = hash[nb];
-		for (int j = 0; j < b % 8; j++) {
-			if (((0x80 >> j) & ob) != 0) {
-				data[nb] |= (0x80 >> j);
-			} else {
-				data[nb] &= ~(0x80 >> j);
-			}
-		}
-
-		// if the bit b is on turn it off else turn it on
-		if (((0x80 >> (b % 8)) & ob) != 0) {
-			data[nb] &= ~(0x80 >> (b % 8));
-		} else {
-			data[nb] |= (0x80 >> (b % 8));
-		}
-
-		return new Key(data);
 	}
 
 	/**
@@ -216,20 +257,15 @@ public class Key implements Comparable<Key>, Serializable {
 
 		return distance(this, x);
 	}
-
-
+	
 	/**
-	 *
-	 * @param Key to be checked
-	 * @return true if this key is a prefix of the provided key
+	 * calculates log2(this - otherKey % 2^161).<br />
+	 * To get the natural distance for ascending key order this should be the successive element of otherKey 
 	 */
-	public boolean isPrefixOf(Key k)
-	{
-		List<Key> keys = new ArrayList<Key>(2);
-		keys.add(this);
-		keys.add(k);
-		return getCommonPrefix(keys).equals(this);
+	public double naturalDistance(Key otherKey) {
+		return Math.log(new BigInteger(1,hash).subtract(new BigInteger(1, otherKey.hash)).mod(new BigInteger(1,MAX_KEY.hash).add(new BigInteger("1"))).doubleValue())/Math.log(2);		
 	}
+
 
 	/**
 	 * Calculates the distance between two Keys.
@@ -247,37 +283,6 @@ public class Key implements Comparable<Key>, Serializable {
 		}
 		return x;
 	}
-
-	public static Key getCommonPrefix(Collection<Key> keys)
-	{
-		Key first = Collections.min(keys);
-		Key last = Collections.max(keys);
-
-		Key prefix = new Key();
-		byte[] newHash = prefix.hash;
-
-		outer: for(int i=0;i<SHA1_HASH_LENGTH;i++)
-		{
-			if(first.hash[i] == last.hash[i])
-			{
-				newHash[i] = first.hash[i];
-				continue;
-			}
-			// first differing byte
-			newHash[i] = (byte)(first.hash[i] & last.hash[i]);
-			for(int j=0;j<8;j++)
-			{
-				int mask = 0x80 >> j;
-				// find leftmost differing bit and then zero out all following bits
-				if(((first.hash[i] ^ last.hash[i]) & mask) != 0)
-				{
-					newHash[i] = (byte)(newHash[i] & ~(0xFF >> j));
-					break outer;
-				}
-			}
-		}
-		return prefix;
-	}
 	
 	/**
 	 * Creates a random Key
@@ -286,7 +291,172 @@ public class Key implements Comparable<Key>, Serializable {
 	 */
 	public static Key createRandomKey () {
 		Key x = new Key();
-		DHT.rand.nextBytes(x.hash);
+		ThreadLocalUtils.getThreadLocalRandom().nextBytes(x.hash);
 		return x;
+	}
+	
+	public static void main(String[] args) {
+		/*
+		Key target = new Key();
+		target.hash[0] = (byte) 0xF0;
+		Key test1 = new Key();
+		test1.hash[0] = (byte) 0x80;
+		Key test2 = new Key();
+		test2.hash[0] = 0x03;
+		
+		System.out.println(test1.compareTo(test2));
+		System.out.println(target.distance(test1).compareTo(target.distance(test2)));
+		System.out.println(target.threeWayDistance(test1, test2));
+		*/
+		
+		/*
+		
+		// simulation to check that natural order != xor order 
+		Random rand = new Random();
+		
+		for(int i=0;i<10000;i++)
+		{
+			ArrayList<Key> keys = new ArrayList<Key>();
+			for(int j=0;j<100000;j++)
+				keys.add(Key.createRandomKey());
+			Collections.sort(keys);
+			for(int j=1;j<keys.size();j++)
+				if(keys.get(j-1).equals(keys.get(j)))
+				{
+					j--;
+					keys.remove(j);
+				}
+			Key[] keysArray = keys.toArray(new Key[keys.size()]); 
+			
+			
+			for(int j=0;j<1000;j++)
+			{
+				Key target = Key.createRandomKey();
+				int closestSetSize = rand.nextInt(12); 
+				 
+				
+				TreeSet<Key> referenceClosestSet = new TreeSet<Key>(new DistanceOrder(target));
+				referenceClosestSet.addAll(keys);
+				
+				List<Key> closestSet1 = new ArrayList<Key>();
+				for(Key closest : referenceClosestSet)
+				{
+					if(closestSet1.size() == closestSetSize)
+						break;
+					closestSet1.add(closest);
+				}
+					
+				List<Key> closestSet2 = new ArrayList<Key>();
+				
+				int startIdx = Arrays.binarySearch(keysArray, target);
+				if(startIdx < 0)
+					startIdx = startIdx*-1 - 1;
+				
+				closestSet2.add(keysArray[startIdx]);
+				
+				for(int k = 1;closestSet2.size() < closestSetSize;k++)
+				{
+					if(startIdx-k >= 0)
+						closestSet2.add(keysArray[startIdx-k]);
+					if(startIdx+k < keysArray.length)
+						closestSet2.add(keysArray[startIdx+k]);
+				}
+				
+				Collections.sort(closestSet2,new DistanceOrder(target));
+				if(closestSet2.size() > closestSetSize)
+					closestSet2.subList(closestSetSize, closestSet2.size()).clear();
+
+				
+				for(int k=0;k<closestSet1.size();k++)
+					System.out.print(Arrays.binarySearch(keysArray, closestSet1.get(k))+" ");
+				System.out.println();
+				
+				for(int k=0;k<closestSet2.size();k++)
+					System.out.print(Arrays.binarySearch(keysArray, closestSet2.get(k))+" ");
+				System.out.println("\n");				
+				
+				if(!closestSet1.equals(closestSet2))
+					System.out.println("damn");
+
+
+				
+				
+			}
+			 
+			
+		}*/
+		
+		/*
+		
+		// simulation to determine the error introduced by natural order iteration vs. xor order
+		
+		try
+		{
+			Random rand = new Random();
+			TreeMap<Double, Integer> binningNat = new TreeMap<Double, Integer>();
+			TreeMap<Double, Integer> binningXor = new TreeMap<Double, Integer>();
+			ArrayList<Key> keyspace = new ArrayList<Key>(5000000);
+			for (int i = 0; i < 5000000; i++)
+				keyspace.add(Key.createRandomKey());
+			Collections.sort(keyspace);
+			for (int i = 1; i < keyspace.size(); i++)
+			{
+				Key prev = keyspace.get(i - 1);
+				Key curr = keyspace.get(i);
+				Key xorDist = prev.distance(curr);
+				double l2xor = 160 - Math.log(new BigInteger(1, xorDist.hash).doubleValue()) / Math.log(2);
+				double l2nat = 160 - Math.log(new BigInteger(1,curr.hash).subtract(new BigInteger(1, prev.hash)).doubleValue())/Math.log(2);
+				
+				double roundedX = ((int)(l2xor*10))/10.0;
+				double roundedN = ((int)(l2nat*10))/10.0;
+				
+				if(binningNat.containsKey(roundedN))
+					binningNat.put(roundedN, binningNat.get(roundedN)+1);
+				else
+					binningNat.put(roundedN, 1);
+				
+				if(binningXor.containsKey(roundedX))
+					binningXor.put(roundedX, binningXor.get(roundedX)+1);
+				else
+					binningXor.put(roundedX, 1);
+			}
+			
+			System.out.println("natural");
+			for(Map.Entry<Double, Integer> e : binningNat.entrySet()) {
+				System.out.println(e.getKey()+"\t"+e.getValue());
+			}
+			System.out.println("xor");
+			for(Map.Entry<Double, Integer> e : binningXor.entrySet()) {
+				System.out.println(e.getKey()+"\t"+e.getValue());
+			}		} catch (Exception e)
+		{
+			e.printStackTrace();
+		}
+		*/
+		
+		/* // checking some binary arithmetic 		
+		byte b1 = (byte) 0x7F;
+		byte b2 = (byte) 0x80;
+		
+		int res = (b2 & 0xFF) - (b1 & 0xFF);
+		
+		System.out.println(res);
+		
+		if(res > 0)
+			System.out.println("b2 > b1");
+		if(res < 0)
+			System.out.println("b2 < b1");
+		*/
+		
+		// checking some bigint arithmetic
+		
+		Key k1 = new Key(MIN_KEY);
+		k1.hash[19] = (byte) 0x80;
+		Key k2 = new Key(MIN_KEY);
+		
+		System.out.println(Math.log(k1.naturalDistance(k2))/Math.log(2));
+		
+		
+		
 	}
 }

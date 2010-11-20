@@ -1,0 +1,45 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE hibernate-configuration PUBLIC
+        "-//Hibernate/Hibernate Configuration DTD 3.0//EN"
+        "http://hibernate.sourceforge.net/hibernate-configuration-3.0.dtd">
+
+<hibernate-configuration>
+	<session-factory>
+		<!-- Database connection settings -->
+		<property name="connection.driver_class">org.hsqldb.jdbcDriver</property>
+		<property name="connection.url">jdbc:hsqldb:file:db/testdb</property>
+		<property name="connection.username">sa</property>
+		<property name="connection.password"></property>
+
+		<!-- JDBC connection pool (use the built-in) -->
+		<!--  <property name="connection.pool_size">5</property> -->
+
+		<property name="connection.provider_class">org.hibernate.connection.C3P0ConnectionProvider</property>
+		<property name="c3p0.acquire_increment">1</property>
+        <property name="c3p0.idle_test_period">100</property> <!-- seconds -->
+        <property name="c3p0.max_size">10</property>
+        <property name="c3p0.max_statements">100</property>
+        <property name="c3p0.min_size">1</property>
+        <property name="c3p0.timeout">100</property> <!-- seconds -->
+		
+		
+		<!-- SQL dialect - This tells the SQL grammer to be used -->
+		<!-- use custom dialects provided in the same package to make it work! -->
+		<property name="dialect">lbms.plugins.mldht.indexer.db.HSSQLIdxHintDialect</property>
+
+		<!-- Enable Hibernate's automatic session context management -->
+		<property name="current_session_context_class">thread</property>
+
+		<!-- Disable the second-level cache -->
+		<property name="cache.provider_class">org.hibernate.cache.NoCacheProvider</property>
+
+		<!-- Log out all the sql that hibernate is issuing to datbase. This is 
+			very useful for debugging -->
+		<property name="show_sql">false</property>
+		
+		<!-- validates the table structure as per mapping definition. -->
+		<!-- <property name="hbm2ddl.auto">validate</property> -->
+		<property name="hbm2ddl.auto">create</property>
+
+	</session-factory>
+</hibernate-configuration>

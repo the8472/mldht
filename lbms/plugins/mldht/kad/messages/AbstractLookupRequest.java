@@ -1,16 +1,24 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad.messages;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-import lbms.plugins.mldht.kad.DHT;
-import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
-
-import org.gudy.azureus2.core3.util.BEncoder;
 
 /**
  * @author Damokles
@@ -26,14 +34,14 @@ public abstract class AbstractLookupRequest extends MessageBase {
 	 * @param id
 	 * @param info_hash
 	 */
-	public AbstractLookupRequest (Key id, Key target, Method m) {
-		super(new byte[] {(byte) 0xFF}, m, Type.REQ_MSG, id);
+	public AbstractLookupRequest (Key target, Method m) {
+		super(new byte[] {(byte) 0xFF}, m, Type.REQ_MSG);
 		this.target = target;
 	}
 	
 	@Override
 	public Map<String, Object> getInnerMap() {
-		Map<String, Object> inner = new HashMap<String, Object>();
+		Map<String, Object> inner = new TreeMap<String, Object>();
 		inner.put("id", id.getHash());
 		inner.put(targetBencodingName(), target.getHash());
 		List<String> want = new ArrayList<String>(2);

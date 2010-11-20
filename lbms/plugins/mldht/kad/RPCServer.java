@@ -1,3 +1,19 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad;
 
 import java.io.IOException;
@@ -7,14 +23,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 
-import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageDecoder;
 import lbms.plugins.mldht.kad.messages.PingRequest;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
+import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.ByteWrapper;
 import lbms.plugins.mldht.kad.utils.ResponseTimeoutFilter;
+import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 
 import org.gudy.azureus2.core3.util.BDecoder;
 
@@ -23,6 +40,8 @@ import org.gudy.azureus2.core3.util.BDecoder;
  *
  */
 public class RPCServer implements Runnable, RPCServerBase {
+	
+	static Map<InetAddress,RPCServer> interfacesInUse = new HashMap<InetAddress, RPCServer>(); 
 	
 	private DatagramSocket							sock;
 	private DHT										dh_table;
@@ -35,15 +54,18 @@ public class RPCServer implements Runnable, RPCServerBase {
 	private int										port;
 	private RPCStats								stats;
 	private ResponseTimeoutFilter					timeoutFilter;
+	
+	private Key										derivedId;
 
-	public RPCServer (DHT dh_table, int port) throws SocketException { //, Object parent
+	public RPCServer (DHT dh_table, int port, RPCStats stats) {
 		this.port = port;
 		this.dh_table = dh_table;
 		timeoutFilter = new ResponseTimeoutFilter();
-		createSocket();
 		calls = new ConcurrentHashMap<ByteWrapper, RPCCallBase>(80,0.75f,3);
 		call_queue = new ConcurrentLinkedQueue<RPCCallBase>();
-		stats = new RPCStats();
+		this.stats = stats;
+		
+		start();
 	}
 	
 	public DHT getDHT()
@@ -51,70 +73,41 @@ public class RPCServer implements Runnable, RPCServerBase {
 		return dh_table;
 	}
 	
-	
-	private synchronized void createSocket() throws SocketException
+	private boolean createSocket() 
 	{
-		InetAddress addr = null;
-		
-		try
-		{
-			switch (dh_table.getType()) {
-			case IPV4_DHT:
-				// ipv4-only any local
-				addr = InetAddress.getByAddress(new byte[] { 0, 0, 0, 0 });
-				break;
-			case IPV6_DHT:
-				for(NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces()))
-				{
-					for(InterfaceAddress ifaceAddr : iface.getInterfaceAddresses())
-					{
-						if(!(ifaceAddr.getAddress() instanceof Inet6Address))
-							continue;
-						Inet6Address tempAddr = (Inet6Address)ifaceAddr.getAddress();
-						
-						// only accept globally reachable IPv6 unicast addresses
-						if(tempAddr.isIPv4CompatibleAddress() || tempAddr.isLinkLocalAddress() || tempAddr.isLoopbackAddress() || tempAddr.isMulticastAddress() || tempAddr.isSiteLocalAddress())
-							continue;
-						
-						// found one!
-						if(addr == null)
-						{
-							addr = tempAddr;
-							continue;
-						}
-						
-						byte[] raw = addr.getAddress();
-						// prefer other addresses over teredo
-						if(raw[0] == 0x20 && raw[1] == 0x01 && raw[2] == 0x00 && raw[3] == 0x00)
-						{
-							addr = tempAddr;
-							continue;
-						}
-					}
-				}
-
-				break;
-			default:
-				break;
-
-			}
-		} catch (Exception e)
-		{
-			// should not happen
-		}
-		
 		if(sock != null)
 			sock.close();
 		
-		timeoutFilter.reset();
+		synchronized (interfacesInUse)
+		{
+			interfacesInUse.values().remove(this);
+			
+			InetAddress addr = null;
+			
+			try {
+				LinkedList<InetAddress> addrs = AddressUtils.getAvailableAddrs(dh_table.getConfig().allowMultiHoming(), dh_table.getType().PREFERRED_ADDRESS_TYPE);
+				addrs.removeAll(interfacesInUse.keySet());
+				addr = addrs.peekFirst();
+				
+				timeoutFilter.reset();
+				
+				if(addr == null)
+					throw new NullPointerException("valid address expected");
 
-		sock = new DatagramSocket(null);
-		sock.setReuseAddress(true);
-		sock.bind(new InetSocketAddress(addr, port));
-		
-		// prevent sockets from being bound to the wrong interfaces
-		if(addr == null)
-			sock.close();
+				sock = new DatagramSocket(null);
+				sock.setReuseAddress(true);
+				sock.bind(new InetSocketAddress(addr, port));
+
+				interfacesInUse.put(addr, this);
+				return true;
+			} catch (Exception e) {
+				if(sock != null)
+					sock.close();
+				destroy();
+				return false;
+			}
+		}
+
 	}
 	
 	public int getPort() {
@@ -146,6 +139,7 @@ public class RPCServer implements Runnable, RPCServerBase {
 		while (running)
 		{
 			DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+			
 			try
 			{
 				if(sock.isClosed())
@@ -153,8 +147,10 @@ public class RPCServer implements Runnable, RPCServerBase {
 					Thread.sleep(delay * 100);
 					if(delay < 256)
 						delay <<= 1;
-					createSocket();
-					continue;
+					if(createSocket())
+						continue;
+					else
+						break;
 				}
 				
 				sock.receive(packet);
@@ -180,7 +176,13 @@ public class RPCServer implements Runnable, RPCServerBase {
 			}
 			
 		}
+		// we fell out of the loop, make sure everything is cleaned up
+		destroy();
 		DHT.logInfo("Stopped RPC Server");
+	}
+	
+	public Key getDerivedID() {
+		return derivedId;
 	}
 
 	/*
@@ -188,23 +190,46 @@ public class RPCServer implements Runnable, RPCServerBase {
 	 * 
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#start()
 	 */
-	public void start () {
-		DHT.logInfo("Starting RPC Server");
+	public void start() {
+		if(!createSocket())
+			return;
+		
 		running = true;
+		
+		DHT.logInfo("Starting RPC Server");
+		
+		// reserve an ID
+		derivedId = dh_table.getNode().registerServer(this);
+		
+		// make ourselves known once everything is ready
+		dh_table.addServer(this);
+		
+		// start thread after registering so the DHT can handle incoming packets properly
 		thread = new Thread(this, "mlDHT RPC Thread "+dh_table.getType());
 		thread.setPriority(Thread.MIN_PRIORITY);
 		thread.setDaemon(true);
 		thread.start();
+		
+
 	}
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#stop()
 	 */
-	public void stop () {
+	public void destroy () {
+		if(running)
+			DHT.logInfo("Stopping RPC Server");
 		running = false;
-		sock.close();
+		dh_table.removeServer(this);
+		dh_table.getNode().removeServer(this);
+		synchronized (interfacesInUse)
+		{
+			interfacesInUse.values().remove(this);
+		}
+		if(sock != null)
+			sock.close();
 		thread = null;
-		DHT.logInfo("Stopping RPC Server");
+		
 	}
 
 	/* (non-Javadoc)
@@ -220,11 +245,11 @@ public class RPCServer implements Runnable, RPCServerBase {
 			
 			if(calls.size() >= DHTConstants.MAX_ACTIVE_CALLS)
 			{
-				System.out.println("Queueing RPC call, no slots available at the moment");				
+				DHT.logInfo("Queueing RPC call, no slots available at the moment");				
 				call_queue.add(c);
 				break;
 			}
-			short mtid = (short)DHT.rand.nextInt();
+			short mtid = (short)ThreadLocalUtils.getThreadLocalRandom().nextInt();
 			if(calls.putIfAbsent(new ByteWrapper(mtid),c) == null)
 			{
 				dispatchCall(c, mtid);
@@ -242,7 +267,7 @@ public class RPCServer implements Runnable, RPCServerBase {
 			ByteWrapper w = new ByteWrapper(c.getRequest().getMTID());
 			stats.addTimeoutMessageToCount(c.getRequest());
 			calls.remove(w);
-			dh_table.timeout(c.getRequest());
+			dh_table.timeout(c);
 			doQueuedCalls();
 		}
 		
@@ -263,8 +288,9 @@ public class RPCServer implements Runnable, RPCServerBase {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#ping(lbms.plugins.mldht.kad.Key, java.net.InetSocketAddress)
 	 */
-	public void ping (Key our_id, InetSocketAddress addr) {
-		PingRequest pr = new PingRequest(our_id);
+	public void ping (InetSocketAddress addr) {
+		PingRequest pr = new PingRequest();
+		pr.setID(derivedId);
 		pr.setDestination(addr);
 		doCall(pr);
 	}
@@ -304,10 +330,16 @@ public class RPCServer implements Runnable, RPCServerBase {
 	public RPCStats getStats () {
 		return stats;
 	}
+	
+	// we only decode in the listening thread, so reused the decoder
+	private BDecoder decoder = new BDecoder();
 
 	private void handlePacket (DatagramPacket p) {
 		numReceived++;
 		stats.addReceivedBytes(p.getLength() + dh_table.getType().HEADER_LENGTH);
+		// ignore port 0, can't respond to them anyway and responses to requests from port 0 will be useless too
+		if(p.getPort() == 0)
+			return;
 
 		if (DHT.isLogLevelEnabled(LogLevel.Verbose)) {
 			try {
@@ -319,12 +351,14 @@ public class RPCServer implements Runnable, RPCServerBase {
 		}
 
 		try {
-			Map<String, Object> bedata = BDecoder.decode(p.getData(),0,p.getLength());
+			Map<String, Object> bedata = decoder.decodeByteArray(p.getData(), 0, p.getLength() , false);
 			MessageBase msg = MessageDecoder.parseMessage(bedata, this);
 			if (msg != null) {
-				DHT.logDebug("RPC received message ["+p.getAddress().getHostAddress()+"] "+msg.toString());
+				if(DHT.isLogLevelEnabled(LogLevel.Debug))
+					DHT.logDebug("RPC received message ["+p.getAddress().getHostAddress()+"] "+msg.toString());
 				stats.addReceivedMessageToCount(msg);
 				msg.setOrigin(new InetSocketAddress(p.getAddress(), p.getPort()));
+				msg.setServer(this);
 				msg.apply(dh_table);
 				// erase an existing call
 				if (msg.getType() == Type.RSP_MSG
@@ -359,10 +393,14 @@ public class RPCServer implements Runnable, RPCServerBase {
 	 */
 	public void sendMessage (MessageBase msg) {
 		try {
+			if(msg.getID() == null)
+				msg.setID(getDerivedID());
 			stats.addSentMessageToCount(msg);
 			send(msg.getDestination(), msg.encode());
-			DHT.logDebug("RPC send Message: [" + msg.getDestination().getAddress().getHostAddress() + "] "+ msg.toString());
+			if(DHT.isLogLevelEnabled(LogLevel.Debug))
+				DHT.logDebug("RPC send Message: [" + msg.getDestination().getAddress().getHostAddress() + "] "+ msg.toString());
 		} catch (IOException e) {
+			System.out.print(sock.getLocalAddress()+" -> "+msg.getDestination()+" ");
 			e.printStackTrace();
 		}
 	}
@@ -404,7 +442,7 @@ public class RPCServer implements Runnable, RPCServerBase {
 			short mtid = 0;
 			do
 			{
-				mtid = (short)DHT.rand.nextInt();
+				mtid = (short)ThreadLocalUtils.getThreadLocalRandom().nextInt();
 			} while (calls.putIfAbsent(new ByteWrapper(mtid), c) != null);
 
 			dispatchCall(c, mtid);

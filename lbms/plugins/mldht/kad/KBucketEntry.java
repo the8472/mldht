@@ -1,8 +1,29 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad;
 
 import java.io.Serializable;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.Comparator;
+import java.text.DateFormat;
+import java.util.*;
+
+import org.apache.commons.collections.Unmodifiable;
+import org.gudy.azureus2.core3.util.TimeFormatter;
 
 /**
  * Entry in a KBucket, it basically contains an ip_address of a node,
@@ -11,6 +32,42 @@ import java.util.Comparator;
  * @author Damokles
  */
 public class KBucketEntry implements Serializable {
+	
+	
+	/**
+	 * does not support removal operations
+	 */
+	public static final class BucketSet extends AbstractSet<KBucketEntry> {
+		
+		HashMap<Object, KBucketEntry> entries = new HashMap<Object, KBucketEntry>();
+
+		public boolean add(KBucketEntry e) {
+			if(entries.containsKey(e.getID()) || entries.containsKey(e.getAddress().getAddress()))
+				return false;
+			
+			entries.put(e.getID(), e);
+			entries.put(e.getAddress().getAddress(), e);
+			return true;
+		}
+		
+		public boolean contains(Object o) {
+			if(o instanceof KBucketEntry)
+				return this.contains((KBucketEntry)o);
+			return false;
+		}
+		
+		public boolean contains(KBucketEntry e) {
+			return entries.containsKey(e.getID()) || entries.containsKey(e.getAddress().getAddress());
+		}
+		
+		public Iterator<KBucketEntry> iterator() {
+			throw new UnsupportedOperationException("no iteration allowed");
+		}
+
+		public int size() {
+			return entries.size()/2;
+		}
+	}
 
 	/**
 	 * ascending order for last seen, i.e. the last value will be the least recently seen one
@@ -30,6 +87,15 @@ public class KBucketEntry implements Serializable {
 		}
 	};
 
+	/**
+	 * same order as the Key class, based on the Entrie's nodeID
+	 */
+	public static final Comparator<KBucketEntry> KEY_ORDER = new Comparator<KBucketEntry>() {
+		public int compare(KBucketEntry o1, KBucketEntry o2) {
+			return o1.nodeID.compareTo(o2.nodeID);
+		}
+	};
+
 	
 	public static final class DistanceOrder implements Comparator<KBucketEntry> {
 		
@@ -39,7 +105,8 @@ public class KBucketEntry implements Serializable {
 		}
 	
 		public int compare(KBucketEntry o1, KBucketEntry o2) {
-			return target.distance(o1.getID()).compareTo(target.distance(o2.getID()));
+			//return target.distance(o1.getID()).compareTo(target.distance(o2.getID()));
+			return target.threeWayDistance(o1.getID(), o2.getID());
 		}
 	}
 
@@ -105,26 +172,28 @@ public class KBucketEntry implements Serializable {
 	public InetSocketAddress getAddress () {
 		return addr;
 	}
-
-	/* (non-Javadoc)
-	 * @see java.lang.Object#equals(java.lang.Object)
-	 */
-	@Override
-	public boolean equals (Object obj) {
-		if (obj instanceof KBucketEntry) {
-			KBucketEntry other = (KBucketEntry) obj;
-			return nodeID.equals(other.nodeID)
-					|| addr.getAddress().equals(other.addr.getAddress());
-		}
-		return super.equals(obj);
+	
+	public boolean equals(Object o)
+	{
+		if(o instanceof KBucketEntry)
+			return this.equals((KBucketEntry)o);
+		return this == o;
 	}
 
-	/* (non-Javadoc)
-	 * @see java.lang.Object#hashCode()
+	/**
+	 * violating the equals contract (specifically: the transitivity requirement) here, use with care
+	 */
+	public boolean equals (KBucketEntry other) {
+		return nodeID.equals(other.nodeID) || addr.getAddress().equals(other.addr.getAddress());
+	}
+
+	/**
+	 * overriding hash code to always return 0 because we can't compute a good one that represents that OR-comparison semantic between 
 	 */
 	@Override
 	public int hashCode () {
-		return addr.hashCode() ^ nodeID.hashCode();
+		new Exception("KBucketEntry hashCode should not be used").printStackTrace();
+		return 0;
 	}
 
 	/**
@@ -165,6 +234,11 @@ public class KBucketEntry implements Serializable {
 	public int getFailedQueries () {
 		return failedQueries;
 	}
+	
+	public String toString() {
+		long now = System.currentTimeMillis();
+		return nodeID+"/"+addr+";seen:"+TimeFormatter.format((now-lastSeen)/1000)+";age:"+TimeFormatter.format((now-timeCreated) / 1000)+(failedQueries>0?";fail:"+failedQueries:"");
+	}
 
 	/**
 	 * Checks if the node is Good.
@@ -200,20 +274,30 @@ public class KBucketEntry implements Serializable {
 		if (failedQueries >= DHTConstants.KBE_BAD_IMMEDIATLY_ON_FAILED_QUERIES) {
 	        return true;
         }
-		if(System.currentTimeMillis() - lastSeen > DHTConstants.KBE_QUESTIONABLE_TIME &&
-			failedQueries > DHTConstants.KBE_BAD_IF_FAILED_QUERIES_LARGER_THAN) {
+		if(failedQueries > DHTConstants.KBE_BAD_IF_FAILED_QUERIES_LARGER_THAN && 
+			System.currentTimeMillis() - lastSeen > DHTConstants.KBE_QUESTIONABLE_TIME) {
 	        return true;
         }
 		return false;
 	}
 
 	/**
-	 * Should be called to signal that the peer has responded
+	 * Should be called to signal that the peer has sent a message to us, not necesarly a response to a query
 	 */
-	public void signalLastSeen () {
+	public void signalLastSeen() {
 		lastSeen = System.currentTimeMillis();
 	}
 	
+	public void mergeTimestamps (KBucketEntry entry) {
+		if(!this.equals(entry))
+			return;
+		lastSeen = Math.max(lastSeen, entry.getLastSeen());
+		timeCreated = Math.min(timeCreated, entry.getCreationTime());
+	}
+
+	/**
+	 * Should be called to signal that the peer has responded
+	 */
 	public void signalResponse() {
 		lastSeen = System.currentTimeMillis();
 		failedQueries = 0;		

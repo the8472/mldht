@@ -1,3 +1,19 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.azureus;
 
 import java.util.*;
@@ -150,8 +166,8 @@ public class Tracker {
 					
 					for(DHTtype type : DHTtype.values())
 					{
-						PeerLookupTask lookupTask = plugin.getDHT(type).lookupPeers(
-							dl.getTorrent().getHash());
+						DHT dht = plugin.getDHT(type);
+						PeerLookupTask lookupTask = dht.createPeerLookup(dl.getTorrent().getHash());
 						if (lookupTask != null) {
 							pendingCount.incrementAndGet();
 							lookupTask.setScrapeHandler(handler);
@@ -159,6 +175,7 @@ public class Tracker {
 							lookupTask.addListener(this);
 							lookupTask.setInfo(dl.getName());
 							lookupTask.setNoSeeds(dl.isComplete(true));
+							dht.getTaskManager().addTask(lookupTask);
 						}	
 					}
 
@@ -169,7 +186,11 @@ public class Tracker {
 					DHT.logDebug("DHT Task done: " + t.getClass().getSimpleName());
 					if (t instanceof PeerLookupTask) {
 						PeerLookupTask peerLookup = (PeerLookupTask) t;
-						items.addAll(peerLookup.getReturnedItems());
+						synchronized (items)
+						{
+							items.addAll(peerLookup.getReturnedItems());
+						}
+						
 
 						// if we're not just scraping the torrent... send announces
 						if(!scrapeOnly)

@@ -1,9 +1,27 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad.tasks;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import lbms.plugins.mldht.kad.*;
+import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.PingRequest;
 
@@ -33,7 +51,7 @@ public class PingRefreshTask extends Task {
 	 */
 	public PingRefreshTask (RPCServerBase rpc, Node node, KBucket bucket,
 			boolean cleanOnTimeout) {
-		super(node.getOurID(),rpc, node);
+		super(node.getRootID(),rpc, node);
 		this.cleanOnTimeout = cleanOnTimeout;
 		if (cleanOnTimeout) {
 			lookupMap = new HashMap<MessageBase, KBucketEntry>();
@@ -54,23 +72,19 @@ public class PingRefreshTask extends Task {
 	 * @param bucket the bucket to refresh
 	 * @param cleanOnTimeout if true Nodes that fail to respond are removed. should be false for normal use.
 	 */
-	public PingRefreshTask (RPCServerBase rpc, Node node, KBucket[] buckets,
+	public PingRefreshTask (RPCServerBase rpc, Node node, List<RoutingTableEntry> buckets,
 			boolean cleanOnTimeout) {
-		super(node.getOurID(), rpc, node,"Multi Bucket Refresh");
+		super(node.getRootID(), rpc, node,"Multi Bucket Refresh");
 		this.cleanOnTimeout = cleanOnTimeout;
 		if (cleanOnTimeout) {
 			lookupMap = new HashMap<MessageBase, KBucketEntry>();
 		}
 
-		for (int i = 1; i < buckets.length; i++) {
-			if (buckets[i] != null) {
-				for (KBucketEntry e : buckets[i].getEntries()) {
-					if (e.isQuestionable() || cleanOnTimeout) {
-						todo.add(e);
-					}
-				}
-			}
-		}
+		for (RoutingTableEntry tableEntry : buckets)
+			for (KBucketEntry e : tableEntry.getBucket().getEntries())
+				if (e.isQuestionable() || cleanOnTimeout)
+					todo.add(e);
+		
 	}
 
 	/* (non-Javadoc)
@@ -96,8 +110,8 @@ public class PingRefreshTask extends Task {
 			synchronized (lookupMap) {
 				if (lookupMap.containsKey(mb)) {
 					KBucketEntry e = lookupMap.remove(mb);
-					KBucket bucket = node.getBuckets()[node.getOurID().findApproxKeyDistance(
-							e.getID())];
+					
+					KBucket bucket = node.findBucketForId(e.getID()).getBucket();
 					if (bucket != null) {
 						DHT.logDebug("Removing invalid entry from cache.");
 						bucket.removeEntry(e, true);
@@ -124,14 +138,14 @@ public class PingRefreshTask extends Task {
 					continue;
 				}
 
-				PingRequest pr = new PingRequest(node.getOurID());
+				PingRequest pr = new PingRequest();
 				pr.setDestination(e.getAddress());
 				if (cleanOnTimeout) {
 					synchronized (lookupMap) {
 						lookupMap.put(pr, e);
 					}
 				}
-				rpcCall(pr);
+				rpcCall(pr,e.getID());
 			}
 		}
 

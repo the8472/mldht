@@ -1,8 +1,22 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad.messages;
 
 import java.util.*;
-
-import org.gudy.azureus2.core3.util.BEncoder;
 
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
@@ -126,17 +140,22 @@ public class MessageDecoder {
 		}
 
 		Key id = new Key(hash);
+		
+		MessageBase msg = null;
 
 		switch (msgMethod) {
 		case PING:
-			return new PingResponse(mtid, id);
+			msg = new PingResponse(mtid);
+			break;
 		case ANNOUNCE_PEER:
-			return new AnnounceResponse(mtid, id);
+			msg = new AnnounceResponse(mtid);
+			break;
 		case FIND_NODE:
 			if (!args.containsKey("nodes") && !args.containsKey("nodes6"))
 				return null;
 			
-			return new FindNodeResponse(mtid, id, (byte[]) args.get("nodes"),(byte[])args.get("nodes6"));
+			msg = new FindNodeResponse(mtid, (byte[]) args.get("nodes"),(byte[])args.get("nodes6"));
+			break;
 		case GET_PEERS:
 			byte[] token = (byte[]) args.get("token");
 			byte[] nodes = (byte[]) args.get("nodes");
@@ -158,9 +177,10 @@ public class MessageDecoder {
 
 			if (dbl != null || nodes != null || nodes6 != null)
 			{
-				GetPeersResponse resp = new GetPeersResponse(mtid, id, nodes, nodes6, token);
+				GetPeersResponse resp = new GetPeersResponse(mtid, nodes, nodes6, token);
 				resp.setPeerItems(dbl);
-				return resp;
+				msg = resp; 
+				break;
 			}
 			DHT.logDebug("No nodes or values in get_peers response");
 			return null;
@@ -168,6 +188,10 @@ public class MessageDecoder {
 		default:
 			return null;
 		}
+		
+		msg.setID(id);
+		
+		return msg;
 	}
 
 	/**
@@ -193,7 +217,7 @@ public class MessageDecoder {
 
 		String requestMethod = getStringFromBytes((byte[]) rawRequestMethod);
 		if (Method.PING.getRPCName().equals(requestMethod)) {
-			msg = new PingRequest(id);
+			msg = new PingRequest();
 		} else if (Method.FIND_NODE.getRPCName().equals(requestMethod) || Method.GET_PEERS.getRPCName().equals(requestMethod)) {
 			hash = (byte[]) args.get("target");
 			if (hash == null)
@@ -202,7 +226,7 @@ public class MessageDecoder {
 			{
 				return null;
 			}
-			AbstractLookupRequest req = Method.FIND_NODE.getRPCName().equals(requestMethod) ? new FindNodeRequest(id, new Key(hash)) : new GetPeersRequest(id, new Key(hash));
+			AbstractLookupRequest req = Method.FIND_NODE.getRPCName().equals(requestMethod) ? new FindNodeRequest(new Key(hash)) : new GetPeersRequest(new Key(hash));
 			req.setWant4(srv.getDHT().getType() == DHTtype.IPV4_DHT);
 			req.setWant6(srv.getDHT().getType() == DHTtype.IPV6_DHT);
 			req.decodeWant((List<byte[]>) args.get("want"));
@@ -224,7 +248,7 @@ public class MessageDecoder {
 
 				byte[] token = (byte[]) args.get("token");
 				
-				AnnounceRequest ann = new AnnounceRequest(id, infoHash, ((Long) args.get("port")).intValue(), token);
+				AnnounceRequest ann = new AnnounceRequest(infoHash, ((Long) args.get("port")).intValue(), token);
 				ann.setSeed(Long.valueOf(1).equals(args.get("seed")));
 
 				msg = ann;
@@ -235,6 +259,7 @@ public class MessageDecoder {
 
 		if (msg != null) {
 			msg.setMTID(mtid);
+			msg.setID(id);
 		}
 
 		return msg;

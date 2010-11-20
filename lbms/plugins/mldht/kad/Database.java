@@ -1,3 +1,19 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad;
 
 import java.net.InetAddress;
@@ -6,31 +22,39 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.gudy.azureus2.core3.util.LightHashMap;
+import org.gudy.azureus2.core3.util.LightHashSet;
+import org.gudy.azureus2.core3.util.SHA1;
 
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.utils.ByteWrapper;
+import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 
 /**
  * @author Damokles
  * 
  */
 public class Database {
-	private Map<Key, Set<DBItem>>	items;
+	private ConcurrentMap<Key, Set<DBItem>>	items;
 	private DatabaseStats			stats;
-	private long timestampCurrent;
-	private long timestampPrevious;
+	private AtomicLong timestampCurrent = new AtomicLong();
+	private volatile long timestampPrevious;
 	
 	private static byte[] sessionSecret = new byte[20];
 	
 	static {
-		DHT.rand.nextBytes(sessionSecret);
+		ThreadLocalUtils.getThreadLocalRandom().nextBytes(sessionSecret);
 	}
 
 	Database()
 	{
 		stats = new DatabaseStats();
-		items = new HashMap<Key, Set<DBItem>>();
+		items = new ConcurrentHashMap<Key, Set<DBItem>>(3000);
 	}
 
 	/**
@@ -42,13 +66,22 @@ public class Database {
 	 *            The DBItem to store
 	 */
 	public void store(Key key, DBItem dbi) {
-		synchronized (items)
+		
+		
+		Set<DBItem> keyEntries = null;
+		
+		Set<DBItem> insertCanidate = new LightHashSet<DBItem>();
+		
+		keyEntries = items.putIfAbsent(key, insertCanidate);
+		
+		if(keyEntries == null)
+		{ // this only happens when insering new keys... the load of .size should be bearable
+			keyEntries = insertCanidate;
+			stats.setKeyCount(items.size());
+		}
+		
+		synchronized (keyEntries)
 		{
-			if (!items.containsKey(key))
-			{
-				insert(key);
-			}
-			Set<DBItem> keyEntries = items.get(key);
 			if (!keyEntries.remove(dbi))
 				stats.setItemCount(stats.getItemCount() + 1);
 			keyEntries.add(dbi);
@@ -69,46 +102,63 @@ public class Database {
 	 *            The maximum number entries
 	 */
 	List<DBItem> sample(Key key, int max_entries, DHTtype forType, boolean preferPeers) {
-		LinkedList<DBItem> tdbl = new LinkedList<DBItem>();
-		synchronized (items)
-		{
-			if (!items.containsKey(key))
-				return null;
-			
-			List<DBItem> dbl = new ArrayList<DBItem>(items.get(key));
-			Collections.shuffle(dbl);
-			for (DBItem item : dbl)
-			{
-				if (!(item instanceof PeerAddressDBItem))
-					continue;
-				PeerAddressDBItem it = (PeerAddressDBItem) item;
-				if (it.getAddressType() != forType.PREFERRED_ADDRESS_TYPE)
-					continue;
-				if(preferPeers && it.isSeed())
-					tdbl.addLast(it);
-				else
-					tdbl.addFirst(it);
-			}
-		}
-		
-		return tdbl.subList(0, Math.min(tdbl.size(), max_entries));		
-	}
-	
-	BloomFilter createScrapeFilter(Key key, boolean seedFilter)
-	{
-		Set<DBItem> dbl = items.get(key);
-		if (dbl == null || dbl.isEmpty())
+		Set<DBItem> keyEntry = null;
+		List<DBItem> dbl = null;
+
+
+		keyEntry = items.get(key);
+		if(keyEntry == null)
 			return null;
 		
-		BloomFilter filter = new BloomFilter();
+		synchronized (keyEntry)
+		{
+			dbl = new ArrayList<DBItem>(keyEntry);
+		}
 		
+		List<DBItem> peerlist = new ArrayList<DBItem>(dbl.size());
+		List<DBItem> seedlist = preferPeers ? new ArrayList<DBItem>(dbl.size()>>1) : null;
+		
+		
+		Collections.shuffle(dbl);
 		for (DBItem item : dbl)
 		{
 			if (!(item instanceof PeerAddressDBItem))
 				continue;
 			PeerAddressDBItem it = (PeerAddressDBItem) item;
-			if(seedFilter == it.isSeed())
-				filter.insert(it.getInetAddress());
+			if (it.getAddressType() != forType.PREFERRED_ADDRESS_TYPE)
+				continue;
+			if(preferPeers && it.isSeed())
+				seedlist.add(it);
+			else
+				peerlist.add(it);
+		}
+
+		// identified seeds (BEP-33) go last in case a node only wants peers
+		if(preferPeers)
+			peerlist.addAll(seedlist);
+		
+		return peerlist.subList(0, Math.min(peerlist.size(), max_entries));		
+	}
+	
+	BloomFilterBEP33 createScrapeFilter(Key key, boolean seedFilter)
+	{
+		Set<DBItem> dbl = items.get(key);
+		
+		if (dbl == null || dbl.isEmpty())
+			return null;
+		
+		BloomFilterBEP33 filter = new BloomFilterBEP33();
+
+		synchronized (dbl)
+		{
+			for (DBItem item : dbl)
+			{
+				if (!(item instanceof PeerAddressDBItem))
+					continue;
+				PeerAddressDBItem it = (PeerAddressDBItem) item;
+				if (seedFilter == it.isSeed())
+					filter.insert(it.getInetAddress());
+			}
 		}
 		
 		return filter;
@@ -122,47 +172,60 @@ public class Database {
 	 *            calculate it once)
 	 */
 	void expire(long now) {
-		int removed = 0;
-		List<Key> keysToRemove = new ArrayList<Key>();
-		synchronized (items)
+		
+		int itemCount = 0;
+		for (Set<DBItem> dbl : items.values())
 		{
-			int itemCount = 0;
-			for (Key k : items.keySet())
+			List<DBItem> tmp = null;
+			synchronized (dbl)
 			{
-				Set<DBItem> dbl = items.get(k);
-				List<DBItem> tmp = new ArrayList<DBItem>(dbl);
+				tmp = new ArrayList<DBItem>(dbl);
+			
+			
 				Collections.sort(tmp, DBItem.ageOrdering);
 				while (dbl.size() > 0 && tmp.get(0).expired(now))
 				{
 					dbl.remove(tmp.remove(0));
-					removed++;
 				}
-				if (dbl.size() == 0)
-				{
-					keysToRemove.add(k);
-				} else
-					itemCount += dbl.size();
-			}
 
-			items.keySet().removeAll(keysToRemove);
-			stats.setKeyCount(items.size());
-			stats.setItemCount(itemCount);
+				itemCount += dbl.size();
+
+			}
 		}
+		
+		for(Iterator<Set<DBItem>> it = items.values().iterator();it.hasNext();)
+		{
+			if(it.next().isEmpty())
+				it.remove();
+		}
+
+		stats.setKeyCount(items.size());
+		stats.setItemCount(itemCount);
 	}
 	
 	
 	boolean insertForKeyAllowed(Key target)
 	{
-		synchronized (items)
-		{
-			Set<DBItem> entries = items.get(target);
-			if(entries == null)
-				return true;
-			if(entries.size() < DHTConstants.MAX_DB_ENTRIES_PER_KEY)
-				return true;
-		}
-		
+		Set<DBItem> entries = items.get(target);
+		if(entries == null)
+			return true;
+		if(entries.size() < DHTConstants.MAX_DB_ENTRIES_PER_KEY)
+			return true;
+	
 		return false;
+	}
+	
+	ThreadLocal<SHA1> hashStore = new ThreadLocal<SHA1>();
+	
+	private SHA1 getHasher() {
+		SHA1 hasher = hashStore.get();
+		if(hasher == null)
+		{
+			hasher = new SHA1();
+			hashStore.set(hasher);
+		} else
+			hasher.reset();
+		return hasher;
 	}
 
 	/**
@@ -183,28 +246,23 @@ public class Database {
 		ByteBuffer bb = ByteBuffer.wrap(tdata);
 		bb.put(ip.getAddress());
 		bb.putShort((short) port);
-		bb.putLong(timestampCurrent);
+		bb.putLong(timestampCurrent.get());
 		bb.put(lookupKey.getHash());
 		bb.put(sessionSecret);
-		try
-		{
-			MessageDigest md = MessageDigest.getInstance("SHA-1");
-			md.update(tdata);
-			return new ByteWrapper(md.digest());
-
-			
-		} catch (NoSuchAlgorithmException e)
-		{
-			e.printStackTrace();
-			return new ByteWrapper(new byte[20]);
-		}
+		return new ByteWrapper(getHasher().digest(bb));
 	}
 	
-	private synchronized void updateTokenTimestamps() {
-		if(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - timestampCurrent) > DHTConstants.TOKEN_TIMEOUT)
+	private void updateTokenTimestamps() {
+		long current = timestampCurrent.get();
+		long now = System.nanoTime();
+		while(TimeUnit.NANOSECONDS.toMillis(now - current) > DHTConstants.TOKEN_TIMEOUT)
 		{
-			timestampPrevious = timestampCurrent;
-			timestampCurrent = System.nanoTime();
+			if(timestampCurrent.compareAndSet(current, now))
+			{
+				timestampPrevious = current;
+				break;
+			}
+			current = timestampCurrent.get();
 		}
 	}
 
@@ -221,7 +279,7 @@ public class Database {
 	 */
 	boolean checkToken(ByteWrapper token, InetAddress ip, int port, Key lookupKey) {
 		updateTokenTimestamps();
-		boolean valid = checkToken(token, ip, port, lookupKey, timestampCurrent) || checkToken(token, ip, port, lookupKey, timestampPrevious);
+		boolean valid = checkToken(token, ip, port, lookupKey, timestampCurrent.get()) || checkToken(token, ip, port, lookupKey, timestampPrevious);
 		if(!valid)
 			DHT.logDebug("Received Invalid token from " + ip.getHostAddress());
 		return valid;
@@ -237,42 +295,12 @@ public class Database {
 		bb.putLong(timeStamp);
 		bb.put(lookupKey.getHash());
 		bb.put(sessionSecret);
-		
-		try
-		{
-			MessageDigest md = MessageDigest.getInstance("SHA-1");
-			md.update(tdata);
-			ByteWrapper ct = new ByteWrapper(md.digest());
-			// compare the generated token to the one received
-			return token.equals(ct);
-
-		} catch (NoSuchAlgorithmException e)
-		{
-			e.printStackTrace();
-			return false;
-		}
-		
+		return token.equals(new ByteWrapper(getHasher().digest(bb)));
 	}
 
 	/// Test wether or not the DB contains a key
 	boolean contains(Key key) {
-		synchronized (items)
-		{
-			return items.containsKey(key);
-		}
-	}
-
-	/// Insert an empty item (only if it isn't already in the DB)
-	void insert(Key key) {
-		synchronized (items)
-		{
-			Set<DBItem> dbl = items.get(key);
-			if (dbl == null)
-			{
-				items.put(key, new HashSet<DBItem>());
-				stats.setKeyCount(items.size());
-			}
-		}
+		return items.containsKey(key);
 	}
 
 	/**

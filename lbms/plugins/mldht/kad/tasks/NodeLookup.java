@@ -1,3 +1,19 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad.tasks;
 
 import java.util.Comparator;
@@ -9,11 +25,11 @@ import java.util.TreeSet;
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.Key.DistanceOrder;
-import lbms.plugins.mldht.kad.messages.FindNodeRequest;
-import lbms.plugins.mldht.kad.messages.FindNodeResponse;
-import lbms.plugins.mldht.kad.messages.MessageBase;
+import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
+import lbms.plugins.mldht.kad.messages.*;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
+import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.PackUtil;
 
 /**
@@ -24,11 +40,11 @@ public class NodeLookup extends Task {
 	private int						validReponsesSinceLastClosestSetModification;
 	SortedSet<Key>			closestSet;
 	private Map<MessageBase, Key>	lookupMap;
-	private boolean fillWithAllBuckets = false;
+	private boolean forBootstrap = false;
 	
 	public NodeLookup (Key node_id, RPCServerBase rpc, Node node, boolean isBootstrap) {
 		super(node_id, rpc, node);
-		fillWithAllBuckets = !isBootstrap;
+		forBootstrap = isBootstrap;
 		this.closestSet = new TreeSet<Key>(new Key.DistanceOrder(targetKey));
 		this.lookupMap = new HashMap<MessageBase, Key>();
 	}
@@ -45,18 +61,15 @@ public class NodeLookup extends Task {
 				// only send a findNode if we haven't allready visited the node
 				if (!visited.contains(e)) {
 					// send a findNode to the node
-					FindNodeRequest fnr = new FindNodeRequest(node.getOurID(),
-							targetKey);
+					FindNodeRequest fnr = new FindNodeRequest(targetKey);
 					fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode() != null && DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode() != null && DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setDestination(e.getAddress());
 					synchronized (lookupMap) {
 						lookupMap.put(fnr, e.getID());
 					}
-					rpcCall(fnr);
-					synchronized (visited) {
-						visited.add(e);
-					}
+					rpcCall(fnr,e.getID());
+					visited.add(e);
 				}
 				// remove the entry from the todo list
 			}
@@ -66,7 +79,7 @@ public class NodeLookup extends Task {
 				&& !isFinished()) {
 			done();
 		} else if (getNumOutstandingRequests() == 0 && validReponsesSinceLastClosestSetModification >= DHTConstants.MAX_CONCURRENT_REQUESTS) {
-			done(); // quit after 15 nodes responses
+			done(); // quit after 10 nodes responsed
 		}
 	}
 
@@ -115,7 +128,7 @@ public class NodeLookup extends Task {
 						{
 							// add node to todo list
 							KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-							if (!e.getID().equals(node.getOurID()) && !todo.contains(e) && !visited.contains(e))
+							if (!AddressUtils.isBogon(e.getAddress()) && !node.allLocalIDs().contains(e.getID()) && !todo.contains(e) && !visited.contains(e))
 							{
 								todo.add(e);
 							}
@@ -148,19 +161,14 @@ public class NodeLookup extends Task {
 	void start () {
 		int added = 0;
 
-		// delay the filling of the todo list until we actually start the task
+		// if we're bootstrapping start from the bucket that has the greatest possible distance from ourselves so we discover new things along the (longer) path
+		Key knsTargetKey = forBootstrap ? targetKey.getDerivedKey(0xFFFFFFFF) : targetKey;
 		
-		KBucket[] buckets = node.getBuckets();
-		outer: for (int i = buckets.length -1; i >= 1; i--)
-			if (buckets[i] != null)
-				for (KBucketEntry e : buckets[i].getEntries())
-					if (!e.isBad())
-					{
-						todo.add(e);
-						added++;
-						if (!fillWithAllBuckets && added >= 2 * DHTConstants.MAX_ENTRIES_PER_BUCKET)
-							break outer;
-					}
+		// delay the filling of the todo list until we actually start the task
+		KClosestNodesSearch kns = new KClosestNodesSearch(knsTargetKey, 3 * DHTConstants.MAX_ENTRIES_PER_BUCKET, rpc.getDHT());
+		kns.fill();
+		todo.addAll(kns.getEntries());
+		
 
 		super.start();
 	}

@@ -1,10 +1,23 @@
-/**
+/*
+ *    This file is part of mlDHT. 
  * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
  */
 package lbms.plugins.mldht.kad.utils;
 
-import java.util.Collection;
-import java.util.List;
+import java.util.Arrays;
+
 
 public final class BitVector {
 	
@@ -19,7 +32,7 @@ public final class BitVector {
 	
 	public BitVector(int numBits, byte[] rawData)
 	{
-		if(numBits >= rawData.length * 8)
+		if(numBits > rawData.length * 8)
 			throw new IllegalArgumentException("raw data array too small to represent the requested number of bits");
 		bits = numBits;
 		vector = rawData.clone();
@@ -29,15 +42,45 @@ public final class BitVector {
 	public BitVector(int numberOfBits)
 	{
 		bits = numberOfBits;
-		vector = new byte[numberOfBits/8];
+		vector = new byte[numberOfBits/8 + (numberOfBits % 8 != 0 ? 1 : 0)];
 	}
 	
 	public void set(int n) {
 		vector[n/8] |= 0x01 << n % 8;
 	}
 	
+	public boolean get(int n) {
+		return (vector[n/8] & 0x01 << n % 8) != 0;
+	}
+	
+	/**
+	 * reads an arbitrary (even non-aligned) range of bits (up to 32) and interprets them as int (bigendian)
+	 */
+	public int rangeToInt(int bitOffset, int numOfBits) {
+		int result = 0;
+		int baseShift = numOfBits - 8 + bitOffset % 8;
+		int byteIdx = bitOffset/8;
+		while(baseShift >= 0)
+		{
+			result |= vector[byteIdx] << baseShift;
+			byteIdx++;
+			baseShift -= 8;
+		}
+		
+		if(baseShift < 0)
+			result |= vector[byteIdx] >>> Math.abs(baseShift);
+		
+		result &= 0xFFFFFFFF >>> 32 - numOfBits;
+		
+		return result;
+	}
+	
 	public int size() {
 		return bits;
+	}
+	
+	public void clear() {
+		Arrays.fill(vector, (byte)0);
 	}
 	
 	public int bitcount() {
@@ -115,6 +158,9 @@ public final class BitVector {
 		return vector.clone();
 	}
 	
-	
+	public static void main(String[] args) {
+		BitVector bv = new BitVector(40, new byte[] {(byte) 0xF0,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF});
+		System.out.println(bv.rangeToInt(7, 2)); 
+	}
 	
 }

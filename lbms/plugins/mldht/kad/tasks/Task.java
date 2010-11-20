@@ -1,19 +1,32 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad.tasks;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.SortedSet;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.gudy.azureus2.core3.util.LightHashSet;
+
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
-import lbms.plugins.mldht.kad.KBucketEntry.DistanceOrder;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 
 /**
@@ -24,8 +37,8 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
  */
 public abstract class Task implements RPCCallListener {
 
-	protected List<KBucketEntry>		visited;			// nodes visited
-	protected SortedSet<KBucketEntry>	todo;				// nodes todo
+	protected Set<KBucketEntry>			visited;		// nodes visited, can't use a HashSet here since we can't compute a good hashcode for KBucketEntries
+	protected SortedSet<KBucketEntry>	todo;			// nodes todo
 	protected Node						node;
 
 	protected Key						targetKey;
@@ -55,7 +68,7 @@ public abstract class Task implements RPCCallListener {
 		this.node = node;
 		queued = true;
 		todo = new TreeSet<KBucketEntry>(new KBucketEntry.DistanceOrder(targetKey));
-		visited = new ArrayList<KBucketEntry>();
+		visited = new KBucketEntry.BucketSet();
 		taskFinished = false;
 	}
 
@@ -174,12 +187,13 @@ public abstract class Task implements RPCCallListener {
 	 * @param req THe request to send
 	 * @return true if call was made, false if not
 	 */
-	boolean rpcCall (MessageBase req) {
+	boolean rpcCall (MessageBase req, Key expectedID) {
 		if (!canDoRequest()) {
 			return false;
 		}
 
 		RPCCallBase c = rpc.doCall(req);
+		c.setExpectedID(expectedID);
 		c.addListener(this);
 		outstandingRequestsExcludingStalled.incrementAndGet();
 		outstandingRequests.incrementAndGet();
@@ -284,8 +298,7 @@ public abstract class Task implements RPCCallListener {
 
 	/// Kills the task
 	public void kill () {
-		taskFinished = true;
-		finished(this);
+		finished();
 	}
 
 	/**
@@ -322,7 +335,14 @@ public abstract class Task implements RPCCallListener {
 	 * The task is finsihed.
 	 * @param t The Task
 	 */
-	private void finished (Task t) {
+	private void finished () {
+		synchronized (this)
+		{
+			if(taskFinished)
+				return;
+			taskFinished = true;
+		}
+		
 		DHT.logDebug("Task finished: " + getTaskID());
 		if (timeoutTimer != null) {
 			timeoutTimer.cancel(false);
@@ -335,8 +355,7 @@ public abstract class Task implements RPCCallListener {
 	}
 
 	protected void done () {
-		taskFinished = true;
-		finished(this);
+			finished();
 	}
 
 	public void addListener (TaskListener listener) {

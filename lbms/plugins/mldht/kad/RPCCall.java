@@ -1,3 +1,19 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad;
 
 import java.util.ArrayList;
@@ -22,11 +38,24 @@ public class RPCCall implements RPCCallBase {
 	private ScheduledFuture<?>		timeoutTimer;
 	private long					sentTime		= -1;
 	private long					responseTime	= -1;
+	private Key						expectedID;
 
 
 	public RPCCall (RPCServer rpc, MessageBase msg) {
 		this.rpc = rpc;
 		this.msg = msg;
+	}
+	
+	public void setExpectedID(Key id) {
+		expectedID = id;
+	}
+	
+	public boolean matchesExpectedID(Key id) {
+		return expectedID == null || id.equals(expectedID);
+	}
+	
+	public Key getExpectedID() {
+		return expectedID;
 	}
 
 	/* (non-Javadoc)
@@ -52,7 +81,7 @@ public class RPCCall implements RPCCallBase {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCCallBase#addListener(lbms.plugins.mldht.kad.RPCCallListener)
 	 */
-	public void addListener (RPCCallListener cl) {
+	public synchronized void addListener (RPCCallListener cl) {
 		if (listeners == null) {
 			listeners = new ArrayList<RPCCallListener>(1);
 		}
@@ -62,7 +91,7 @@ public class RPCCall implements RPCCallBase {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCCallBase#removeListener(lbms.plugins.mldht.kad.RPCCallListener)
 	 */
-	public void removeListener (RPCCallListener cl) {
+	public synchronized void removeListener (RPCCallListener cl) {
 		if (listeners != null) {
 			listeners.remove(cl);
 		}
@@ -116,7 +145,7 @@ public class RPCCall implements RPCCallBase {
 		}, rpc.getTimeoutFilter().getStallTimeout(), TimeUnit.MILLISECONDS);
 	}
 
-	private void onCallResponse (MessageBase rsp) {
+	private synchronized void onCallResponse (MessageBase rsp) {
 		if (listeners != null) {
 			for (int i = 0; i < listeners.size(); i++) {
 				listeners.get(i).onResponse(this, rsp);
@@ -124,7 +153,7 @@ public class RPCCall implements RPCCallBase {
 		}
 	}
 
-	private void onCallTimeout () {
+	private synchronized void onCallTimeout () {
 		DHT.logDebug("RPCCall timed out ID: " + new String(msg.getMTID()));
 
 		if (listeners != null) {
@@ -138,7 +167,7 @@ public class RPCCall implements RPCCallBase {
 		}
 	}
 	
-	private void onStall() {
+	private synchronized void onStall() {
 		DHT.logDebug("RPCCall stalled ID: " + new String(msg.getMTID()));
 		if (listeners != null) {
 			for (int i = 0; i < listeners.size(); i++) {

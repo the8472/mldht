@@ -1,9 +1,28 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad;
 
 import java.io.File;
 import java.net.SocketException;
+import java.util.List;
 import java.util.Map;
 
+import lbms.plugins.mldht.DHTConfiguration;
+import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.messages.AnnounceRequest;
 import lbms.plugins.mldht.kad.messages.ErrorMessage;
 import lbms.plugins.mldht.kad.messages.FindNodeRequest;
@@ -19,10 +38,8 @@ import lbms.plugins.mldht.kad.tasks.*;
 public interface DHTBase {
 	/**
 	 * Start the DHT
-	 * @param table File where the save table is located
-	 * @param port The port to use
 	 */
-	void start (File table, int port, boolean peerBootstrapOnly) throws SocketException;
+	void start (DHTConfiguration config) throws SocketException;
 
 	/**
 	 * Stop the DHT
@@ -46,7 +63,7 @@ public interface DHTBase {
 	 * @param info_hash The info_hash
 	 * @return The task which handles this
 	 */
-	public PeerLookupTask lookupPeers(byte[] info_hash);
+	public PeerLookupTask createPeerLookup(byte[] info_hash);
 	
 	
 	/**
@@ -59,9 +76,6 @@ public interface DHTBase {
 	 */
 	boolean isRunning ();
 
-	/// Get the DHT port
-	int getPort ();
-
 	/// Get statistics about the DHT
 	DHTStats getStats ();
 
@@ -71,13 +85,6 @@ public interface DHTBase {
 	 * @param hport The port of the host
 	 */
 	void addDHTNode (String host, int hport);
-
-	/**
-	 * Returns maxNodes number of <IP address, port> nodes
-	 * that are closest to ourselves and are good.
-	 * @param maxNodes maximum nr of nodes in QMap to return.
-	 */
-	Map<String, Integer> getClosestGoodNodes (int maxNodes);
 
 	void started ();
 
@@ -95,7 +102,7 @@ public interface DHTBase {
 
 	public void error (ErrorMessage r);
 
-	public void timeout (MessageBase r);
+	public void timeout (RPCCallBase r);
 
 	public void addStatsListener (DHTStatsListener listener);
 
@@ -105,13 +112,13 @@ public interface DHTBase {
 
 	public TaskManager getTaskManager ();
 
-	boolean canStartTask ();
+	boolean canStartTask (Task toCheck);
 
 	NodeLookup findNode (Key id);
 
 	PingRefreshTask refreshBucket (KBucket bucket);
 
-	public PingRefreshTask refreshBuckets (KBucket[] buckets, boolean cleanOnTimeout);
+	public PingRefreshTask refreshBuckets (List<RoutingTableEntry> buckets, boolean cleanOnTimeout);
 
 	NodeLookup fillBucket (Key id, KBucket bucket);
 

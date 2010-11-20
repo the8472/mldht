@@ -1,3 +1,19 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.azureus;
 
 import java.io.File;
@@ -6,6 +22,7 @@ import java.io.StringWriter;
 import java.net.SocketException;
 import java.util.Map;
 
+import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.azureus.gui.DHTView;
 import lbms.plugins.mldht.azureus.gui.SWTHelper;
 import lbms.plugins.mldht.kad.DHT;
@@ -87,7 +104,7 @@ public class MlDHTPlugin implements UnloadablePlugin, PluginListener {
 
 		for (DHTtype type : DHTtype.values()) {
 			config_model.addBooleanParameter2("autoopen." + type.shortName,
-					("mldht.autoopen." + type.shortName).toLowerCase(), true);
+					("mldht.autoopen." + type.shortName).toLowerCase(), false);
 		}
 		config_model.addBooleanParameter2("backupOnly", "mldht.backupOnly",
 				false);
@@ -97,6 +114,7 @@ public class MlDHTPlugin implements UnloadablePlugin, PluginListener {
 				true);
 		config_model.addBooleanParameter2("showStatusEntry",
 				"mldht.showStatusEntry", true);
+		config_model.addBooleanParameter2("multihoming", "mldht.multihoming", false);
 
 		view_model = ui_manager.createBasicPluginViewModel("Mainline DHT Log");
 
@@ -312,7 +330,7 @@ public class MlDHTPlugin implements UnloadablePlugin, PluginListener {
 	 */
 	public boolean isPluginAutoOpen (String dhtType) {
 		return pluginInterface.getPluginconfig().getPluginBooleanParameter(
-				"autoopen." + dhtType, true);
+				"autoopen." + dhtType, false);
 	}
 
 	private void registerUPnPMapping (int port) {
@@ -406,19 +424,35 @@ public class MlDHTPlugin implements UnloadablePlugin, PluginListener {
 	//-------------------------------------------------------------------
 
 	public void startDHT () {
+		
+		DHTConfiguration config = new DHTConfiguration() {
+			public boolean noRouterBootstrap() {
+				return pluginInterface.getPluginconfig()
+				.getPluginBooleanParameter(
+					"onlyPeerBootstrap");
+			}
+			
+			public boolean isPersistingID() {
+				return pluginInterface.getPluginconfig().getPluginBooleanParameter("alwaysRestoreID");
+			}
+			
+			public File getNodeCachePath() {
+				return pluginInterface.getPluginconfig().getPluginUserFile("dht.cache");
+			}
+			
+			public int getListeningPort() {
+				return pluginInterface.getPluginconfig().getPluginIntParameter("port");
+			}
+			
+			public boolean allowMultiHoming() {
+				return pluginInterface.getPluginconfig().getPluginBooleanParameter("multihoming");
+			}
+		}; 
+		
 		view_model.getStatus().setText("Initializing");
 		try {
 			for (Map.Entry<DHTtype, DHT> e : dhts.entrySet()) {
-				e.getValue()
-						.start(
-								new File(pluginInterface
-										.getPluginDirectoryName()
-										+ "/dht.cache"),
-								pluginInterface.getPluginconfig()
-										.getPluginIntParameter("port"),
-								pluginInterface.getPluginconfig()
-										.getPluginBooleanParameter(
-												"onlyPeerBootstrap"));
+				e.getValue().start(config);
 
 				e.getValue().bootstrap();
 			}

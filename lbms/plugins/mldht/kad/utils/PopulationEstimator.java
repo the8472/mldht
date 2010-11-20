@@ -7,6 +7,7 @@ import java.util.*;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.Prefix;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.Key.DistanceOrder;
 
@@ -16,12 +17,12 @@ import lbms.plugins.mldht.kad.Key.DistanceOrder;
  */
 public class PopulationEstimator {
 
-	static final int						KEYSPACE_BITS					= Key.SHA1_HASH_LENGTH * 8;
+	static final int						KEYSPACE_BITS					= Key.KEY_BITS;
 	static final double						KEYSPACE_SIZE					= Math.pow(2, KEYSPACE_BITS);
 	
 	// try to close in to a rough estimate fast
 	static final double						DISTANCE_INITIAL_WEIGHT			= 0.1;
-	static final int						INITIAL_WEIGHT_COUNT			= 45;
+	static final int						INITIAL_WEIGHT_COUNT			= 20;
 	// apply less weight to individual estimates later on
 	static final double						DISTANCE_WEIGHT					= 0.03;
 
@@ -31,7 +32,7 @@ public class PopulationEstimator {
 	private List<PopulationListener>	listeners						= new ArrayList<PopulationListener>(1);
 
 	private static final int			MAX_RECENT_LOOKUP_CACHE_SIZE	= 40;
-	private Deque<Key>					recentlySeenPrefixes			= new LinkedList<Key>();
+	private Deque<Prefix>					recentlySeenPrefixes			= new LinkedList<Prefix>();
 
 	public long getEstimate () {
 		/* corrective term chosen based on simulations for updates with the 8 closest nodes
@@ -58,11 +59,11 @@ public class PopulationEstimator {
 		double[] distances = new double[neighbors.size() - 1];
 		
 		DHT.log("Estimator: new node group of "+neighbors.size(), LogLevel.Debug);
-		Key prefix = Key.getCommonPrefix(neighbors);
+		Prefix prefix = Prefix.getCommonPrefix(neighbors);
 		
 		synchronized (recentlySeenPrefixes)
 		{
-			for(Key oldPrefix : recentlySeenPrefixes)
+			for(Prefix oldPrefix : recentlySeenPrefixes)
 			{
 				if(oldPrefix.isPrefixOf(prefix))
 				{
@@ -97,7 +98,7 @@ public class PopulationEstimator {
 			byte[] rawDistance = previous.distance(entry).getHash();
 
 			double distance = 0;
-			/*
+			
 			int nonZeroBytes = 0;
 			for (int j = 0; j < Key.SHA1_HASH_LENGTH; j++) {
 				if (rawDistance[j] == 0) {
@@ -109,9 +110,9 @@ public class PopulationEstimator {
 				nonZeroBytes++;
 				distance += (rawDistance[j] & 0xFF)
 						* Math.pow(2, KEYSPACE_BITS - (j + 1) * 8);
-			}*/
+			}
 			
-			distance = new BigInteger(rawDistance).doubleValue();
+			//distance = new BigInteger(rawDistance).doubleValue();
 
 			/*
 			 * weighted average of the exponents (since single results can be
@@ -121,7 +122,6 @@ public class PopulationEstimator {
 			
 			distance = Math.log(distance) /Math.log(2);
 
-			updateCount++;
 			DHT.log("Estimator: distance value #"+updateCount+": " + distance + " avg:" + averageNodeDistanceExp2, LogLevel.Debug);
 			
 			distances[i++] = distance;
@@ -132,11 +132,9 @@ public class PopulationEstimator {
 		double weight;
 		
 		Arrays.sort(distances);
-		
-		if (updateCount < INITIAL_WEIGHT_COUNT)
-			weight = DISTANCE_INITIAL_WEIGHT;
-		else
-			weight = DISTANCE_WEIGHT;
+
+		weight = updateCount < INITIAL_WEIGHT_COUNT ? DISTANCE_INITIAL_WEIGHT : DISTANCE_WEIGHT;
+		updateCount++;
 		
 		// use a weighted 2-element median for max. accuracy 
 		double middle = (distances.length - 1.0) / 2.0 ;
@@ -196,18 +194,21 @@ public class PopulationEstimator {
 				int idx = Math.min(keyspace.size() - 1, Math.abs(Collections.binarySearch(keyspace, target)));
 				TreeSet<Key> closestSet = new TreeSet<Key>(new Key.DistanceOrder(target));
 
-				int sizeGoal = 5 + rand.nextInt(40);
+				int sizeGoal = 5 + rand.nextInt(4);
 				
-				for (int k = 0; k < sizeGoal*2; k++)
+				/*
+				for (int k = 0; k < sizeGoal*4; k++)
 				{
 					if (idx - k >= 0)
 						closestSet.add(keyspace.get(idx - k));
 					if (idx + k < keyspace.size())
 						closestSet.add(keyspace.get(idx + k));
-				}
+				}*/
 
 				//int sizeGoal = (int) (6 + Math.pow(rand.nextDouble(), 3) * 20);
 				//int sizeGoal = keyspace.size() / 1000;
+				
+				closestSet.addAll(keyspace);
 				
 				while (closestSet.size() > sizeGoal)
 					closestSet.remove(closestSet.last());

@@ -1,3 +1,19 @@
+/*
+ *    This file is part of mlDHT. 
+ * 
+ *    mlDHT is free software: you can redistribute it and/or modify 
+ *    it under the terms of the GNU General Public License as published by 
+ *    the Free Software Foundation, either version 2 of the License, or 
+ *    (at your option) any later version. 
+ * 
+ *    mlDHT is distributed in the hope that it will be useful, 
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ *    GNU General Public License for more details. 
+ * 
+ *    You should have received a copy of the GNU General Public License 
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ */
 package lbms.plugins.mldht.kad.tasks;
 
 import java.net.InetSocketAddress;
@@ -6,6 +22,7 @@ import java.util.Set;
 
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
+import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.messages.FindNodeRequest;
 import lbms.plugins.mldht.kad.messages.FindNodeResponse;
 import lbms.plugins.mldht.kad.messages.MessageBase;
@@ -40,20 +57,20 @@ public class KeyspaceCrawler extends Task {
 					// send a findNode to the node
 					FindNodeRequest fnr;
 
-					fnr = new FindNodeRequest(node.getOurID(),Key.createRandomKey());
+					fnr = new FindNodeRequest(Key.createRandomKey());
 					fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setDestination(e.getAddress());
-					rpcCall(fnr);
+					rpcCall(fnr,e.getID());
 
 
 					if(canDoRequest())
 					{
-						fnr = new FindNodeRequest(node.getOurID(),e.getID());
+						fnr = new FindNodeRequest(e.getID());
 						fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 						fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 						fnr.setDestination(e.getAddress());
-						rpcCall(fnr);						
+						rpcCall(fnr,e.getID());						
 					}
 					
 					synchronized (visited) {
@@ -98,7 +115,7 @@ public class KeyspaceCrawler extends Task {
 						{
 							// add node to todo list
 							KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-							if (!e.getID().equals(node.getOurID()) && !todo.contains(e) && !visited.contains(e))
+							if (!node.allLocalIDs().contains(e.getID()) && !todo.contains(e) && !visited.contains(e))
 							{
 								todo.add(e);
 							}
@@ -145,16 +162,13 @@ public class KeyspaceCrawler extends Task {
 
 		// delay the filling of the todo list until we actually start the task
 		
-		KBucket[] buckets = node.getBuckets();
-		outer: for (int i = buckets.length -1; i >= 1; i--)
-			if (buckets[i] != null)
-				for (KBucketEntry e : buckets[i].getEntries())
-					if (!e.isBad())
-					{
-						todo.add(e);
-						added++;
-					}
-
+		outer: for (RoutingTableEntry bucket : node.getBuckets())
+			for (KBucketEntry e : bucket.getBucket().getEntries())
+				if (!e.isBad())
+				{
+					todo.add(e);
+					added++;
+				}
 		super.start();
 	}
 

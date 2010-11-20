@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <jardesc>
-    <jar path="C:/Program Files (x86)/Vuze/plugins/mlDHT/mldht_1.3.4.1.jar"/>
+    <jar path="C:/Program Files (x86)/Vuze/plugins/mlDHT/mldht_1.3.5.2.jar"/>
     <options buildIfNeeded="true" compress="true" descriptionLocation="/mldht/dht-plugin.jardesc" exportErrors="true" exportWarnings="true" includeDirectoryEntries="true" overwrite="true" saveDescription="true" storeRefactorings="false" useSourceFolders="false"/>
     <storedRefactorings deprecationInfo="true" structuralOnly="false"/>
     <selectedProjects/>
@@ -13,10 +13,12 @@
     <selectedElements exportClassFiles="true" exportJavaFiles="false" exportOutputFolder="false">
         <file path="/mldht/plugin.properties"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad"/>
+        <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.messages"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.tasks"/>
-        <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.utils"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.azureus"/>
+        <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.utils"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.azureus.gui"/>
+        <file path="/mldht/gpl-2.0.txt"/>
     </selectedElements>
 </jardesc>

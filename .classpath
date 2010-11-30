@@ -15,5 +15,6 @@
 	<classpathentry kind="lib" path="libs/hibernate/slf4j-api-1.6.1.jar"/>
 	<classpathentry kind="lib" path="libs/hsqldb.jar"/>
 	<classpathentry kind="lib" path="libs/hibernate/slf4j-simple-1.6.1.jar"/>
+	<classpathentry kind="lib" path="libs/hibernate/mchange-commons-0.2.jar"/>
 	<classpathentry kind="output" path="dist"/>
 </classpath>

@@ -20,6 +20,7 @@ import lbms.plugins.mldht.indexer.db.IndexHintInterceptor;
 
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.AnnotationConfiguration;
+import org.hibernate.cfg.Configuration;
 
 public class HibernateUtil {
 	
@@ -32,7 +33,7 @@ public class HibernateUtil {
 		try
 		{
 			//By default it will look for hibernate.cfg.xml in the class path
-			AnnotationConfiguration config = new AnnotationConfiguration().configure();
+			Configuration config = new Configuration().configure();
 			config.addAnnotatedClass(TorrentDBEntry.class);
 			config.setInterceptor(new IndexHintInterceptor());
 			if(config.getProperty("hibernate.dialect").contains("MySQL"))

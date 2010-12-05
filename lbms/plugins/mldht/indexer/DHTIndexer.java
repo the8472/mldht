@@ -24,7 +24,7 @@ import lbms.plugins.mldht.kad.DHTLogger;
 
 public class DHTIndexer {
 	
-	static final ScheduledThreadPoolExecutor indexerScheduler;
+	public static final ScheduledThreadPoolExecutor indexerScheduler;
 	
 	static {
 		final ThreadGroup executorGroup = new ThreadGroup("DHT Indexer");

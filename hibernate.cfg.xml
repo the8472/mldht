@@ -14,14 +14,7 @@
 		<!-- JDBC connection pool (use the built-in) -->
 		<!--  <property name="connection.pool_size">5</property> -->
 
-		<property name="connection.provider_class">org.hibernate.connection.C3P0ConnectionProvider</property>
-		<property name="c3p0.acquire_increment">1</property>
-        <property name="c3p0.idle_test_period">50</property> <!-- seconds -->
-        <property name="c3p0.max_size">10</property>
-        <property name="c3p0.max_statements">100</property>
-        <property name="c3p0.min_size">1</property>
-        <property name="c3p0.timeout">100</property> <!-- seconds -->
-		
+		<property name="connection.provider_class">lbms.plugins.mldht.indexer.db.PooledConnectionProvider</property>
 		
 		<!-- SQL dialect - This tells the SQL grammer to be used -->
 		<!-- use custom dialects provided in the same package to make it work! -->

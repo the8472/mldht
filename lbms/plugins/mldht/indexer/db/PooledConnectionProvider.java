@@ -20,7 +20,7 @@ public class PooledConnectionProvider implements ConnectionProvider {
 	Properties connectConfig;
 	Driver driver;
 	String jdbcUrl;
-	ConcurrentLinkedQueue<Connection> connectionPool;
+	ConcurrentLinkedQueue<Connection> connectionPool = new ConcurrentLinkedQueue<Connection>();
 	ScheduledFuture<?> poolCleaner;
 
 	public void close() throws HibernateException {
@@ -85,7 +85,7 @@ public class PooledConnectionProvider implements ConnectionProvider {
 		Connection c = connectionPool.poll();
 		if(c == null)
 		{
-			driver.connect(jdbcUrl, connectConfig);
+			c = driver.connect(jdbcUrl, connectConfig);
 			c.setAutoCommit(false);
 			c.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
 		}

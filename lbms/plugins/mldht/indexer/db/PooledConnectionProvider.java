@@ -68,7 +68,7 @@ public class PooledConnectionProvider implements ConnectionProvider {
 			jdbcUrl = (String) hibernateConfig.get("hibernate.connection.url");
 			driver = DriverManager.getDriver(jdbcUrl);
 			connectConfig = new Properties();
-			connectConfig.put("name", hibernateConfig.get("hibernate.connection.username"));
+			connectConfig.put("user", hibernateConfig.get("hibernate.connection.username"));
 			connectConfig.put("password", hibernateConfig.get("hibernate.connection.password"));
 			poolCleaner = DHTIndexer.indexerScheduler.scheduleWithFixedDelay(new Runnable() {
 				public void run() {

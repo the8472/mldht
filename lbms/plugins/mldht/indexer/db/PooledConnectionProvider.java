@@ -43,17 +43,9 @@ public class PooledConnectionProvider implements ConnectionProvider {
 	private void cleanPool() {
 		try
 		{
-			int i = 0;
-			for(Iterator<Connection> it = connectionPool.iterator();it.hasNext();)
-			{
-				Connection c = it.next();
-				i++;
-				if(i > DHTIndexer.indexerScheduler.getPoolSize())
-				{
-					it.remove();
-					c.close();
-				}
-			}
+			Connection c = connectionPool.poll();
+			if(c != null && !c.isClosed() && connectionPool.size() < DHTIndexer.indexerScheduler.getPoolSize() && c.isValid(2))
+				connectionPool.add(c);
 		} catch (SQLException e)
 		{
 			// TODO Auto-generated catch block

@@ -11,6 +11,9 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import lbms.plugins.mldht.indexer.DHTIndexer;
+import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.DHTLogger;
+import lbms.plugins.mldht.kad.DHT.LogLevel;
 
 import org.hibernate.HibernateException;
 import org.hibernate.connection.ConnectionProvider;
@@ -37,19 +40,27 @@ public class PooledConnectionProvider implements ConnectionProvider {
 	}
 
 	public void closeConnection(Connection toClose) throws SQLException {
-		connectionPool.add(toClose);
+		if(!toClose.isClosed())
+			connectionPool.add(toClose);
 	}
 	
 	private void cleanPool() {
 		try
 		{
-			Connection c = connectionPool.poll();
-			if(c != null && !c.isClosed() && connectionPool.size() < DHTIndexer.indexerScheduler.getPoolSize() && c.isValid(2))
-				connectionPool.add(c);
+			Connection c = null;
+			while((c = connectionPool.poll()) != null)
+			{
+				if(!c.isClosed() && connectionPool.size() < DHTIndexer.indexerScheduler.getPoolSize() && c.isValid(2))
+				{
+					connectionPool.add(c);
+					break;
+				}
+					
+				c.close();
+			}
 		} catch (SQLException e)
 		{
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			DHT.log(e, LogLevel.Error);
 		}
 	}
 
@@ -75,7 +86,7 @@ public class PooledConnectionProvider implements ConnectionProvider {
 
 	public Connection getConnection() throws SQLException {
 		Connection c = connectionPool.poll();
-		if(c == null)
+		if(c == null || c.isClosed())
 		{
 			c = driver.connect(jdbcUrl, connectConfig);
 			c.setAutoCommit(false);
@@ -87,8 +98,6 @@ public class PooledConnectionProvider implements ConnectionProvider {
 	public boolean supportsAggressiveRelease() {
 		return false;
 	}
-	
-	
 	
 	
 }

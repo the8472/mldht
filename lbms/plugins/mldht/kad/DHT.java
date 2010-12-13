@@ -225,6 +225,7 @@ public class DHT implements DHTBase {
 		node.recieved(this, r);
 		
 		List<DBItem> dbl = db.sample(r.getInfoHash(), 50,type, r.isNoSeeds());
+
 		for(DHTIndexingListener listener : indexingListeners)
 		{
 			List<PeerAddressDBItem> toAdd = listener.incomingPeersRequest(r.getInfoHash(), r.getOrigin().getAddress(), r.getID());
@@ -233,6 +234,8 @@ public class DHT implements DHTBase {
 			if(dbl != null && !toAdd.isEmpty())
 				dbl.addAll(toAdd);
 		}
+		
+		
 			
 
 		// generate a token
@@ -730,10 +733,10 @@ public class DHT implements DHTBase {
 				new RPCServer(this, getPort(),serverStats);
 		}
 		
-		
 		if (!isRunning()) {
 			return;
 		}
+				
 		long now = System.currentTimeMillis();
 		
 		node.doBucketChecks(now);
@@ -981,6 +984,40 @@ public class DHT implements DHTBase {
 
 	public void removeStatusListener (DHTStatusListener listener) {
 		statusListeners.remove(listener);
+	}
+	
+	public String getDiagnostics() {
+		StringBuilder b = new StringBuilder();
+
+		b.append("==========================\n");
+		b.append("DHT Diagnostics. Type").append(type).append('\n');
+		b.append("# of Servers: ").append(servers.size()).append('\n');
+		
+		if(!isRunning())
+			return b.toString();
+		
+		b.append("-----------------------\n");
+		b.append("Stats\n");
+		b.append(stats.toString());
+		b.append("-----------------------\n");
+		b.append("Routing table\n");
+		b.append(node.toString());
+		b.append("-----------------------\n");
+		b.append("RPC Servers\n");
+		for(RPCServer srv : servers)
+			b.append(srv.toString());
+		b.append("-----------------------\n");
+		b.append("Lookup Cache\n");
+		b.append(cache.toString());
+		b.append("-----------------------\n");
+		b.append("Tasks\n");
+		b.append(tman.toString());
+		b.append("\n\n\n");
+		
+		
+		
+		
+		return b.toString();
 	}
 
 	/**

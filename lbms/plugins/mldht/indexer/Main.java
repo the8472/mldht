@@ -21,6 +21,7 @@ import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.util.Date;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import org.hibernate.HibernateException;
 import org.hibernate.Session;
@@ -99,8 +100,7 @@ public class Main {
 		
 		InfoHashGatherer dumper = new InfoHashGatherer();
 		
-		for (Map.Entry<DHTtype, DHT> e : dhts.entrySet()) {
-			DHT dht = e.getValue();
+		for (DHT dht : dhts.values()) {
 			dht.start(config);
 			dht.bootstrap();
 			dht.addIndexingLinstener(dumper);
@@ -111,6 +111,26 @@ public class Main {
 		dumper.setMetaDataGatherer(finder);
 
 		BufferedReader con = new BufferedReader(new InputStreamReader(System.in));
+		
+		DHTIndexer.indexerScheduler.scheduleWithFixedDelay(new Runnable() {
+			public void run() {
+				try
+				{
+					final PrintWriter statusWriter = new PrintWriter("./diagnostics.log");
+					for (DHT dht : dhts.values()) {
+						statusWriter.print(dht.getDiagnostics()); 
+					}
+					
+					
+					statusWriter.close();
+				} catch (Exception e)
+				{
+					e.printStackTrace();
+				}
+			}
+		}, 10, 30, TimeUnit.SECONDS);
+		
+		
 		System.out.println("Type 'quit' to shutdown");
 		
 		while(true)

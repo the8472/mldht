@@ -91,7 +91,6 @@ public class TaskManager {
 				Task t = null;
 				while (queued.size() > 0 && dh_table.canStartTask(t = queued.peekFirst())) {
 					t = queued.removeFirst();
-					//Out(SYS_DHT|LOG_NOTICE) << "DHT: starting queued task" << endl;
 					t.start();
 					tasks.put(t.getTaskID(), t);
 				}
@@ -119,6 +118,28 @@ public class TaskManager {
 		synchronized (queued) {
 			return queued.toArray(new Task[queued.size()]);
 		}
+	}
+	
+	public String toString() {
+		StringBuilder b = new StringBuilder();
+		b.append("next id: ").append(next_id).append('\n');
+		b.append("#### active: \n");
+		
+		synchronized (tasks)
+		{
+			for(Task t : tasks.values())
+				b.append(t.toString());
+		}
+		
+		b.append("#### queued: \n");
+		
+		synchronized (queued)
+		{
+			for(Task t : queued)
+				b.append(t.toString());
+		}
+		
+		return b.toString();
 	}
 
 }

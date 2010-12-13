@@ -31,7 +31,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 public class MessageDecoder {
 
 	public static MessageBase parseMessage (Map<String, Object> map,
-			RPCServerBase srv) {
+			RPCServer srv) {
 
 		try {
 			String msgType = getStringFromBytes((byte[]) map.get(Type.TYPE_KEY));
@@ -103,7 +103,7 @@ public class MessageDecoder {
 	 * @param srv
 	 * @return
 	 */
-	private static MessageBase parseResponse (Map<String, Object> map,RPCServerBase srv) {
+	private static MessageBase parseResponse (Map<String, Object> map,RPCServer srv) {
 
 		byte[] mtid = (byte[]) map.get(MessageBase.TRANSACTION_KEY);
 		if (mtid == null || mtid.length < 1)
@@ -198,7 +198,7 @@ public class MessageDecoder {
 	 * @param map
 	 * @return
 	 */
-	private static MessageBase parseRequest (Map<String, Object> map, RPCServerBase srv) {
+	private static MessageBase parseRequest (Map<String, Object> map, RPCServer srv) {
 		Object rawRequestMethod = map.get(Type.REQ_MSG.getRPCTypeName());
 		Map<String, Object> args = (Map<String, Object>) map.get(Type.REQ_MSG.innerKey());
 		

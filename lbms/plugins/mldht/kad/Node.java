@@ -125,7 +125,7 @@ public class Node {
 	
 	
 	public void insertEntry (KBucketEntry entry, boolean internalInsert) {
-		if(usedIDs.containsKey(entry.getID()) || AddressUtils.isBogon(entry.getAddress()))
+		if(usedIDs.containsKey(entry.getID()) || AddressUtils.isBogon(entry.getAddress()) || !dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(entry.getAddress().getAddress()))
 			return;
 		
 		Key nodeID = entry.getID();
@@ -273,11 +273,6 @@ public class Node {
 	 */
 	public void doBucketChecks (long now) {
 		
-		/*
-		for(RoutingTableEntry e : routingTable)
-			System.out.println("\t"+e.prefix);
-		System.out.println("----------------------");
-		*/
 		
 		// don't do pings too often if we're not receiving anything (connection might be dead)
 		if(num_receives != numReceivesAtLastCheck)
@@ -621,6 +616,14 @@ public class Node {
 
 	public List<RoutingTableEntry> getBuckets () {
 		return Collections.unmodifiableList(routingTable) ;
+	}
+	
+	@Override
+	public String toString() {
+		StringBuilder b = new StringBuilder();
+		for(RoutingTableEntry e : routingTable)
+			b.append(e.prefix).append("   entries:").append(e.bucket.getNumEntries()).append(" replacements:").append(e.bucket.getNumReplacements()).append('\n');
+		return b.toString();
 	}
 
 }

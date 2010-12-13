@@ -194,6 +194,10 @@ public class KBucket implements Externalizable {
 	public int getNumEntries () {
 		return entries.size();
 	}
+	
+	public int getNumReplacements() {
+		return replacementBucket.size();
+	}
 
 	/**
 	 * @return the entries

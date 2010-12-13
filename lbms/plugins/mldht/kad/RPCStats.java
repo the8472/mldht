@@ -45,6 +45,26 @@ public class RPCStats {
 		receivedMessages = new int[Method.values().length][Type.values().length];
 		timeoutMessages = new int[Method.values().length];
 	}
+	
+	@Override
+	public String toString() {
+		StringBuilder b = new StringBuilder();
+		b.append("### local RPCs\n");
+		b.append("REQ / RSP / Timeout\n");
+		for(Method m : Method.values())
+		{
+			b.append(m).append('\t').append(sentMessages[m.ordinal()][Type.REQ_MSG.ordinal()]).append('/').append(receivedMessages[m.ordinal()][Type.RSP_MSG.ordinal()]).append('/').append(timeoutMessages[m.ordinal()]).append('\n');
+		}
+		b.append("### remote RPCs\n");
+		b.append("REQ / RSP\n");
+		for(Method m : Method.values())
+		{
+			b.append(m).append('\t').append(receivedMessages[m.ordinal()][Type.REQ_MSG.ordinal()]).append('/').append(sentMessages[m.ordinal()][Type.RSP_MSG.ordinal()]).append('\n');
+		}
+
+		
+		return b.toString();
+	}
 
 	/**
 	 * @return the receivedBytes

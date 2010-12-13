@@ -44,7 +44,7 @@ public abstract class Task implements RPCCallListener {
 	protected Key						targetKey;
 
 	protected String					info;
-	protected RPCServerBase				rpc;
+	protected RPCServer					rpc;
 	
 	private AtomicInteger				outstandingRequestsExcludingStalled = new AtomicInteger();
 	private AtomicInteger				outstandingRequests = new AtomicInteger();
@@ -62,7 +62,7 @@ public abstract class Task implements RPCCallListener {
 	 * @param rpc The RPC server to do RPC calls
 	 * @param node The node
 	 */
-	Task (Key target, RPCServerBase rpc, Node node) {
+	Task (Key target, RPCServer rpc, Node node) {
 		this.targetKey = target;
 		this.rpc = rpc;
 		this.node = node;
@@ -77,13 +77,13 @@ public abstract class Task implements RPCCallListener {
 	 * @param node The node
 	 * @param info info that should be displayed to the user, eg. download name on announce task
 	 */
-	Task (Key target, RPCServerBase rpc, Node node, String info) {
+	Task (Key target, RPCServer rpc, Node node, String info) {
 		this(target, rpc, node);
 		this.info = info;
 	}
 	
 	
-	public RPCServerBase getRPC() {
+	public RPCServer getRPC() {
 		return rpc;
 	}
 
@@ -372,5 +372,10 @@ public abstract class Task implements RPCCallListener {
 		if (listeners != null) {
 			listeners.remove(listener);
 		}
+	}
+	
+	@Override
+	public String toString() {
+		return "target:"+targetKey+" todo:"+todo.size()+" sent:"+sentReqs+" recv:"+recvResponses+" srv:"+rpc.getDerivedID()+ " name:"+info+"\n";
 	}
 }

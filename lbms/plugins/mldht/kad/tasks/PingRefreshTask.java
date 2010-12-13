@@ -39,7 +39,7 @@ public class PingRefreshTask extends Task {
 	 * @param node
 	 * @param cleanOnTimeout if true Nodes that fail to respond are removed. should be false for normal use.
 	 */
-	public PingRefreshTask (RPCServerBase rpc, Node node, boolean cleanOnTimeout) {
+	public PingRefreshTask (RPCServer rpc, Node node, boolean cleanOnTimeout) {
 		this(rpc, node, node.getBuckets(), cleanOnTimeout);
 	}
 
@@ -49,7 +49,7 @@ public class PingRefreshTask extends Task {
 	 * @param bucket the bucket to refresh
 	 * @param cleanOnTimeout if true Nodes that fail to respond are removed. should be false for normal use.
 	 */
-	public PingRefreshTask (RPCServerBase rpc, Node node, KBucket bucket,
+	public PingRefreshTask (RPCServer rpc, Node node, KBucket bucket,
 			boolean cleanOnTimeout) {
 		super(node.getRootID(),rpc, node);
 		this.cleanOnTimeout = cleanOnTimeout;
@@ -72,7 +72,7 @@ public class PingRefreshTask extends Task {
 	 * @param bucket the bucket to refresh
 	 * @param cleanOnTimeout if true Nodes that fail to respond are removed. should be false for normal use.
 	 */
-	public PingRefreshTask (RPCServerBase rpc, Node node, List<RoutingTableEntry> buckets,
+	public PingRefreshTask (RPCServer rpc, Node node, List<RoutingTableEntry> buckets,
 			boolean cleanOnTimeout) {
 		super(node.getRootID(), rpc, node,"Multi Bucket Refresh");
 		this.cleanOnTimeout = cleanOnTimeout;

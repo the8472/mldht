@@ -263,6 +263,19 @@ public class AnnounceNodeCache {
 		}
 					
 	}
+	
+	@Override
+	public String toString() {
+		StringBuilder b = new StringBuilder();
+		b.append("anchors:\n");
+		for(CacheAnchorPoint a : anchors)
+			b.append(a).append('\n');
+		b.append("buckets:\n");
+		for(CacheBucket buck : cache.values())
+			b.append(buck.prefix).append(" entries: ").append(buck.numEntries).append('\n');
+		
+		return b.toString();
+	}
  	
 	
 }

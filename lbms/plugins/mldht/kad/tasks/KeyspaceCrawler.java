@@ -38,7 +38,7 @@ public class KeyspaceCrawler extends Task {
 	
 	Set<InetSocketAddress> responded = new HashSet<InetSocketAddress>();
 	
-	KeyspaceCrawler (RPCServerBase rpc, Node node) {
+	KeyspaceCrawler (RPCServer rpc, Node node) {
 		super(Key.createRandomKey(),rpc, node);
 		setInfo("Exhaustive Keyspace Crawl");
 	}

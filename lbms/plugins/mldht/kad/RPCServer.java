@@ -39,7 +39,7 @@ import org.gudy.azureus2.core3.util.BDecoder;
  * @author The_8472, Damokles
  *
  */
-public class RPCServer implements Runnable, RPCServerBase {
+public class RPCServer implements Runnable {
 	
 	static Map<InetAddress,RPCServer> interfacesInUse = new HashMap<InetAddress, RPCServer>(); 
 	
@@ -447,6 +447,13 @@ public class RPCServer implements Runnable, RPCServerBase {
 
 			dispatchCall(c, mtid);
 		}
+	}
+	
+	public String toString() {
+		StringBuilder b = new StringBuilder();
+		b.append(getDerivedID()).append("\t").append(getPublicAddress()).append(":").append(getPort()).append('\n');
+		b.append("rx: ").append(numReceived).append(" tx:").append(numSent).append(" active:").append(getNumActiveRPCCalls()).append('\n');
+		return b.toString();
 	}
 
 }

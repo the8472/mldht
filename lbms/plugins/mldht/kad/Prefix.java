@@ -135,7 +135,7 @@ public class Prefix extends Key {
 	public String toString() {
 		if(depth == -1)
 			return "all";
-		StringBuilder builder = new StringBuilder(20);
+		StringBuilder builder = new StringBuilder(depth+3);
 		for(int i=0;i<=depth;i++)
 			builder.append((hash[i/8] & (0x80 >> (i % 8))) != 0 ? '1' : '0');
 		builder.append("...");

@@ -345,7 +345,7 @@ public class MetaDataGatherer {
 
 			}
 
-			// update in order to avoid deadlocks
+			// update in ascending order to avoid deadlocks
 			long now = System.currentTimeMillis()/1000;
 			for(TorrentDBEntry e : toLookup)
 			{

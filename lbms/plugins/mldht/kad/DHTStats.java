@@ -147,4 +147,15 @@ public class DHTStats {
 	protected void resetStartedTimestamp () {
 		startedTimestamp = System.currentTimeMillis();
 	}
+	
+	@Override
+	public String toString() {
+		StringBuilder b = new StringBuilder();
+		b.append("DB Keys: ").append(dbStats.getKeyCount()).append('\n');
+		b.append("DB Items: ").append(dbStats.getItemCount()).append('\n');
+		b.append("TX sum: ").append(numSentPackets).append(" RX sum").append(numReceivedPackets).append('\n');
+		b.append("RPC stats\n");
+		b.append(rpcStats.toString());
+		return b.toString();
+	}
 }

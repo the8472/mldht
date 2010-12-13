@@ -38,7 +38,7 @@ public class AnnounceTask extends Task {
 	private int								port;
 	private boolean							isSeed;
 	
-	public AnnounceTask (RPCServerBase rpc, Node node,
+	public AnnounceTask (RPCServer rpc, Node node,
 			Key info_hash, int port) {
 		super(info_hash, rpc, node);
 		this.port = port;

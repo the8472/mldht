@@ -42,7 +42,7 @@ public class NodeLookup extends Task {
 	private Map<MessageBase, Key>	lookupMap;
 	private boolean forBootstrap = false;
 	
-	public NodeLookup (Key node_id, RPCServerBase rpc, Node node, boolean isBootstrap) {
+	public NodeLookup (Key node_id, RPCServer rpc, Node node, boolean isBootstrap) {
 		super(node_id, rpc, node);
 		forBootstrap = isBootstrap;
 		this.closestSet = new TreeSet<Key>(new Key.DistanceOrder(targetKey));

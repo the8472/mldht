@@ -49,7 +49,7 @@ public class PeerLookupTask extends Task {
 
 
 
-	public PeerLookupTask (RPCServerBase rpc, Node node,
+	public PeerLookupTask (RPCServer rpc, Node node,
 			Key info_hash) {
 		super(info_hash, rpc, node);
 		announceCanidates = new ArrayList<KBucketEntryAndToken>(20);

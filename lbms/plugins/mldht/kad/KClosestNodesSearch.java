@@ -101,11 +101,10 @@ public class KClosestNodesSearch {
 			reachedMax = reachedMax || center+i >= table.size() || insertBucket(table.get(center+i).getBucket());
 		}
 		
+		RPCServer srv = owner.getRandomServer();
 		
-		if(includeOurself && owner.getRandomServer().getPublicAddress() != null && entries.size() < max_entries)
+		if(includeOurself && srv.getPublicAddress() != null && entries.size() < max_entries)
 		{
-			RPCServer srv = owner.getRandomServer();
-			
 			InetSocketAddress sockAddr = new InetSocketAddress(srv.getPublicAddress(), srv.getPort());
 			entries.add(new KBucketEntry(sockAddr, srv.getDerivedID()));
 		}

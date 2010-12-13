@@ -119,8 +119,9 @@ public class RPCServer implements Runnable {
 	 * @return external addess, if known (only ipv6 for now)
 	 */
 	public InetAddress getPublicAddress() {
-		if(sock.getLocalAddress() instanceof Inet6Address && !sock.getLocalAddress().isAnyLocalAddress())
-			return sock.getLocalAddress();
+		InetAddress addr = sock.getLocalAddress();
+		if(dh_table.getType().PREFERRED_ADDRESS_TYPE.isInstance(addr) && AddressUtils.isGlobalUnicast(addr))
+			return addr;
 		return null;
 	}
 

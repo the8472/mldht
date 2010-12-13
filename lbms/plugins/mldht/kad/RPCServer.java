@@ -417,9 +417,9 @@ public class RPCServer implements Runnable {
 			try
 			{
 				sock.send(p);
-			} catch (BindException e)
+			} catch (IOException e)
 			{
-				if(NetworkInterface.getByInetAddress(sock.getLocalAddress()) == null)
+				if(sock.isClosed() || NetworkInterface.getByInetAddress(sock.getLocalAddress()) == null)
 				{
 					createSocket();
 					sock.send(p);

@@ -41,7 +41,7 @@ public class IndexHintInterceptor extends EmptyInterceptor
     			String table = tables.get(i);
     			String index = indices.get(i);
     			
-    			int insertPoint = processedQuery.indexOf(table) + table.length();
+    			int insertPoint = processedQuery.indexOf(" "+table+" ") + table.length() + 2;
     			processedQuery.insert(insertPoint, " use index("+index+") ");
     			
     		}

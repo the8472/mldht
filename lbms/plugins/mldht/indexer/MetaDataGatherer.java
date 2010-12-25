@@ -53,6 +53,7 @@ public class MetaDataGatherer {
 	public static final int MAX_PEERS_PER_INFOHASH = 40;
 	public static final int LOOKUPS_PER_VIRTUAL_NODE = 3;
 	public static final int PIVOT_EVERY_N_VIRTUAL_NODES = 3;
+	public static final int MIN_PIVOTS = 32;
 	public static final int MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE = 2;
 	public static final int MAX_FINISHED_UPDATE_CHARGE = 100;
 
@@ -242,7 +243,7 @@ public class MetaDataGatherer {
 	}
 	
 	private void updatePivots() {
-		int numPivots = Math.max(2, numVirtualNodes / PIVOT_EVERY_N_VIRTUAL_NODES);
+		int numPivots = Math.max(MIN_PIVOTS, numVirtualNodes / PIVOT_EVERY_N_VIRTUAL_NODES);
 		Key k = Key.createRandomKey();
 		int i = 0;
 		while(lookupPivotPoints.size() < numPivots)

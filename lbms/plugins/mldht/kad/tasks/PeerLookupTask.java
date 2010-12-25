@@ -58,7 +58,7 @@ public class PeerLookupTask extends Task {
 		this.closestSet = new TreeSet<KBucketEntryAndToken>(new KBucketEntry.DistanceOrder(targetKey));
 		cache = rpc.getDHT().getCache();
 		// register key even before the task is started so the cache can already accumulate entries
-		cache.register(targetKey);
+		cache.register(targetKey,false);
 
 		DHT.logDebug("PeerLookupTask started: " + getTaskID());
 	}
@@ -286,8 +286,7 @@ public class PeerLookupTask extends Task {
 	 * @see lbms.plugins.mldht.kad.Task#start()
 	 */
 	@Override
-	public
-	void start () {
+	public void start () {
 		//delay the filling of the todo list until we actually start the task
 		KClosestNodesSearch kns = new KClosestNodesSearch(targetKey,
 				DHTConstants.MAX_ENTRIES_PER_BUCKET * 4,rpc.getDHT());
@@ -296,7 +295,7 @@ public class PeerLookupTask extends Task {
 		todo.addAll(kns.getEntries());
 		
 		// re-register once we actually started
-		cache.register(targetKey);
+		cache.register(targetKey,fastLookup);
 		todo.addAll(cache.get(targetKey,DHTConstants.MAX_CONCURRENT_REQUESTS * 2,Collections.EMPTY_SET));
 
 		super.start();

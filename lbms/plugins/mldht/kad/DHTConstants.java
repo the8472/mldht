@@ -68,6 +68,7 @@ public class DHTConstants {
 	public static final int		RANDOM_LOOKUP_INTERVAL					= 10 * 60 * 1000;
 
 	public static final int		ANNOUNCE_CACHE_MAX_AGE					= 30 * 60 * 1000;
+	public static final int		ANNOUNCE_CACHE_FAST_LOOKUP_AGE			= 8 * 60 * 1000;
 
 
 	public static final String[]			BOOTSTRAP_NODES							= new String[]	{ "mldht.wifi.pps.jussieu.fr", 	"router.bittorrent.com" };

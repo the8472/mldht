@@ -20,8 +20,6 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class AnnounceNodeCache {
 	
@@ -32,13 +30,12 @@ public class AnnounceNodeCache {
 			hash = k.hash;
 		}
 		
-		long insertationTime = System.currentTimeMillis();
+		long expirationTime;
 	}
 	
 	private static class CacheBucket {
 	
 		Prefix prefix;
-		AtomicInteger numEntries = new AtomicInteger();
 		ConcurrentLinkedQueue<KBucketEntry> entries = new ConcurrentLinkedQueue<KBucketEntry>();
 		
 		public CacheBucket(Prefix p) {
@@ -46,7 +43,7 @@ public class AnnounceNodeCache {
 		}
 	}
 	
-	ConcurrentSkipListSet<CacheAnchorPoint> anchors = new ConcurrentSkipListSet<CacheAnchorPoint>();
+	ConcurrentSkipListMap<Key, CacheAnchorPoint> anchors = new ConcurrentSkipListMap<Key,CacheAnchorPoint>();
 	ConcurrentSkipListMap<Key, CacheBucket> cache = new ConcurrentSkipListMap<Key, AnnounceNodeCache.CacheBucket>();
 	
 	
@@ -55,12 +52,11 @@ public class AnnounceNodeCache {
 		cache.put(rootBucket.prefix, rootBucket);
 	}
 	
-	public void register(Key target)
+	public void register(Key target, boolean isFastLookup)
 	{
 		CacheAnchorPoint anchor = new CacheAnchorPoint(target);
-		// replace old anchors to update timestamps
-		anchors.remove(anchor);
-		anchors.add(anchor);
+		anchor.expirationTime = System.currentTimeMillis() + (isFastLookup ? DHTConstants.ANNOUNCE_CACHE_FAST_LOOKUP_AGE : DHTConstants.ANNOUNCE_CACHE_MAX_AGE); 
+		anchors.put(target,anchor);
 	}
 	
 	public void removeEntry(Key nodeId)
@@ -72,18 +68,9 @@ public class AnnounceNodeCache {
 			if(targetEntry == null || !targetEntry.getValue().prefix.isPrefixOf(nodeId))
 				return;
 			
-			int oldSize = targetEntry.getValue().numEntries.get();
-			int i=0;
 			for(Iterator<KBucketEntry> it = targetEntry.getValue().entries.iterator();it.hasNext();)
-			{
-				i++;
 				if(it.next().getID().equals(nodeId))
-				{
 					it.remove();
-					i--;
-				}
-			}
-			targetEntry.getValue().numEntries.compareAndSet(oldSize,i);
 		}
 			
 	}
@@ -104,16 +91,13 @@ public class AnnounceNodeCache {
 			
 			CacheBucket targetBucket = targetEntry.getValue();
 			
-			int size = targetBucket.numEntries.get();
-			
-			// check for presence after we snapshot the size to check for concurrent modification later on
 			if(targetBucket.entries.contains(entryToInsert))
 				break;
 			
-			if(size >= DHTConstants.MAX_CONCURRENT_REQUESTS)
+			if(targetBucket.entries.size() >= DHTConstants.MAX_CONCURRENT_REQUESTS)
 			{
 				// cache entry full, see if we this bucket prefix covers any anchor
-				Key anchor = anchors.ceiling(new CacheAnchorPoint(targetBucket.prefix));
+				Key anchor = anchors.ceilingEntry(targetBucket.prefix).getValue();
 											
 				if(anchor == null || !targetBucket.prefix.isPrefixOf(anchor))
 					break;
@@ -143,8 +127,6 @@ public class AnnounceNodeCache {
 				continue;
 			}
 			
-			if(!targetBucket.numEntries.compareAndSet(size, size+1))
-				continue;
 			targetBucket.entries.add(entryToInsert);
 			break;
 			
@@ -192,8 +174,8 @@ public class AnnounceNodeCache {
 	public void cleanup(long now)
 	{
 		// first pass, eject old anchors
-		for(Iterator<CacheAnchorPoint> it = anchors.iterator();it.hasNext();)
-			if(now - it.next().insertationTime > DHTConstants.ANNOUNCE_CACHE_MAX_AGE)
+		for(Iterator<CacheAnchorPoint> it = anchors.values().iterator();it.hasNext();)
+			if(now - it.next().expirationTime > 0)
 				it.remove();
 		
 		// 2nd pass, eject old entries
@@ -203,7 +185,6 @@ public class AnnounceNodeCache {
 			for(Iterator<KBucketEntry> it2 = b.entries.iterator();it2.hasNext();)
 				if(now - it2.next().getLastSeen() > DHTConstants.ANNOUNCE_CACHE_MAX_AGE)
 					it2.remove();
-			b.numEntries.set(b.entries.size());
 		}
 
 		
@@ -214,8 +195,8 @@ public class AnnounceNodeCache {
 			return;
 		
 		CacheBucket current = null;
-
 		CacheBucket next = entry.getValue();
+
 		while(true)
 		{
 			current = next;
@@ -231,8 +212,8 @@ public class AnnounceNodeCache {
 			
 			
 			Prefix parent = current.prefix.getParentPrefix();
-			Key anchor = anchors.ceiling(new CacheAnchorPoint(parent));
-			if(anchor == null || !parent.isPrefixOf(anchor) || current.numEntries.get()+next.numEntries.get() < DHTConstants.MAX_CONCURRENT_REQUESTS)
+			Key anchor = anchors.ceilingEntry(parent).getValue();
+			if(anchor == null || !parent.isPrefixOf(anchor) || current.entries.size()+next.entries.size() < DHTConstants.MAX_CONCURRENT_REQUESTS)
 			{
 				synchronized (current)
 				{
@@ -268,11 +249,11 @@ public class AnnounceNodeCache {
 	public String toString() {
 		StringBuilder b = new StringBuilder();
 		b.append("anchors:\n");
-		for(CacheAnchorPoint a : anchors)
+		for(CacheAnchorPoint a : anchors.values())
 			b.append(a).append('\n');
 		b.append("buckets:\n");
 		for(CacheBucket buck : cache.values())
-			b.append(buck.prefix).append(" entries: ").append(buck.numEntries).append('\n');
+			b.append(buck.prefix).append(" entries: ").append(buck.entries.size()).append('\n');
 		
 		return b.toString();
 	}

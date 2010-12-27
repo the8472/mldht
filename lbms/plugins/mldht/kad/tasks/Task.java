@@ -376,6 +376,6 @@ public abstract class Task implements RPCCallListener {
 	
 	@Override
 	public String toString() {
-		return "target:"+targetKey+" todo:"+todo.size()+" sent:"+sentReqs+" recv:"+recvResponses+" srv:"+rpc.getDerivedID()+ " name:"+info+"\n";
+		return "target:"+targetKey+" todo:"+todo.size()+" sent:"+sentReqs+" recv:"+recvResponses+" srv:"+rpc.getDerivedID()+ " name: "+info+"\n";
 	}
 }

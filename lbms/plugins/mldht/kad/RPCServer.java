@@ -453,7 +453,7 @@ public class RPCServer implements Runnable {
 	public String toString() {
 		StringBuilder b = new StringBuilder();
 		b.append(getDerivedID()).append("\t").append(getPublicAddress()).append(":").append(getPort()).append('\n');
-		b.append("rx: ").append(numReceived).append(" tx:").append(numSent).append(" active:").append(getNumActiveRPCCalls()).append('\n');
+		b.append("rx: ").append(numReceived).append(" tx:").append(numSent).append(" active:").append(getNumActiveRPCCalls()).append(" baseRTT:").append(timeoutFilter.getStallTimeout()).append('\n');
 		return b.toString();
 	}
 

@@ -97,9 +97,9 @@ public class AnnounceNodeCache {
 			if(targetBucket.entries.size() >= DHTConstants.MAX_CONCURRENT_REQUESTS)
 			{
 				// cache entry full, see if we this bucket prefix covers any anchor
-				Key anchor = anchors.ceilingEntry(targetBucket.prefix).getValue();
+				Map.Entry<Key, CacheAnchorPoint> anchorEntry = anchors.ceilingEntry(targetBucket.prefix);
 											
-				if(anchor == null || !targetBucket.prefix.isPrefixOf(anchor))
+				if(anchorEntry == null || !targetBucket.prefix.isPrefixOf(anchorEntry.getValue()))
 					break;
 				
 				synchronized (targetBucket)
@@ -212,8 +212,8 @@ public class AnnounceNodeCache {
 			
 			
 			Prefix parent = current.prefix.getParentPrefix();
-			Key anchor = anchors.ceilingEntry(parent).getValue();
-			if(anchor == null || !parent.isPrefixOf(anchor) || current.entries.size()+next.entries.size() < DHTConstants.MAX_CONCURRENT_REQUESTS)
+			Map.Entry<Key, CacheAnchorPoint> anchor = anchors.ceilingEntry(parent);
+			if(anchor == null || !parent.isPrefixOf(anchor.getValue()) || current.entries.size()+next.entries.size() < DHTConstants.MAX_CONCURRENT_REQUESTS)
 			{
 				synchronized (current)
 				{

@@ -17,15 +17,12 @@
 package lbms.plugins.mldht.indexer;
 
 import java.io.*;
-import java.math.BigInteger;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -33,6 +30,7 @@ import org.gudy.azureus2.core3.util.BDecoder;
 import org.gudy.azureus2.core3.util.BEncoder;
 import org.hibernate.*;
 import org.hibernate.criterion.*;
+
 
 
 import lbms.plugins.mldht.indexer.MetaDataConnectionServer.IncomingConnectionHandler;
@@ -260,20 +258,22 @@ public class MetaDataGatherer {
 		
 		updatePivots();
 		
-		int currentPool = activeOutgoingConnections.get() + fetchTasks.size();
-		int targetPool = numVirtualNodes * MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE;
+		int queuedConnections = fetchTasks.size();
+		int activeAndQueuedConnections = activeOutgoingConnections.get() + queuedConnections;
+		int maxConnections = numVirtualNodes * MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE;
 		int currentLookups = activeLookups.get();
 		int maxLookups = numVirtualNodes * LOOKUPS_PER_VIRTUAL_NODE;
 		
 		int targetNum = 0;
-		if(currentPool <= targetPool)
+		// too few connections, let's do as many lookups as we can
+		if(activeAndQueuedConnections <= maxConnections)
 			targetNum = maxLookups - currentLookups;
-		if(currentPool > targetPool && currentPool < 2 * targetPool)
-		{ // exceeding target, leave some breathing room to fill up the buffer up to 2 * target
-			currentPool = currentPool - targetPool;
+		else if(queuedConnections < maxConnections)
+		{ // we have enough connections, but lets do some more lookups to fill the queue
+			// as the buffer fills up we scale down the number of lookups we will do
+			maxLookups = (int) (maxLookups * (1.0- queuedConnections*1.0/maxConnections));
 			
-			// scale max down by the percentage left until the buffer is full too
-			maxLookups = (int) (maxLookups * (1.0- currentPool*1.0/targetPool));
+			// may become negative
 			targetNum = maxLookups - currentLookups;
 		}
 			
@@ -304,7 +304,8 @@ public class MetaDataGatherer {
 				// due to the prefix-increment we'll already be +1ed here
 				boolean possibleWraparound = pivotIdx >= lookupPivotPoints.size();
 
-				int wants = Math.min(targetNum, LOOKUPS_PER_VIRTUAL_NODE * PIVOT_EVERY_N_VIRTUAL_NODES);
+				// spread lookups over the pivot ranges
+				int wants = Math.min(targetNum, Math.max(1, (numVirtualNodes * LOOKUPS_PER_VIRTUAL_NODE) / lookupPivotPoints.size()));
 				if(wants < 1)
 					break;
 
@@ -469,6 +470,7 @@ public class MetaDataGatherer {
 		f.getParentFile().mkdirs();
 
 		RandomAccessFile raf = new RandomAccessFile(f, "rw");
+		raf.setLength(torrent.length);
 		raf.write(torrent);
 		raf.close();
 

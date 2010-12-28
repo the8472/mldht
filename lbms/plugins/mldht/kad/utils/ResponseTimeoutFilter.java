@@ -51,8 +51,6 @@ public class ResponseTimeoutFilter {
 			public void onStall(RPCCallBase c) {}
 			
 			public void onResponse(RPCCallBase c, MessageBase rsp) {
-				if(c.getRequest().getDestination().getAddress() instanceof Inet6Address)
-					DHT.log(c.getRequest().getDestination().getAddress()+ " " + c.getRTT(),DHT.LogLevel.Info);
 				 update(c.getRTT());
 			}
 		});

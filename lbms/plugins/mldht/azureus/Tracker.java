@@ -171,7 +171,8 @@ public class Tracker {
 						if (lookupTask != null) {
 							pendingCount.incrementAndGet();
 							lookupTask.setScrapeHandler(handler);
-							lookupTask.setScrapeOnly(scrapeOnly);
+							lookupTask.setNoAnnounce(scrapeOnly);
+							lookupTask.setFastTerminate(scrapeOnly);
 							lookupTask.addListener(this);
 							lookupTask.setInfo(dl.getName());
 							lookupTask.setNoSeeds(dl.isComplete(true));

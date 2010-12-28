@@ -17,6 +17,7 @@
 package lbms.plugins.mldht.kad;
 
 import java.io.*;
+import java.net.Inet6Address;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;

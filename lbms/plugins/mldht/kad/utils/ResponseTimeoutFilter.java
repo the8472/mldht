@@ -16,13 +16,11 @@
  */
 package lbms.plugins.mldht.kad.utils;
 
+import java.net.Inet6Address;
 import java.util.Arrays;
 import java.util.Collections;
 
-import lbms.plugins.mldht.kad.DHTConstants;
-import lbms.plugins.mldht.kad.RPCCall;
-import lbms.plugins.mldht.kad.RPCCallBase;
-import lbms.plugins.mldht.kad.RPCCallListener;
+import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 
 public class ResponseTimeoutFilter {
@@ -53,6 +51,8 @@ public class ResponseTimeoutFilter {
 			public void onStall(RPCCallBase c) {}
 			
 			public void onResponse(RPCCallBase c, MessageBase rsp) {
+				if(c.getRequest().getDestination().getAddress() instanceof Inet6Address)
+					DHT.log(c.getRequest().getDestination().getAddress()+ " " + c.getRTT(),DHT.LogLevel.Info);
 				 update(c.getRTT());
 			}
 		});

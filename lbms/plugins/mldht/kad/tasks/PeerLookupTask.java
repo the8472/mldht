@@ -33,9 +33,10 @@ import lbms.plugins.mldht.kad.utils.PackUtil;
  */
 public class PeerLookupTask extends Task {
 
-	private boolean							scrapeOnly;
+	private boolean							noAnnounce;
+	private boolean							lowPriority;
 	private boolean							noSeeds;
-	private boolean							fastLookup;
+	private boolean							fastTerminate;
 	
 	// nodes which have answered with tokens
 	private List<KBucketEntryAndToken>		announceCanidates;		
@@ -71,18 +72,28 @@ public class PeerLookupTask extends Task {
 		noSeeds = avoidSeeds;
 	}
 	
-	public void setFastLookup(boolean isFastLookup) {
+	/**
+	 * enabling this also enables noAnnounce
+	 */
+	public void setFastTerminate(boolean fastTerminate) {
 		if(!isQueued())
 			throw new IllegalStateException("cannot change lookup mode after startup");
-		fastLookup = isFastLookup;
-	}
-
-	public void setScrapeOnly(boolean scrapeOnly) {
-		this.scrapeOnly = scrapeOnly;
+		this.fastTerminate = fastTerminate;
+		if(fastTerminate)
+			setNoAnnounce(true);
 	}
 	
-	public boolean isScrapeOnly() {
-		return scrapeOnly;
+	public void setLowPriority(boolean lowPriority) 
+	{
+		this.lowPriority = lowPriority;
+	}
+
+	public void setNoAnnounce(boolean noAnnounce) {
+		this.noAnnounce = noAnnounce;
+	}
+	
+	public boolean isNoAnnounce() {
+		return noAnnounce;
 	}
 
 	/* (non-Javadoc)
@@ -168,24 +179,30 @@ public class PeerLookupTask extends Task {
 		}
 		
 		// if we scrape we don't care about tokens.
-		// otherwise we're only done if we have found the closest nodes with tokens
-		if(scrapeOnly || gpr.getToken() != null)
+		// otherwise we're only done if we have found the closest nodes that also returned tokens
+		if(noAnnounce || gpr.getToken() != null)
 		{
 			synchronized (closestSet)
 			{
 				closestSet.add(toAdd);
+				
 				if (closestSet.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET)
 				{
 					KBucketEntryAndToken last = closestSet.last();
 					closestSet.remove(last);
+					
 					if (toAdd == last)
-					{
+						// closest set is full and has not been modified by the latest addition
 						validReponsesSinceLastClosestSetModification++;
-					} else
-					{
+					else
+						// the latest addition displaced another entry in the closest set, we're not done here
 						validReponsesSinceLastClosestSetModification = 0;
-					}
-				}
+				} else if(targetKey.threeWayDistance(todo.first().getID(), closestSet.first().getID()) > 0 ) {
+					// the closest set is not full yet, but increment the counter anyway if the todo list doesn't contain anything better to query
+					// this usually is the case if we're using cached results and immediately visit the closest nodes before we even fill the closest set
+					validReponsesSinceLastClosestSetModification++;
+				} else
+					validReponsesSinceLastClosestSetModification = 0;
 			}
 		}
 	}
@@ -200,7 +217,7 @@ public class PeerLookupTask extends Task {
 	
 	@Override
 	boolean canDoRequest() {
-		if(scrapeOnly)
+		if(lowPriority)
 			return getNumOutstandingRequestsExcludingStalled() < DHTConstants.MAX_CONCURRENT_REQUESTS_LOWPRIO;
 		return super.canDoRequest();
 	}
@@ -233,7 +250,7 @@ public class PeerLookupTask extends Task {
 			}
 		}
 		
-		int waitingFor = fastLookup ? getNumOutstandingRequestsExcludingStalled() : getNumOutstandingRequests();
+		int waitingFor = fastTerminate ? getNumOutstandingRequestsExcludingStalled() : getNumOutstandingRequests();
 		
 		if (todo.isEmpty() && waitingFor == 0 && !isFinished()) {
 			done();
@@ -262,7 +279,7 @@ public class PeerLookupTask extends Task {
 	}
 	
 	public List<KBucketEntryAndToken> getAnnounceCanidates() {
-		if(fastLookup)
+		if(fastTerminate || noAnnounce)
 			throw new IllegalStateException("cannot use fast lookups for announces");
 		return announceCanidates;
 	}
@@ -295,7 +312,7 @@ public class PeerLookupTask extends Task {
 		todo.addAll(kns.getEntries());
 		
 		// re-register once we actually started
-		cache.register(targetKey,fastLookup);
+		cache.register(targetKey,fastTerminate);
 		todo.addAll(cache.get(targetKey,DHTConstants.MAX_CONCURRENT_REQUESTS * 2,Collections.EMPTY_SET));
 
 		super.start();

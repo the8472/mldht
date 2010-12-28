@@ -609,7 +609,7 @@ public class DHTView implements UISWTViewEventListener {
 						return;
 					}
 					if (t instanceof PeerLookupTask) {
-						item.setText(0, ((PeerLookupTask) t).isScrapeOnly() ? "Scrape" : "Get Peers");
+						item.setText(0, ((PeerLookupTask) t).isNoAnnounce() ? "Scrape" : "Get Peers");
 					} else if (t instanceof AnnounceTask) {
 						item.setText(0, "Announce");
 					} else if (t instanceof NodeLookup) {

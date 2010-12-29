@@ -38,7 +38,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
 public abstract class Task implements RPCCallListener {
 
 	protected Set<KBucketEntry>			visited;		// nodes visited, can't use a HashSet here since we can't compute a good hashcode for KBucketEntries
-	protected SortedSet<KBucketEntry>	todo;			// nodes todo
+	protected NavigableSet<KBucketEntry>	todo;			// nodes todo
 	protected Node						node;
 
 	protected Key						targetKey;
@@ -99,6 +99,9 @@ public abstract class Task implements RPCCallListener {
 
 		if (!isFinished()) {
 			callFinished(c, rsp);
+			
+			if(isDone())
+				done();
 
 			if (canDoRequest() && !isFinished()) {
 				update();
@@ -112,7 +115,9 @@ public abstract class Task implements RPCCallListener {
 		
 		if(!isFinished())
 			callStalled(c);
-			
+		
+		if(isDone())
+			done();
 		
 		if (canDoRequest() && !isFinished()) {
 			update();
@@ -130,12 +135,14 @@ public abstract class Task implements RPCCallListener {
 
 		failedReqs++;
 
-		if (!isFinished()) {
+		if (!isFinished())
 			callTimeout(c);
 
-			if (canDoRequest() && !isFinished()) {
-				update();
-			}
+		if(isDone())
+			done();
+		
+		if (canDoRequest() && !isFinished()) {
+			update();
 		}
 	}
 
@@ -353,6 +360,8 @@ public abstract class Task implements RPCCallListener {
 			}
 		}
 	}
+	
+	protected abstract boolean isDone(); 
 
 	protected void done () {
 			finished();

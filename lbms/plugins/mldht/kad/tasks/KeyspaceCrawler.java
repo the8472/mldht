@@ -80,11 +80,6 @@ public class KeyspaceCrawler extends Task {
 				// remove the entry from the todo list
 			}
 		}
-
-		if (todo.size() == 0 && getNumOutstandingRequests() == 0
-				&& !isFinished()) {
-			done();
-		} 
 	}
 
 	@Override
@@ -146,6 +141,13 @@ public class KeyspaceCrawler extends Task {
 		// do nothing to evade safeties
 	}
 	
+	@Override
+	protected boolean isDone() {
+		if (todo.size() == 0 && getNumOutstandingRequests() == 0 && !isFinished()) {
+			return true;
+		} 
+		return false;
+	}
 
 	@Override
 	void callTimeout (RPCCallBase c) {

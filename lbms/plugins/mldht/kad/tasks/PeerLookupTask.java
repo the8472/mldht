@@ -45,7 +45,6 @@ public class PeerLookupTask extends Task {
 	private Set<PeerAddressDBItem>			returnedItems;
 	private SortedSet<KBucketEntryAndToken>	closestSet;
 	
-	private int								validReponsesSinceLastClosestSetModification;
 	AnnounceNodeCache						cache;
 
 
@@ -101,19 +100,11 @@ public class PeerLookupTask extends Task {
 	 */
 	@Override
 	void callFinished (RPCCallBase c, MessageBase rsp) {
-
 		if (c.getMessageMethod() != Method.GET_PEERS) {
 			return;
 		}
 
-		// it is either a GetPeersNodesRsp or a GetPeersValuesRsp
-		GetPeersResponse gpr;
-		if (rsp instanceof GetPeersResponse) {
-			gpr = (GetPeersResponse) rsp;
-		} else {
-			return;
-		}
-		
+		GetPeersResponse gpr = (GetPeersResponse) rsp;
 		
 		for (DHTtype type : DHTtype.values())
 		{
@@ -123,7 +114,7 @@ public class PeerLookupTask extends Task {
 			int nval = nodes.length / type.NODES_ENTRY_LENGTH;
 			if (type == rpc.getDHT().getType())
 			{
-				synchronized (todo)
+				synchronized (this)
 				{
 					for (int i = 0; i < nval; i++)
 					{
@@ -163,46 +154,27 @@ public class PeerLookupTask extends Task {
 		
 		KBucketEntryAndToken toAdd = new KBucketEntryAndToken(entry, gpr.getToken());
 
-		// if someone has peers he might have filters, collect for scrape
-		if(!items.isEmpty())
+		synchronized (this)
 		{
-			if(scrapeHandler != null)
+			// if someone has peers he might have filters, collect for scrape
+			if (!items.isEmpty() && scrapeHandler != null)
 				scrapeHandler.addGetPeersRespone(gpr);
-		}
-		
-		if (gpr.getToken() != null)
-		{ // add the peer who responded to the closest nodes list, so we can do an announce
-			synchronized (announceCanidates)
-			{
+			
+			// add the peer who responded to the closest nodes list, so we can do an announce
+			if (gpr.getToken() != null)
 				announceCanidates.add(toAdd);
-			}
-		}
-		
-		// if we scrape we don't care about tokens.
-		// otherwise we're only done if we have found the closest nodes that also returned tokens
-		if(noAnnounce || gpr.getToken() != null)
-		{
-			synchronized (closestSet)
+
+			
+			// if we scrape we don't care about tokens.
+			// otherwise we're only done if we have found the closest nodes that also returned tokens
+			if (noAnnounce || gpr.getToken() != null)
 			{
 				closestSet.add(toAdd);
-				
 				if (closestSet.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET)
 				{
 					KBucketEntryAndToken last = closestSet.last();
 					closestSet.remove(last);
-					
-					if (toAdd == last)
-						// closest set is full and has not been modified by the latest addition
-						validReponsesSinceLastClosestSetModification++;
-					else
-						// the latest addition displaced another entry in the closest set, we're not done here
-						validReponsesSinceLastClosestSetModification = 0;
-				} else if(targetKey.threeWayDistance(todo.first().getID(), closestSet.first().getID()) > 0 ) {
-					// the closest set is not full yet, but increment the counter anyway if the todo list doesn't contain anything better to query
-					// this usually is the case if we're using cached results and immediately visit the closest nodes before we even fill the closest set
-					validReponsesSinceLastClosestSetModification++;
-				} else
-					validReponsesSinceLastClosestSetModification = 0;
+				}
 			}
 		}
 	}
@@ -225,55 +197,62 @@ public class PeerLookupTask extends Task {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.Task#update()
 	 */
-	void update () {
-		synchronized (todo) {
-			// check if the cache has any closer nodes after the initial query
-			todo.addAll(cache.get(targetKey, 3, visited));
-			
-			// go over the todo list and send get_peers requests
-			// until we have nothing left
-			while (!todo.isEmpty() && canDoRequest() && validReponsesSinceLastClosestSetModification < DHTConstants.MAX_CONCURRENT_REQUESTS) {
-				KBucketEntry e = todo.first();
-				todo.remove(e);
-				// only send a findNode if we haven't already visited the node
-				if (!visited.contains(e)) {
-					// send a findNode to the node
-					GetPeersRequest gpr = new GetPeersRequest(targetKey);
-					gpr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
-					gpr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
-					gpr.setDestination(e.getAddress());
-					gpr.setScrape(true);
-					gpr.setNoSeeds(noSeeds);
-					rpcCall(gpr,e.getID());
-					visited.add(e);
-				}
+	synchronized void update () {
+		// check if the cache has any closer nodes after the initial query
+		todo.addAll(cache.get(targetKey, 3, visited));
+
+		// go over the todo list and send get_peers requests
+		// until we have nothing left
+		while (!todo.isEmpty() && canDoRequest() && !isClosestSetStable()) {
+			KBucketEntry e = todo.first();
+			todo.remove(e);
+			// only send a findNode if we haven't already visited the node
+			if (!visited.contains(e)) {
+				// send a findNode to the node
+				GetPeersRequest gpr = new GetPeersRequest(targetKey);
+				gpr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
+				gpr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
+				gpr.setDestination(e.getAddress());
+				gpr.setScrape(true);
+				gpr.setNoSeeds(noSeeds);
+				rpcCall(gpr,e.getID());
+				visited.add(e);
 			}
 		}
-		
+
+	}
+	
+	private synchronized boolean isClosestSetStable() {
+		return todo.isEmpty() || (closestSet.size() > 0 && targetKey.threeWayDistance(todo.first().getID(), closestSet.last().getID()) > 0); 
+	}
+	
+	protected boolean isDone() {
 		int waitingFor = fastTerminate ? getNumOutstandingRequestsExcludingStalled() : getNumOutstandingRequests();
 		
-		if (todo.isEmpty() && waitingFor == 0 && !isFinished()) {
-			done();
-		} else if(waitingFor == 0 && validReponsesSinceLastClosestSetModification >= DHTConstants.MAX_CONCURRENT_REQUESTS)
-		{	// found all closest nodes, we're done
-			done();
+		if (todo.isEmpty() && waitingFor == 0) {
+			return true;
 		}
+		
+		return waitingFor == 0 && isClosestSetStable();
 	}
 
 	@Override
 	protected void done() {
 		super.done();
-	
-		// feed the estimator if we have usable results
-		if(validReponsesSinceLastClosestSetModification >= DHTConstants.MAX_CONCURRENT_REQUESTS)
-			synchronized (closestSet)
+
+		synchronized (this)
+		{
+			// feed the estimator if we have usable results
+			if(!todo.isEmpty() && isClosestSetStable())
 			{
 				SortedSet<Key> toEstimate = new TreeSet<Key>();
 				for(KBucketEntryAndToken e : closestSet)
 					toEstimate.add(e.getID());
 				rpc.getDHT().getEstimator().update(toEstimate);
 			}
-		
+			
+		}
+	
 		//System.out.println(returned_items);
 		//System.out.println("overall:"+returnedItems.size());
 	}

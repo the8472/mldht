@@ -148,9 +148,9 @@ public class PingRefreshTask extends Task {
 				rpcCall(pr,e.getID());
 			}
 		}
-
-		if (todo.isEmpty() && getNumOutstandingRequests() == 0 && !isFinished()) {
-			done();
-		}
+	}
+	
+	protected boolean isDone() {
+		return todo.isEmpty() && getNumOutstandingRequests() == 0 && !isFinished();
 	}
 }

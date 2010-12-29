@@ -75,12 +75,17 @@ public class NodeLookup extends Task {
 			}
 		}
 
-		if (todo.size() == 0 && getNumOutstandingRequests() == 0
-				&& !isFinished()) {
-			done();
+
+	}
+	
+	@Override
+	protected boolean isDone() {
+		if (todo.size() == 0 && getNumOutstandingRequests() == 0 && !isFinished()) {
+			return true;
 		} else if (getNumOutstandingRequests() == 0 && validReponsesSinceLastClosestSetModification >= DHTConstants.MAX_CONCURRENT_REQUESTS) {
-			done(); // quit after 10 nodes responsed
+			return true; // quit after 10 nodes responsed
 		}
+		return false;
 	}
 
 	@Override

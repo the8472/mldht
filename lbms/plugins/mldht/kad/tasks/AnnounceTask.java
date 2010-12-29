@@ -72,17 +72,24 @@ public class AnnounceTask extends Task {
 				}
 			}
 		}
-		
-		if (todo.isEmpty() && getNumOutstandingRequests() == 0 && !isFinished()) {
-			done();
-		} else if(getRecvResponses() == DHTConstants.MAX_ENTRIES_PER_BUCKET)
-			done();
 	}
 	
 	@Override
 	boolean canDoRequest() {
 		// a) we only announce to K nodes, not N; b) wait out the full timeout, not he adaptive one
 		return getNumOutstandingRequests() < DHTConstants.MAX_ENTRIES_PER_BUCKET;
+	}
+	
+	@Override
+	protected boolean isDone() {
+		if (todo.isEmpty() && getNumOutstandingRequests() == 0 && !isFinished()) {
+			return true;
+		} else if(getRecvResponses() == DHTConstants.MAX_ENTRIES_PER_BUCKET)
+		{
+			return true;
+		}
+			
+		return false;
 	}
 
 	/**

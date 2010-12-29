@@ -223,7 +223,9 @@ public class PeerLookupTask extends Task {
 	}
 	
 	private synchronized boolean isClosestSetStable() {
-		return todo.isEmpty() || (closestSet.size() > 0 && targetKey.threeWayDistance(todo.first().getID(), closestSet.last().getID()) > 0); 
+		if(todo.isEmpty())
+			return true;
+		return closestSet.size() >= DHTConstants.MAX_ENTRIES_PER_BUCKET && targetKey.threeWayDistance(todo.first().getID(), closestSet.last().getID()) > 0; 
 	}
 	
 	protected boolean isDone() {

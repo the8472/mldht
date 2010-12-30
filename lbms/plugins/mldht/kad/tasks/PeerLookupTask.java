@@ -61,6 +61,13 @@ public class PeerLookupTask extends Task {
 		cache.register(targetKey,false);
 
 		DHT.logDebug("PeerLookupTask started: " + getTaskID());
+		
+		addListener(new TaskListener() {
+			public void finished(Task t) {
+				done();
+			}
+		});
+		
 	}
 
 	public void setScrapeHandler(ScrapeResponseHandler scrapeHandler) {
@@ -238,9 +245,7 @@ public class PeerLookupTask extends Task {
 		return waitingFor == 0 && isClosestSetStable();
 	}
 
-	@Override
-	protected void done() {
-		super.done();
+	private void done() {
 
 		synchronized (this)
 		{

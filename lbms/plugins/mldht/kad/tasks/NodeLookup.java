@@ -47,6 +47,11 @@ public class NodeLookup extends Task {
 		forBootstrap = isBootstrap;
 		this.closestSet = new TreeSet<Key>(new Key.DistanceOrder(targetKey));
 		this.lookupMap = new HashMap<MessageBase, Key>();
+		addListener(new TaskListener() {
+			public void finished(Task t) {
+				done();
+			}
+		});
 	}
 
 	@Override
@@ -178,10 +183,7 @@ public class NodeLookup extends Task {
 		super.start();
 	}
 
-	@Override
-	protected void done () {
-		super.done();
-
+	private void done () {
 		rpc.getDHT().getEstimator().update(new TreeSet<Key>(closestSet));
 	}
 }

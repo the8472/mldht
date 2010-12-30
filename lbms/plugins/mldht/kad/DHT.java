@@ -518,7 +518,7 @@ public class DHT implements DHTBase {
 		scheduledActions.add(scheduler.scheduleAtFixedRate(new Runnable() {
 			public void run() {
 				// maintenance that should run all the time, before the first queries
-				tman.removeFinishedTasks(DHT.this);
+				tman.dequeue();
 
 				if (running && hasStatsListeners())
 					onStatsUpdate();
@@ -846,12 +846,12 @@ public class DHT implements DHTBase {
 					nl.addListener(bootstrapListener);
 					nl.setInfo("Bootstrap: Find Peers.");
 
-					tman.removeFinishedTasks(this);
+					tman.dequeue();
 
 				} else {
 					nl.setInfo("Bootstrap: search for ourself.");
 					nl.addListener(bootstrapListener);
-					tman.removeFinishedTasks(this);
+					tman.dequeue();
 				}
 				
 			}

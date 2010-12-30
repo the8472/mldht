@@ -41,6 +41,11 @@ public class KeyspaceCrawler extends Task {
 	KeyspaceCrawler (RPCServer rpc, Node node) {
 		super(Key.createRandomKey(),rpc, node);
 		setInfo("Exhaustive Keyspace Crawl");
+		addListener(new TaskListener() {
+			public void finished(Task t) {
+				done();
+			}
+		});
 	}
 
 	@Override
@@ -174,9 +179,8 @@ public class KeyspaceCrawler extends Task {
 		super.start();
 	}
 
-	@Override
-	protected void done () {
-		super.done();
+	
+	private void done () {
 		System.out.println("crawled "+visited.size()+" nodes, seen "+responded.size());
 	}
 }

@@ -16,12 +16,8 @@
  */
 package lbms.plugins.mldht.kad.tasks;
 
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.List;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import lbms.plugins.mldht.kad.DHTBase;
@@ -33,19 +29,39 @@ import lbms.plugins.mldht.kad.DHTBase;
  */
 public class TaskManager {
 
-	private Map<Integer, Task>	tasks;
+	private ConcurrentSkipListSet<Task>	tasks;
 	private Deque<Task>			queued;
 	private AtomicInteger		next_id = new AtomicInteger();
+	private TaskListener		finishListener 	= new TaskListener() {
+		public void finished(Task t) {
+			tasks.remove(t);				
+			
+			dequeue();
+		}
+	};
 
 	public TaskManager () {
-		tasks = new HashMap<Integer, Task>();
+		tasks = new ConcurrentSkipListSet<Task>();
 		queued = new LinkedList<Task>();
 		next_id.set(1);
 	}
 	
 	public void addTask(Task task)
 	{
+		task.addListener(finishListener);
 		addTask(task, false);
+	}
+	
+	
+	public void dequeue() {
+		synchronized (queued) {
+			Task t = null;
+			while ((t = queued.peekFirst()) != null && t.getRPC().getDHT().canStartTask(t)) {
+				queued.removeFirst();
+				tasks.add(t);
+				t.start();
+			}
+		}
 	}
 
 	/**
@@ -63,38 +79,7 @@ public class TaskManager {
 					queued.addLast(task);
 			}
 		} else {
-			synchronized (tasks) {
-				tasks.put(id, task);
-
-			}
-		}
-	}
-
-	/**
-	 * Remove all finished tasks.
-	 * @param dh_table Needed to ask permission to start a task
-	 */
-	public void removeFinishedTasks (DHTBase dh_table) {
-		synchronized (tasks) {
-
-			List<Integer> rm = new ArrayList<Integer>(tasks.size());
-			for (Task task : tasks.values()) {
-				if (task.isFinished()) {
-					rm.add(task.getTaskID());
-				}
-			}
-
-			for (Integer i : rm) {
-				tasks.remove(i);
-			}
-			synchronized (queued) {
-				Task t = null;
-				while (queued.size() > 0 && dh_table.canStartTask(t = queued.peekFirst())) {
-					t = queued.removeFirst();
-					t.start();
-					tasks.put(t.getTaskID(), t);
-				}
-			}
+				tasks.add(task);
 		}
 	}
 
@@ -109,9 +94,9 @@ public class TaskManager {
 	}
 
 	public Task[] getActiveTasks () {
-		synchronized (tasks) {
-			return tasks.values().toArray(new Task[tasks.size()]);
-		}
+		Task[] t = tasks.toArray(new Task[tasks.size()]);
+		Arrays.sort(t);
+		return t;
 	}
 
 	public Task[] getQueuedTasks () {
@@ -125,11 +110,8 @@ public class TaskManager {
 		b.append("next id: ").append(next_id).append('\n');
 		b.append("#### active: \n");
 		
-		synchronized (tasks)
-		{
-			for(Task t : tasks.values())
-				b.append(t.toString());
-		}
+		for(Task t : tasks)
+			b.append(t.toString());
 		
 		b.append("#### queued: \n");
 		

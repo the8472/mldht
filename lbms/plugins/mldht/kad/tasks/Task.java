@@ -35,7 +35,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
  *
  * @author Damokles
  */
-public abstract class Task implements RPCCallListener {
+public abstract class Task implements RPCCallListener, Comparable<Task> {
 
 	protected Set<KBucketEntry>			visited;		// nodes visited, can't use a HashSet here since we can't compute a good hashcode for KBucketEntries
 	protected NavigableSet<KBucketEntry>	todo;			// nodes todo
@@ -86,6 +86,11 @@ public abstract class Task implements RPCCallListener {
 	public RPCServer getRPC() {
 		return rpc;
 	}
+	
+
+	public int compareTo(Task o) {
+		return taskID - o.taskID;
+	}
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCCallListener#onResponse(lbms.plugins.mldht.kad.RPCCall, lbms.plugins.mldht.kad.messages.MessageBase)
@@ -101,7 +106,7 @@ public abstract class Task implements RPCCallListener {
 			callFinished(c, rsp);
 			
 			if(isDone())
-				done();
+				finished();
 
 			if (canDoRequest() && !isFinished()) {
 				update();
@@ -117,7 +122,7 @@ public abstract class Task implements RPCCallListener {
 			callStalled(c);
 		
 		if(isDone())
-			done();
+			finished();
 		
 		if (canDoRequest() && !isFinished()) {
 			update();
@@ -139,7 +144,7 @@ public abstract class Task implements RPCCallListener {
 			callTimeout(c);
 
 		if(isDone())
-			done();
+			finished();
 		
 		if (canDoRequest() && !isFinished()) {
 			update();
@@ -362,10 +367,6 @@ public abstract class Task implements RPCCallListener {
 	}
 	
 	protected abstract boolean isDone(); 
-
-	protected void done () {
-			finished();
-	}
 
 	public void addListener (TaskListener listener) {
 		if (listeners == null) {

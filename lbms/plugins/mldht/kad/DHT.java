@@ -640,7 +640,7 @@ public class DHT implements DHTBase {
 			public void run () {
 				try {
 					for(RPCServer srv : servers)
-						findNode(Key.createRandomKey(), false, false, true, srv).setInfo("Random Refresh Lookup");
+						findNode(Key.createRandomKey(), false, false, srv).setInfo("Random Refresh Lookup");
 				} catch (RuntimeException e) {
 					log(e, LogLevel.Fatal);
 				}
@@ -748,9 +748,6 @@ public class DHT implements DHTBase {
 				//update stale entries
 				PingRefreshTask prt = new PingRefreshTask(getRandomServer(), node, false);
 				prt.setInfo("Refreshing old entries.");
-				if (canStartTask(prt)) {
-					prt.start();
-				}
 				tman.addTask(prt, true);
 
 				//regualary search for our id to update routing table
@@ -825,7 +822,7 @@ public class DHT implements DHTBase {
 			for(RPCServer srv : servers)
 			{
 				finishCount.incrementAndGet();
-				NodeLookup nl = findNode(srv.getDerivedID(), true, true, true,srv);
+				NodeLookup nl = findNode(srv.getDerivedID(), true, true, srv);
 				if (nl == null) {
 					bootstrapping = false;
 					break;
@@ -859,15 +856,12 @@ public class DHT implements DHTBase {
 	}
 
 	private NodeLookup findNode (Key id, boolean isBootstrap,
-			boolean isPriority, boolean queue, RPCServer server) {
+			boolean isPriority, RPCServer server) {
 		if (!running) {
 			return null;
 		}
 
 		NodeLookup at = new NodeLookup(id, server, node, isBootstrap);
-		if (!queue && canStartTask(at)) {
-			at.start();
-		}
 		tman.addTask(at, isPriority);
 		return at;
 	}
@@ -878,7 +872,7 @@ public class DHT implements DHTBase {
 	 * @param id The id of the key to search
 	 */
 	public NodeLookup findNode (Key id) {
-		return findNode(id, false, false, true, getRandomServer());
+		return findNode(id, false, false,getRandomServer());
 	}
 
 	/*
@@ -888,7 +882,7 @@ public class DHT implements DHTBase {
 	 */
 	public NodeLookup fillBucket (Key id, KBucket bucket) {
 		bucket.updateRefreshTimer();
-		return findNode(id, false, true, true, getRandomServer());
+		return findNode(id, false, true, getRandomServer());
 	}
 
 	public PingRefreshTask refreshBucket (KBucket bucket) {
@@ -897,9 +891,6 @@ public class DHT implements DHTBase {
 		}
 
 		PingRefreshTask prt = new PingRefreshTask(getRandomServer(), node, bucket, false);
-		if (canStartTask(prt)) {
-			prt.start();
-		}
 		tman.addTask(prt); // low priority, the bootstrap does a high prio one if necessary
 
 		return prt;

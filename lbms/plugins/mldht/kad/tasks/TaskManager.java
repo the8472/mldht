@@ -48,7 +48,6 @@ public class TaskManager {
 	
 	public void addTask(Task task)
 	{
-		task.addListener(finishListener);
 		addTask(task, false);
 	}
 	
@@ -70,6 +69,7 @@ public class TaskManager {
 	 */
 	public void addTask (Task task, boolean isPriority) {
 		int id = next_id.incrementAndGet();
+		task.addListener(finishListener);
 		task.setTaskID(id);
 		if (task.isQueued()) {
 			synchronized (queued) {

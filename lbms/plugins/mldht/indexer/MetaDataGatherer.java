@@ -470,10 +470,15 @@ public class MetaDataGatherer {
 		File f = new File("./torrents/"+hash.substring(0, 2)+"/"+hash.substring(2,4)+"/"+hash+".torrent");
 		f.getParentFile().mkdirs();
 
-		RandomAccessFile raf = new RandomAccessFile(f, "rw");
-		raf.setLength(torrent.length);
-		raf.write(torrent);
-		raf.close();
+		RandomAccessFile raf = null;
+		
+		try {
+			raf = new RandomAccessFile(f, "rw");
+			raf.setLength(torrent.length);
+			raf.write(torrent);
+		} finally {
+			raf.close();
+		}
 
 		log("successful metadata connection for "+task.hash);							
 	}

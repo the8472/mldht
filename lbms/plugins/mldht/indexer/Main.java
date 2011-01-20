@@ -116,13 +116,15 @@ public class Main {
 			public void run() {
 				try
 				{
-					final PrintWriter statusWriter = new PrintWriter("./diagnostics.log");
-					for (DHT dht : dhts.values()) {
-						statusWriter.print(dht.getDiagnostics()); 
+					PrintWriter statusWriter = null;
+					try {
+						statusWriter = new PrintWriter("./diagnostics.log");
+						for (DHT dht : dhts.values()) {
+							statusWriter.print(dht.getDiagnostics()); 
+						}
+					} finally {
+						statusWriter.close();						
 					}
-					
-					
-					statusWriter.close();
 				} catch (Exception e)
 				{
 					e.printStackTrace();

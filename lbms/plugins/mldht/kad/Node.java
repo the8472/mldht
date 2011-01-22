@@ -222,7 +222,7 @@ public class Node {
 	/**
 	 * Increase the failed queries count of the bucket entry we sent the message to
 	*/
-	void onTimeout (RPCCallBase call) {
+	void onTimeout (RPCCall call) {
 		// don't timeout anything if we don't have a connection
 		if(survivalMode)
 			return;

@@ -44,13 +44,13 @@ public class ResponseTimeoutFilter {
 	}
 	
 	
-	public void registerCall(final RPCCallBase call) {
+	public void registerCall(final RPCCall call) {
 		call.addListener(new RPCCallListener() {
-			public void onTimeout(RPCCallBase c) {}
+			public void onTimeout(RPCCall c) {}
 			
-			public void onStall(RPCCallBase c) {}
+			public void onStall(RPCCall c) {}
 			
-			public void onResponse(RPCCallBase c, MessageBase rsp) {
+			public void onResponse(RPCCall c, MessageBase rsp) {
 				 update(c.getRTT());
 			}
 		});

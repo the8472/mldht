@@ -88,7 +88,7 @@ public class KeyspaceCrawler extends Task {
 	}
 
 	@Override
-	void callFinished (RPCCallBase c, MessageBase rsp) {
+	void callFinished (RPCCall c, MessageBase rsp) {
 		if (isFinished()) {
 			return;
 		}
@@ -155,7 +155,7 @@ public class KeyspaceCrawler extends Task {
 	}
 
 	@Override
-	void callTimeout (RPCCallBase c) {
+	void callTimeout (RPCCall c) {
 
 	}
 

@@ -91,7 +91,7 @@ public class PingRefreshTask extends Task {
 	 * @see lbms.plugins.mldht.kad.Task#callFinished(lbms.plugins.mldht.kad.RPCCallBase, lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
 	@Override
-	void callFinished (RPCCallBase c, MessageBase rsp) {
+	void callFinished (RPCCall c, MessageBase rsp) {
 		if (cleanOnTimeout) {
 			synchronized (lookupMap) {
 				lookupMap.remove(c.getRequest());
@@ -103,7 +103,7 @@ public class PingRefreshTask extends Task {
 	 * @see lbms.plugins.mldht.kad.Task#callTimeout(lbms.plugins.mldht.kad.RPCCallBase)
 	 */
 	@Override
-	void callTimeout (RPCCallBase c) {
+	void callTimeout (RPCCall c) {
 		if (cleanOnTimeout) {
 			MessageBase mb = c.getRequest();
 

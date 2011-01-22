@@ -21,6 +21,7 @@ import java.util.*;
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
+import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 
@@ -31,12 +32,12 @@ import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 public class MessageDecoder {
 
 	public static MessageBase parseMessage (Map<String, Object> map,
-			RPCServer srv) {
+			RPCServer srv) throws MessageException {
 
 		try {
 			String msgType = getStringFromBytes((byte[]) map.get(Type.TYPE_KEY));
 			if (msgType == null) {
-				return null;
+				throw new MessageException("message type (y) missing", ErrorCode.ProtocolError);
 			}
 
 			String version = getStringFromBytes((byte[]) map.get(MessageBase.VERSION_KEY),true);
@@ -48,7 +49,8 @@ public class MessageDecoder {
 				mb = parseResponse(map, srv);
 			} else if (msgType.equals(Type.ERR_MSG.getRPCTypeName())) {
 				mb = parseError(map);
-			}
+			} else
+				throw new MessageException("unknown RPC type (y="+msgType+")");
 
 			if (mb != null && version != null) {
 				mb.setVersion(version);
@@ -56,8 +58,9 @@ public class MessageDecoder {
 
 			return mb;
 		} catch (Exception e) {
-			e.printStackTrace();
-			return null;
+			if(e instanceof MessageException)
+				throw (MessageException)e;
+			throw new MessageException("could not parse message",e);
 		}
 	}
 
@@ -92,8 +95,6 @@ public class MessageDecoder {
 			return null;
 
 		byte[] mtid = (byte[]) rawMtid;
-		if (mtid == null || mtid.length < 1)
-			return null;
 
 		return new ErrorMessage(mtid, errorCode,errorMsg);
 	}
@@ -103,18 +104,17 @@ public class MessageDecoder {
 	 * @param srv
 	 * @return
 	 */
-	private static MessageBase parseResponse (Map<String, Object> map,RPCServer srv) {
+	private static MessageBase parseResponse (Map<String, Object> map,RPCServer srv) throws MessageException {
 
 		byte[] mtid = (byte[]) map.get(MessageBase.TRANSACTION_KEY);
 		if (mtid == null || mtid.length < 1)
-			return null;
+			throw new MessageException("missing transaction ID",ErrorCode.ProtocolError);
 
 		// find the call
-		RPCCallBase c = srv.findCall(mtid);
+		RPCCall c = srv.findCall(mtid);
 		if (c == null) {
-			DHT.logDebug("Cannot find RPC call for response: "
-					+ new String(mtid));
-			return null;
+			DHT.logDebug("Cannot find RPC call for response: "+ new String(mtid));
+			throw new MessageException("response did not match any pending requests",ErrorCode.ServerError);
 		}
 
 		return parseResponse(map, c.getMessageMethod(), mtid,c);
@@ -127,16 +127,16 @@ public class MessageDecoder {
 	 * @return
 	 */
 	private static MessageBase parseResponse (Map<String, Object> map,
-			Method msgMethod, byte[] mtid,RPCCallBase base) {
+			Method msgMethod, byte[] mtid,RPCCall base) throws MessageException {
 		Map<String, Object> args = (Map<String, Object>) map.get(Type.RSP_MSG.innerKey());
-		if (args == null || !args.containsKey("id")) {
-			return null;
+		if (args == null) {
+			throw new MessageException("response did not contain a body",ErrorCode.ProtocolError);
 		}
 
 		byte[] hash = (byte[]) args.get("id");
 
 		if (hash == null || hash.length != Key.SHA1_HASH_LENGTH) {
-			return null;
+			throw new MessageException("invalid or missing origin ID",ErrorCode.ProtocolError);
 		}
 
 		Key id = new Key(hash);
@@ -182,11 +182,11 @@ public class MessageDecoder {
 				msg = resp; 
 				break;
 			}
-			DHT.logDebug("No nodes or values in get_peers response");
-			return null;
+			
+			throw new MessageException("No nodes or values in get_peers response",ErrorCode.ProtocolError);
  
 		default:
-			return null;
+			throw new RuntimeException("should not happen!!!");
 		}
 		
 		msg.setID(id);
@@ -198,7 +198,7 @@ public class MessageDecoder {
 	 * @param map
 	 * @return
 	 */
-	private static MessageBase parseRequest (Map<String, Object> map, RPCServer srv) {
+	private static MessageBase parseRequest (Map<String, Object> map, RPCServer srv) throws MessageException {
 		Object rawRequestMethod = map.get(Type.REQ_MSG.getRPCTypeName());
 		Map<String, Object> args = (Map<String, Object>) map.get(Type.REQ_MSG.innerKey());
 		
@@ -209,7 +209,7 @@ public class MessageDecoder {
 		byte[] hash = (byte[]) args.get("id");
 		
 		if (mtid == null || mtid.length < 1 || hash == null || hash.length != Key.SHA1_HASH_LENGTH)
-			return null;
+			throw new MessageException("missing transaction ID", ErrorCode.ProtocolError);
 
 		Key id = new Key(hash);
 
@@ -223,9 +223,7 @@ public class MessageDecoder {
 			if (hash == null)
 				hash = (byte[]) args.get("info_hash");
 			if (hash == null || hash.length != Key.SHA1_HASH_LENGTH)
-			{
-				return null;
-			}
+				throw new MessageException("missing/invalid hash in request",ErrorCode.ProtocolError);
 			AbstractLookupRequest req = Method.FIND_NODE.getRPCName().equals(requestMethod) ? new FindNodeRequest(new Key(hash)) : new GetPeersRequest(new Key(hash));
 			req.setWant4(srv.getDHT().getType() == DHTtype.IPV4_DHT);
 			req.setWant6(srv.getDHT().getType() == DHTtype.IPV6_DHT);
@@ -238,12 +236,10 @@ public class MessageDecoder {
 			}
 			msg = req;
 		} else if (Method.ANNOUNCE_PEER.getRPCName().equals(requestMethod)) {
-			if (args.containsKey("info_hash") && args.containsKey("port")
-					&& args.containsKey("token")) {
+			if (args.containsKey("info_hash") && args.containsKey("port") && args.containsKey("token")) {
 				hash = (byte[]) args.get("info_hash");
-				if (hash == null || hash.length != Key.SHA1_HASH_LENGTH) {
-					return null;
-				}
+				if (hash == null || hash.length != Key.SHA1_HASH_LENGTH)
+					throw new MessageException("invalid hash in request",ErrorCode.ProtocolError);
 				Key infoHash = new Key(hash);
 
 				byte[] token = (byte[]) args.get("token");
@@ -252,9 +248,10 @@ public class MessageDecoder {
 				ann.setSeed(Long.valueOf(1).equals(args.get("seed")));
 
 				msg = ann;
-			}
+			} else
+				throw new MessageException("missing arguments for announce",ErrorCode.ProtocolError);
 		} else {
-			DHT.logDebug("Received unknown Message Type: " + requestMethod);
+			throw new MessageException("Received unknown Message Type: " + requestMethod,ErrorCode.MethodUnknown);
 		}
 
 		if (msg != null) {

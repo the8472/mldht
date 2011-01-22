@@ -50,8 +50,8 @@ public class AnnounceTask extends Task {
 		this.isSeed = isSeed;
 	}
 
-	void callFinished (RPCCallBase c, MessageBase rsp) {}
-	void callTimeout (RPCCallBase c) {}
+	void callFinished (RPCCall c, MessageBase rsp) {}
+	void callTimeout (RPCCall c) {}
 	
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.Task#update()

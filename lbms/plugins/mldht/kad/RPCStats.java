@@ -61,6 +61,9 @@ public class RPCStats {
 		{
 			b.append(m).append('\t').append(receivedMessages[m.ordinal()][Type.REQ_MSG.ordinal()]).append('/').append(sentMessages[m.ordinal()][Type.RSP_MSG.ordinal()]).append('\n');
 		}
+		b.append("### errors\n");
+		b.append("RX / TX");
+		b.append('\t').append(receivedMessages[Method.NONE.ordinal()][Type.ERR_MSG.ordinal()]).append('/').append(sentMessages[Method.NONE.ordinal()][Type.ERR_MSG.ordinal()]).append('\n');
 
 		
 		return b.toString();

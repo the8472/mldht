@@ -95,7 +95,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCCallListener#onResponse(lbms.plugins.mldht.kad.RPCCall, lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
-	public void onResponse (RPCCallBase c, MessageBase rsp) {
+	public void onResponse (RPCCall c, MessageBase rsp) {
 		if(!c.wasStalled())
 			outstandingRequestsExcludingStalled.decrementAndGet();
 		outstandingRequests.decrementAndGet();
@@ -114,7 +114,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		}
 	}
 	
-	public void onStall(RPCCallBase c)
+	public void onStall(RPCCall c)
 	{
 		outstandingRequestsExcludingStalled.decrementAndGet();
 		
@@ -132,7 +132,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCCallListener#onTimeout(lbms.plugins.mldht.kad.RPCCall)
 	 */
-	public void onTimeout (RPCCallBase c) {
+	public void onTimeout (RPCCall c) {
 		
 		if(!c.wasStalled())
 			outstandingRequestsExcludingStalled.decrementAndGet();
@@ -181,18 +181,18 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 * @param c The call
 	 * @param rsp The response
 	 */
-	abstract void callFinished (RPCCallBase c, MessageBase rsp);
+	abstract void callFinished (RPCCall c, MessageBase rsp);
 	
 	/**
 	 * A call hasn't timed out yet but is estimated to be unlikely to finish, it will either time out or finish after this event has occured  
 	 */
-	void callStalled(RPCCallBase c) {}
+	void callStalled(RPCCall c) {}
 
 	/**
 	 * A call timedout
 	 * @param c The call
 	 */
-	abstract void callTimeout (RPCCallBase c);
+	abstract void callTimeout (RPCCall c);
 
 	/**
 	 * Do a call to the rpc server, increments the outstanding_reqs variable.
@@ -204,9 +204,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 			return false;
 		}
 
-		RPCCallBase c = rpc.doCall(req);
-		c.setExpectedID(expectedID);
-		c.addListener(this);
+		new RPCCall(rpc,req).setExpectedID(expectedID).addListener(this).start();
 		outstandingRequestsExcludingStalled.incrementAndGet();
 		outstandingRequests.incrementAndGet();
 		

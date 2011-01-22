@@ -24,9 +24,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 
 import lbms.plugins.mldht.kad.DHT.LogLevel;
-import lbms.plugins.mldht.kad.messages.MessageBase;
-import lbms.plugins.mldht.kad.messages.MessageDecoder;
-import lbms.plugins.mldht.kad.messages.PingRequest;
+import lbms.plugins.mldht.kad.messages.*;
+import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.ByteWrapper;
@@ -45,8 +44,8 @@ public class RPCServer implements Runnable {
 	
 	private DatagramSocket							sock;
 	private DHT										dh_table;
-	private ConcurrentMap<ByteWrapper, RPCCallBase>	calls;
-	private Queue<RPCCallBase>						call_queue;
+	private ConcurrentMap<ByteWrapper, RPCCall>		calls;
+	private Queue<RPCCall>							call_queue;
 	private volatile boolean						running;
 	private Thread									thread;
 	private int										numReceived;
@@ -61,8 +60,8 @@ public class RPCServer implements Runnable {
 		this.port = port;
 		this.dh_table = dh_table;
 		timeoutFilter = new ResponseTimeoutFilter();
-		calls = new ConcurrentHashMap<ByteWrapper, RPCCallBase>(80,0.75f,3);
-		call_queue = new ConcurrentLinkedQueue<RPCCallBase>();
+		calls = new ConcurrentHashMap<ByteWrapper, RPCCall>(80,0.75f,3);
+		call_queue = new ConcurrentLinkedQueue<RPCCall>();
 		this.stats = stats;
 		
 		start();
@@ -236,10 +235,7 @@ public class RPCServer implements Runnable {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#doCall(lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
-	public RPCCall doCall (MessageBase msg) {
-		
-		RPCCall c = new RPCCall(this, msg);
-		
+	void doCall (RPCCall c) {
 		
 		while(true)
 		{
@@ -257,14 +253,11 @@ public class RPCServer implements Runnable {
 				break;
 			}
 		}
-
-
-		return c;
 	}
 	
 	private final RPCCallListener rpcListener = new RPCCallListener() {
 		
-		public void onTimeout(RPCCallBase c) {
+		public void onTimeout(RPCCall c) {
 			ByteWrapper w = new ByteWrapper(c.getRequest().getMTID());
 			stats.addTimeoutMessageToCount(c.getRequest());
 			calls.remove(w);
@@ -272,18 +265,18 @@ public class RPCServer implements Runnable {
 			doQueuedCalls();
 		}
 		
-		public void onStall(RPCCallBase c) {}
-		public void onResponse(RPCCallBase c, MessageBase rsp) {}
+		public void onStall(RPCCall c) {}
+		public void onResponse(RPCCall c, MessageBase rsp) {}
 	}; 
 	
-	private void dispatchCall(RPCCallBase call, short mtid)
+	private void dispatchCall(RPCCall call, short mtid)
 	{
 		MessageBase msg = call.getRequest();
 		msg.setMTID(mtid);
-		sendMessage(msg);
 		call.addListener(rpcListener);
 		timeoutFilter.registerCall(call);
-		call.start();
+		call.sent();
+		sendMessage(msg);
 	}
 
 	/* (non-Javadoc)
@@ -293,13 +286,13 @@ public class RPCServer implements Runnable {
 		PingRequest pr = new PingRequest();
 		pr.setID(derivedId);
 		pr.setDestination(addr);
-		doCall(pr);
+		new RPCCall(this, pr).start();
 	}
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#findCall(byte)
 	 */
-	public RPCCallBase findCall (byte[] mtid) {
+	public RPCCall findCall (byte[] mtid) {
 		return calls.get(new ByteWrapper(mtid));
 	}
 
@@ -351,43 +344,59 @@ public class RPCServer implements Runnable {
 			}
 		}
 
+		
+		Map<String, Object> bedata = null;
+		MessageBase msg = null;
+		
 		try {
-			Map<String, Object> bedata = decoder.decodeByteArray(p.getData(), 0, p.getLength() , false);
-			MessageBase msg = MessageDecoder.parseMessage(bedata, this);
-			if (msg != null) {
-				if(DHT.isLogLevelEnabled(LogLevel.Debug))
-					DHT.logDebug("RPC received message ["+p.getAddress().getHostAddress()+"] "+msg.toString());
-				stats.addReceivedMessageToCount(msg);
-				msg.setOrigin(new InetSocketAddress(p.getAddress(), p.getPort()));
-				msg.setServer(this);
-				msg.apply(dh_table);
-				// erase an existing call
-				if (msg.getType() == Type.RSP_MSG
-						&& calls.containsKey(new ByteWrapper(msg.getMTID()))) {
-					RPCCallBase c = calls.get(new ByteWrapper(msg.getMTID()));
-					if(c.getRequest().getDestination().equals(msg.getOrigin()))
-					{
-						// delete the call, but first notify it of the response
-						c.response(msg);
-						calls.remove(new ByteWrapper(msg.getMTID()));
-						doQueuedCalls();						
-					} else
-						DHT.logInfo("Response source ("+msg.getOrigin()+") mismatches request destination ("+c.getRequest().getDestination()+"); ignoring response");
-				}
-			} else
-			{
-				try {
-					DHT.logDebug("RPC received message [" + p.getAddress().getHostAddress() + "] Decode failed msg was:"+new String(p.getData(), 0, p.getLength(),"UTF-8"));
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-			}
-
-				
-		} catch (IOException e) {
+			bedata = decoder.decodeByteArray(p.getData(), 0, p.getLength() , false);
+		} catch(IOException e) {
 			DHT.log(e, LogLevel.Debug);
+			MessageBase err = new ErrorMessage(new byte[] {0,0,0,0}, ErrorCode.ProtocolError.code,"invalid bencoding: "+e.getMessage());
+			err.setDestination(new InetSocketAddress(p.getAddress(), p.getPort()));
+			sendMessage(err);
+			return;
 		}
+		
+		try {
+			msg = MessageDecoder.parseMessage(bedata, this);
+		} catch(MessageException e)
+		{
+			byte[] mtid = {0,0,0,0};
+			if(bedata.containsKey("t") && bedata.get("t") instanceof byte[])
+				mtid = (byte[]) bedata.get("t");
+			DHT.log(e, LogLevel.Debug);
+			MessageBase err = new ErrorMessage(mtid, e.errorCode.code,e.getMessage());
+			err.setDestination(new InetSocketAddress(p.getAddress(), p.getPort()));
+			sendMessage(err);
+			return;
+		}
+		
+		if(DHT.isLogLevelEnabled(LogLevel.Debug))
+			DHT.logDebug("RPC received message ["+p.getAddress().getHostAddress()+"] "+msg.toString());
+		stats.addReceivedMessageToCount(msg);
+		msg.setOrigin(new InetSocketAddress(p.getAddress(), p.getPort()));
+		msg.setServer(this);
+		msg.apply(dh_table);
+		
+		// check if this is a response to an outstanding request
+		RPCCall c = calls.get(new ByteWrapper(msg.getMTID()));
+		
+		if (msg.getType() == Type.RSP_MSG || msg.getType() == Type.ERR_MSG && c != null) {
+			if(c.getRequest().getDestination().equals(msg.getOrigin()))
+			{
+				// delete the call, but first notify it of the response
+				c.response(msg);
+				calls.remove(new ByteWrapper(msg.getMTID()));
+				doQueuedCalls();						
+			} else {
+				DHT.logInfo("Response source ("+msg.getOrigin()+") mismatches request destination ("+c.getRequest().getDestination()+"); ignoring response");
+			}
+				
+		}
+
 	}
+		
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#sendMessage(lbms.plugins.mldht.kad.messages.MessageBase)
@@ -435,7 +444,7 @@ public class RPCServer implements Runnable {
 
 	private void doQueuedCalls () {
 		while (call_queue.peek() != null && calls.size() < DHTConstants.MAX_ACTIVE_CALLS) {
-			RPCCallBase c;
+			RPCCall c;
 
 			if((c = call_queue.poll()) == null)
 				return;

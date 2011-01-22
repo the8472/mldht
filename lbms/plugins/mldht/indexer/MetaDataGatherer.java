@@ -421,14 +421,18 @@ public class MetaDataGatherer {
 			{
 				DHT dht = DHT.getDHT(type);
 				PeerLookupTask lookupTask = dht.createPeerLookup(task.entry.info_hash);
-				pendingLookups.incrementAndGet();
-				lookupTask.setFastTerminate(true);
-				lookupTask.setNoAnnounce(true);
-				lookupTask.setLowPriority(false);
-				lookupTask.addListener(lookupListener);
-				lookupTask.setInfo("Grabbing .torrent for "+task.hash);
-				lookupTask.setNoSeeds(false);
-				dht.getTaskManager().addTask(lookupTask);
+				if(lookupTask != null)
+				{
+					pendingLookups.incrementAndGet();
+					
+					lookupTask.setFastTerminate(true);
+					lookupTask.setNoAnnounce(true);
+					lookupTask.setLowPriority(false);
+					lookupTask.addListener(lookupListener);
+					lookupTask.setInfo("Grabbing .torrent for "+task.hash);
+					lookupTask.setNoSeeds(false);
+					dht.getTaskManager().addTask(lookupTask);
+				}
 			}
 
 		}

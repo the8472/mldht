@@ -89,14 +89,14 @@ public class KBucket implements Externalizable {
 				// node changed address, check if old node is really dead to prevent impersonation
 				pingEntry(oldEntry, new RPCCallListener() {
 					 
-					public void onTimeout(RPCCallBase c) {
+					public void onTimeout(RPCCall c) {
 						modifyMainBucket(oldEntry, newEntry);
 						DHT.log("Node "+oldEntry.getID()+" changed address from "+oldEntry.getAddress()+" to "+newEntry.getAddress(), LogLevel.Info);
 					}
 					
-					public void onStall(RPCCallBase c) {}
+					public void onStall(RPCCall c) {}
 					
-					public void onResponse(RPCCallBase c, MessageBase rsp) {
+					public void onResponse(RPCCall c, MessageBase rsp) {
 						DHT.log("New node "+newEntry.getAddress()+" claims same Node ID ("+oldEntry.getID()+") as "+oldEntry.getAddress()+" ; node dropped as this might be an impersonation attack", LogLevel.Error);
 					}
 				});
@@ -289,26 +289,21 @@ public class KBucket implements Externalizable {
 
 		PingRequest p = new PingRequest();
 		p.setDestination(entry.getAddress());
-		RPCCall c = node.getDHT().getRandomServer().doCall(p);
-		c.setExpectedID(entry.getID());
-		if (c != null) {
-			pendingPings.put(entry.getID(),entry);
-			c.addListener(listener);
-			c.addListener(new RPCCallListener() {
-				public void onTimeout(RPCCallBase c) {
-					pendingPings.remove(entry.getID());
-				}
-				
-				// performance doesn't matter much here, ignore stalls
-				public void onStall(RPCCallBase c) {}
-				
-				public void onResponse(RPCCallBase c, MessageBase rsp) {
-					pendingPings.remove(entry.getID());
-				}
-			});
-			return true;
-		}
-		return false;
+		pendingPings.put(entry.getID(),entry);
+		
+		new RPCCall(node.getDHT().getRandomServer(), p).setExpectedID(entry.getID()).addListener(listener).addListener(new RPCCallListener() {
+			public void onTimeout(RPCCall c) {
+				pendingPings.remove(entry.getID());
+			}
+
+			// performance doesn't matter much here, ignore stalls
+			public void onStall(RPCCall c) {}
+
+			public void onResponse(RPCCall c, MessageBase rsp) {
+				pendingPings.remove(entry.getID());
+			}
+		}).start();
+		return true;
 	}
 	
 	private void pingQuestionable (final KBucketEntry replacement_entry) {
@@ -321,7 +316,7 @@ public class KBucket implements Externalizable {
 		for (final KBucketEntry toTest : entries)
 		{
 			if (toTest.isQuestionable() && pingEntry(toTest, new RPCCallListener() {
-				public void onTimeout(RPCCallBase c) {
+				public void onTimeout(RPCCall c) {
 					modifyMainBucket(toTest, replacement_entry);
 					// we could replace this one, try another one.
 					KBucketEntry nextReplacementEntry;
@@ -331,9 +326,9 @@ public class KBucket implements Externalizable {
 				}
 
 				// performance doesn't matter much here. ignore stall
-				public void onStall(RPCCallBase c) {}
+				public void onStall(RPCCall c) {}
 
-				public void onResponse(RPCCallBase c, MessageBase rsp) {
+				public void onResponse(RPCCall c, MessageBase rsp) {
 					// it's alive, check another one
 					if (!replaceBadEntry(replacement_entry))
 					{

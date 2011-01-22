@@ -312,7 +312,7 @@ public class DHT implements DHTBase {
 				+ " Message: \"" + r.getMessage() + "\"");
 	}
 
-	public void timeout (RPCCallBase r) {
+	public void timeout (RPCCall r) {
 		if (isRunning()) {
 			node.onTimeout(r);
 		}
@@ -372,7 +372,7 @@ public class DHT implements DHTBase {
 	}
 	
 	
-
+	@Override
 	public PingRefreshTask refreshBuckets (List<RoutingTableEntry> buckets,
 			boolean cleanOnTimeout) {
 		PingRefreshTask prt = new PingRefreshTask(getRandomServer(), node, buckets,
@@ -469,8 +469,7 @@ public class DHT implements DHTBase {
 
 		PingRequest r = new PingRequest();
 		r.setOrigin(new InetSocketAddress(ip, port));
-		getRandomServer().doCall(r);
-
+		new RPCCall(getRandomServer(), r).start();
 	}
 	
 	

@@ -23,31 +23,33 @@ import java.util.concurrent.TimeUnit;
 
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
+import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 
 /**
  * @author Damokles
  *
  */
-public class RPCCall implements RPCCallBase {
+public class RPCCall {
 
 	private MessageBase				msg;
 	private RPCServer				rpc;
-	private boolean					queued			= true;
-	private boolean					stalled			= false;
-	private List<RPCCallListener>	listeners;
+	private boolean					stalled;
+	private boolean					awaitingResponse;
+	private List<RPCCallListener>	listeners		= new ArrayList<RPCCallListener>(3);
 	private ScheduledFuture<?>		timeoutTimer;
 	private long					sentTime		= -1;
 	private long					responseTime	= -1;
 	private Key						expectedID;
+	
 
-
-	public RPCCall (RPCServer rpc, MessageBase msg) {
-		this.rpc = rpc;
+	public RPCCall (RPCServer srv, MessageBase msg) {
+		this.rpc = srv;
 		this.msg = msg;
 	}
 	
-	public void setExpectedID(Key id) {
+	public RPCCall setExpectedID(Key id) {
 		expectedID = id;
+		return this;
 	}
 	
 	public boolean matchesExpectedID(Key id) {
@@ -62,9 +64,7 @@ public class RPCCall implements RPCCallBase {
 	 * @see lbms.plugins.mldht.kad.RPCCallBase#start()
 	 */
 	public void start () {
-		sentTime = System.currentTimeMillis();
-		queued = false;
-		startTimeout();
+		rpc.doCall(this);
 	}
 
 	/* (non-Javadoc)
@@ -74,27 +74,27 @@ public class RPCCall implements RPCCallBase {
 		if (timeoutTimer != null) {
 			timeoutTimer.cancel(false);
 		}
-		responseTime = System.currentTimeMillis();
-		onCallResponse(rsp);
+		
+		if(rsp.getType() == Type.RSP_MSG)
+		{
+			onCallResponse(rsp);
+			return;
+		}
+		
+		if(rsp.getType() == Type.ERR_MSG) {
+			onCallTimeout();
+		}
+
 	}
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCCallBase#addListener(lbms.plugins.mldht.kad.RPCCallListener)
 	 */
-	public synchronized void addListener (RPCCallListener cl) {
-		if (listeners == null) {
-			listeners = new ArrayList<RPCCallListener>(1);
-		}
+	public RPCCall addListener (RPCCallListener cl) {
+		if(awaitingResponse)
+			throw new IllegalStateException("can only attach listeners while call is not started yet");
 		listeners.add(cl);
-	}
-
-	/* (non-Javadoc)
-	 * @see lbms.plugins.mldht.kad.RPCCallBase#removeListener(lbms.plugins.mldht.kad.RPCCallListener)
-	 */
-	public synchronized void removeListener (RPCCallListener cl) {
-		if (listeners != null) {
-			listeners.remove(cl);
-		}
+		return this;
 	}
 
 	/* (non-Javadoc)
@@ -111,41 +111,43 @@ public class RPCCall implements RPCCallBase {
 	public MessageBase getRequest () {
 		return msg;
 	}
+	
 
-	/* (non-Javadoc)
-	 * @see lbms.plugins.mldht.kad.RPCCallBase#isQueued()
-	 */
-	public boolean isQueued () {
-		return queued;
-	}
-
-	private void startTimeout () {
+	void sent() {
+		awaitingResponse = true;
+		sentTime = System.currentTimeMillis();
 		timeoutTimer = DHT.getScheduler().schedule(new Runnable() {
 			public void run () {
-				// we stalled. for accurate measurement we still need to wait out the max timeout.
-				// Start a new timer for the remaining time
-				long elapsed = System.currentTimeMillis() - sentTime;
-				long remaining = DHTConstants.RPC_CALL_TIMEOUT_MAX - elapsed;
-				if(remaining > 0)
+				
+				synchronized (RPCCall.this)
 				{
-					stalled = true;
-					onStall();
-					timeoutTimer = DHT.getScheduler().schedule(new Runnable() {
-						public void run() {
-							onCallTimeout();
-						}
-					}, remaining, TimeUnit.MILLISECONDS);
-				} else {
-					onCallTimeout();
+					if(!awaitingResponse)
+						return;
+					// we stalled. for accurate measurement we still need to wait out the max timeout.
+					// Start a new timer for the remaining time
+					long elapsed = System.currentTimeMillis() - sentTime;
+					long remaining = DHTConstants.RPC_CALL_TIMEOUT_MAX - elapsed;
+					if(remaining > 0 && !stalled)
+					{
+						onStall();
+						// re-schedule timer, we'll directly detect the timeout based on the stalled flag
+						timeoutTimer = DHT.getScheduler().schedule(this, remaining, TimeUnit.MILLISECONDS);
+					} else {
+						onCallTimeout();
+					}
+
+										
 				}
-				
-				
-				
 			}
 		}, rpc.getTimeoutFilter().getStallTimeout(), TimeUnit.MILLISECONDS);
 	}
 
 	private synchronized void onCallResponse (MessageBase rsp) {
+		if(!awaitingResponse)
+			return;
+		awaitingResponse = false;
+		responseTime = System.currentTimeMillis();
+		
 		if (listeners != null) {
 			for (int i = 0; i < listeners.size(); i++) {
 				listeners.get(i).onResponse(this, rsp);
@@ -154,20 +156,28 @@ public class RPCCall implements RPCCallBase {
 	}
 
 	private synchronized void onCallTimeout () {
+		if(!awaitingResponse)
+			return;
+		awaitingResponse = false;
+		
 		DHT.logDebug("RPCCall timed out ID: " + new String(msg.getMTID()));
 
-		if (listeners != null) {
-			for (int i = 0; i < listeners.size(); i++) {
-				try {
-					listeners.get(i).onTimeout(this);
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
+		for (int i = 0; i < listeners.size(); i++) {
+			try {
+				listeners.get(i).onTimeout(this);
+			} catch (Exception e) {
+				e.printStackTrace();
 			}
 		}
 	}
 	
 	private synchronized void onStall() {
+		if(!awaitingResponse)
+			return;
+		if(stalled)
+			return;
+		stalled = true;
+		
 		DHT.logDebug("RPCCall stalled ID: " + new String(msg.getMTID()));
 		if (listeners != null) {
 			for (int i = 0; i < listeners.size(); i++) {

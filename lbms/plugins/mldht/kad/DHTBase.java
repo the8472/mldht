@@ -102,7 +102,7 @@ public interface DHTBase {
 
 	public void error (ErrorMessage r);
 
-	public void timeout (RPCCallBase r);
+	public void timeout (RPCCall r);
 
 	public void addStatsListener (DHTStatsListener listener);
 

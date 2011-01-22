@@ -106,7 +106,7 @@ public class PeerLookupTask extends Task {
 	 * @see lbms.plugins.mldht.kad.Task#callFinished(lbms.plugins.mldht.kad.RPCCall, lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
 	@Override
-	void callFinished (RPCCallBase c, MessageBase rsp) {
+	void callFinished (RPCCall c, MessageBase rsp) {
 		if (c.getMessageMethod() != Method.GET_PEERS) {
 			return;
 		}
@@ -190,7 +190,7 @@ public class PeerLookupTask extends Task {
 	 * @see lbms.plugins.mldht.kad.Task#callTimeout(lbms.plugins.mldht.kad.RPCCall)
 	 */
 	@Override
-	void callTimeout (RPCCallBase c) {
+	void callTimeout (RPCCall c) {
 		cache.removeEntry(c.getExpectedID());
 	}
 	

@@ -161,6 +161,8 @@ public class MessageDecoder {
 			byte[] nodes = (byte[]) args.get("nodes");
 			byte[] nodes6 = (byte[]) args.get("nodes6");
 			
+			if(!(args.get("values") instanceof List))
+				throw new MessageException("get-peers values field was a string, expected a list of strings", ErrorCode.ProtocolError);
 			List<byte[]> vals = (List<byte[]>) args.get("values");
 			List<DBItem> dbl = null;
 			if (vals != null && vals.size() > 0)

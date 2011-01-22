@@ -309,7 +309,7 @@ public class DHT implements DHTBase {
 
 	public void error (ErrorMessage r) {
 		DHT.logError("Error [" + r.getCode() + "] from: " + r.getOrigin()
-				+ " Message: \"" + r.getMessage() + "\"");
+				+ " Message: \"" + r.getMessage() + "\" version:"+r.getVersion());
 	}
 
 	public void timeout (RPCCall r) {

@@ -160,20 +160,25 @@ public class MessageDecoder {
 			byte[] token = (byte[]) args.get("token");
 			byte[] nodes = (byte[]) args.get("nodes");
 			byte[] nodes6 = (byte[]) args.get("nodes6");
+
 			
-			if(!(args.get("values") instanceof List))
-				throw new MessageException("get-peers values field was a string, expected a list of strings", ErrorCode.ProtocolError);
-			List<byte[]> vals = (List<byte[]>) args.get("values");
 			List<DBItem> dbl = null;
-			if (vals != null && vals.size() > 0)
+			Object rawVals = args.get("values");
+			if(args.get("values") != null)
 			{
-				dbl = new ArrayList<DBItem>(vals.size());
-				for (int i = 0; i < vals.size(); i++)
+				if(!(rawVals instanceof List))
+					throw new MessageException("values field in get_peers response was a string, expected a list of strings", ErrorCode.ProtocolError);
+				List<byte[]> vals = (List<byte[]>) rawVals;
+				if(vals.size() > 0)
 				{
-					// only accept ipv4 or ipv6 for now
-					if (vals.get(i).length != DHTtype.IPV4_DHT.ADDRESS_ENTRY_LENGTH && vals.get(i).length != DHTtype.IPV6_DHT.ADDRESS_ENTRY_LENGTH)
-						continue;
-					dbl.add(new PeerAddressDBItem((byte[]) vals.get(i), false));
+					dbl = new ArrayList<DBItem>(vals.size());
+					for (int i = 0; i < vals.size(); i++)
+					{
+						// only accept ipv4 or ipv6 for now
+						if (vals.get(i).length != DHTtype.IPV4_DHT.ADDRESS_ENTRY_LENGTH && vals.get(i).length != DHTtype.IPV6_DHT.ADDRESS_ENTRY_LENGTH)
+							continue;
+						dbl.add(new PeerAddressDBItem((byte[]) vals.get(i), false));
+					}
 				}
 			}
 
@@ -185,7 +190,7 @@ public class MessageDecoder {
 				break;
 			}
 			
-			throw new MessageException("No nodes or values in get_peers response",ErrorCode.ProtocolError);
+			throw new MessageException("Neither nodes nor values in get_peers response",ErrorCode.ProtocolError);
  
 		default:
 			throw new RuntimeException("should not happen!!!");

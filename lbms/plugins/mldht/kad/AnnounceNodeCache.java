@@ -248,12 +248,23 @@ public class AnnounceNodeCache {
 	@Override
 	public String toString() {
 		StringBuilder b = new StringBuilder();
-		b.append("anchors:\n");
+		StringBuilder bucketsBuilder = new StringBuilder();
+		b.append("anchors ("+anchors.size()+"):\n");
 		for(CacheAnchorPoint a : anchors.values())
 			b.append(a).append('\n');
-		b.append("buckets:\n");
+		
+		int bucketCount = 0;
+		int entryCount = 0;
 		for(CacheBucket buck : cache.values())
-			b.append(buck.prefix).append(" entries: ").append(buck.entries.size()).append('\n');
+		{
+			int numEntries = buck.entries.size();
+			bucketsBuilder.append(buck.prefix).append(" entries: ").append(numEntries).append('\n');
+			bucketCount++;
+			entryCount+= numEntries;
+		}
+		
+		b.append("buckets ("+bucketCount+") / entries ("+entryCount+"):\n");
+		b.append(bucketsBuilder);
 		
 		return b.toString();
 	}

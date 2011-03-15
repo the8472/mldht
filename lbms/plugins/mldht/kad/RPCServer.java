@@ -53,8 +53,8 @@ public class RPCServer {
 	private ConcurrentMap<ByteWrapper, RPCCall>		calls;
 	private Queue<RPCCall>							call_queue;
 	private Queue<EnqueuedSend>						pipeline;
-	private int										numReceived;
-	private int										numSent;
+	private volatile int							numReceived;
+	private volatile int							numSent;
 	private int										port;
 	private RPCStats								stats;
 	private ResponseTimeoutFilter					timeoutFilter;

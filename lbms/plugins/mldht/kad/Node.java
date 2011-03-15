@@ -69,7 +69,6 @@ public class Node {
 	private long timeOfLastPingCheck;
 	private long timeOfLastReceiveCountChange;
 	private long timeOfRecovery;
-	private boolean survivalMode;
 	private int num_entries;
 	private ConcurrentHashMap<Key, RPCServer> usedIDs = new ConcurrentHashMap<Key, RPCServer>();
 	private volatile Map<InetSocketAddress,RoutingTableEntry> knownNodes = new HashMap<InetSocketAddress, RoutingTableEntry>();
@@ -224,7 +223,7 @@ public class Node {
 	*/
 	void onTimeout (RPCCall call) {
 		// don't timeout anything if we don't have a connection
-		if(survivalMode)
+		if(isInSurvivalMode())
 			return;
 		
 		InetSocketAddress dest = call.getRequest().getDestination();
@@ -241,7 +240,7 @@ public class Node {
 	}
 	
 	public boolean isInSurvivalMode() {
-		return survivalMode;
+		return dht.getServerManager().getActiveServerCount() == 0;
 	}
 	
 	void removeServer(RPCServer server)
@@ -275,42 +274,9 @@ public class Node {
 	public void doBucketChecks (long now) {
 		
 		
-		// don't do pings too often if we're not receiving anything (connection might be dead)
-		if(num_receives != numReceivesAtLastCheck)
-		{
-			if(survivalMode)
-			{
-				if(timeOfRecovery == 0)
-				{
-					// received a packet! ping entries but don't exist survival mode yet
-					timeOfRecovery = now;
-					timeOfLastPingCheck = 0;
-				}
-					
-				if(now - timeOfRecovery > DHTConstants.REACHABILITY_RECOVERY)
-				{
-					// ok, enough time passed, we should have recovered live nodes by now, exit survival mode
-					survivalMode = false;
-					timeOfRecovery = 0;
-				}				
-			}
-
-			timeOfLastReceiveCountChange = now;
-			numReceivesAtLastCheck = num_receives;
-			
-		} else if(now - timeOfLastReceiveCountChange > DHTConstants.REACHABILITY_TIMEOUT)
-		{
-			// haven't seen a packet for too long
-			// perform heroics to maintain the routing table from now on
-			survivalMode = true;
-			for(RPCServer server : dht.getServers())
-				server.getTimeoutFilter().reset();
-			timeOfRecovery = 0;
-		}
-		
 		// don't spam the checks if we're not receiving anything.
-		// we don't want to cause stray packets somewhere in a network
-		if(survivalMode && now - timeOfLastPingCheck > DHTConstants.BOOTSTRAP_MIN_INTERVAL)
+		// we don't want to cause too many stray packets somewhere in a network
+		if(isInSurvivalMode() && now - timeOfLastPingCheck > DHTConstants.BOOTSTRAP_MIN_INTERVAL)
 			return;
 		timeOfLastPingCheck = now;
 
@@ -392,7 +358,7 @@ public class Node {
 			}
 
 			// clean out buckets full of bad nodes. merge operations will do the rest
-			if(!survivalMode && allBad)
+			if(!isInSurvivalMode() && allBad)
 			{
 				e.bucket = new KBucket(this);
 				continue;
@@ -411,7 +377,7 @@ public class Node {
 					nl.setInfo("Refreshing Bucket #" + e.prefix);
 				}
 
-			} else if(!survivalMode)
+			} else if(!isInSurvivalMode())
 			{
 				// only replace 1 bad entry with a replacement bucket entry at a time (per bucket)
 				b.checkBadEntries();
@@ -583,15 +549,21 @@ public class Node {
 			if (entriesLoaded > 0) {
 				runDeferred = true;
 				PingRefreshTask prt = dht.refreshBuckets(routingTable, true);
-				prt.setInfo("Pinging cached entries.");
-				TaskListener bootstrapListener = new TaskListener() {
-					public void finished (Task t) {
-						if (runWhenLoaded != null) {
-							runWhenLoaded.run();
+				if(prt == null)
+				{
+					runWhenLoaded.run();
+				} else
+				{
+					prt.setInfo("Pinging cached entries.");
+					TaskListener bootstrapListener = new TaskListener() {
+						public void finished (Task t) {
+							if (runWhenLoaded != null) {
+								runWhenLoaded.run();
+							}
 						}
-					}
-				};
-				prt.addListener(bootstrapListener);
+					};
+					prt.addListener(bootstrapListener);
+				}
 			}
 
 			DHT.logInfo("Loaded " + entriesLoaded + " from cache. Cache was "

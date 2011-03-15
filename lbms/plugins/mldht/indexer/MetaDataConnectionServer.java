@@ -11,12 +11,13 @@ import java.nio.channels.SocketChannel;
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
+import lbms.plugins.mldht.utlis.NIOConnectionManager;
 
 public class MetaDataConnectionServer implements Selectable {
 	
 	public static final int DEFAULT_PORT = 49002;
 
-	NIOConnectionManager conHandler = NIOConnectionManager.getInstance();
+	NIOConnectionManager conHandler;
 	ServerSocketChannel channel;
 	InetAddress addr;
 	int port = DEFAULT_PORT;
@@ -41,7 +42,8 @@ public class MetaDataConnectionServer implements Selectable {
 		return channel;
 	}
 	
-	public void registrationEvent() throws IOException {
+	public void registrationEvent(NIOConnectionManager manager) throws IOException {
+		conHandler = manager;
 		channel.socket().bind(new InetSocketAddress(addr, port), 100);
 		conHandler.setSelection(this, SelectionKey.OP_ACCEPT, true);
 	}
@@ -65,12 +67,8 @@ public class MetaDataConnectionServer implements Selectable {
 		}
 	}
 	
-	public void doTimeOutChecks(long now) throws IOException {
+	public void doStateChecks(long now) throws IOException {
 		// TODO Auto-generated method stub
-	}
-	
-	public void register() {
-		conHandler.register(this);
 	}
 
 	public static interface IncomingConnectionHandler {

@@ -14,7 +14,7 @@
  *    You should have received a copy of the GNU General Public License 
  *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
  */
-package lbms.plugins.mldht.indexer;
+package lbms.plugins.mldht.utlis;
 
 import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
@@ -24,25 +24,26 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
 
+import sun.net.www.content.audio.wav;
+
+import lbms.plugins.mldht.indexer.Selectable;
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 
 public class NIOConnectionManager {
 	
-	static NIOConnectionManager singleton = new NIOConnectionManager();
-	
-	static NIOConnectionManager getInstance() {
-		return singleton;
-	}
-	
 	ConcurrentLinkedQueue<Selectable> registrations = new ConcurrentLinkedQueue<Selectable>();
-	List<Selectable> connections = new ArrayList<Selectable>(); 
+	List<Selectable> connections = new ArrayList<Selectable>();
+	//Thread workerThread;
+	AtomicReference<Thread> workerThread = new AtomicReference<Thread>();
 	
+	String name;
 	Selector selector;
-	boolean running = true;
 	
-	public NIOConnectionManager() {
+	public NIOConnectionManager(String name) {
+		this.name = name;
 		try
 		{
 			selector = Selector.open();
@@ -50,23 +51,19 @@ public class NIOConnectionManager {
 		{
 			e.printStackTrace();
 		}
-		
-		Thread t = new Thread(run);
-		t.setName("mlDHT Metadata Connection Handler");
-		t.setDaemon(true);
-		t.start();
 	}
 	
 	Runnable run = new Runnable() {
 		public void run() {
-			while(running)
+			
+			int iterations = 0;
+			
+			while(true)
 			{
 				try
 				{
-					if(selector.selectNow() == 0)
-					{
-						Thread.sleep(100);
-					}
+					selector.select(100);
+					
 					// handle active connections
 					Set<SelectionKey> keys = selector.selectedKeys();
 					for(SelectionKey selKey : keys)
@@ -79,7 +76,7 @@ public class NIOConnectionManager {
 					// check existing connections
 					long now = System.currentTimeMillis();
 					for(Selectable conn : new ArrayList<Selectable>(connections))
-						conn.doTimeOutChecks(now);
+						conn.doStateChecks(now);
 					
 					// register new connections
 					Selectable toRegister = null;
@@ -87,16 +84,51 @@ public class NIOConnectionManager {
 					{
 						connections.add(toRegister);
 						toRegister.getChannel().register(selector, 0,toRegister);
-						toRegister.registrationEvent();
+						toRegister.registrationEvent(NIOConnectionManager.this);
 					}
 						
 				} catch (Exception e)
 				{
 					DHT.log(e, LogLevel.Error);
 				}
+				
+				iterations++;
+				
+				if(iterations > 10 && connections.size() == 0 && registrations.peek() == null)
+				{
+					workerThread.set(null);
+					ensureRunning();
+					break;
+				} else
+					iterations = 0;
 			}
 		}
-	}; 
+	};
+	
+	public void wakeup() {
+		selector.wakeup();
+	}
+	
+	private void ensureRunning() {
+		while(true)
+		{
+			Thread current = workerThread.get();
+			if(current == null && registrations.peek() != null)
+			{
+				current = new Thread(run);
+				current.setName(name);
+				current.setDaemon(true);
+				if(workerThread.compareAndSet(null, current))
+				{
+					current.start();
+					break;
+				}
+			} else
+			{
+				break;
+			}
+		}
+	}
 	
 	public void deRegister(Selectable connection)
 	{
@@ -106,14 +138,21 @@ public class NIOConnectionManager {
 	public void register(Selectable connection) 
 	{
 		registrations.add(connection);
+		ensureRunning();
+		wakeup();
 	}
-	
+
+	/**
+	 * note: this method is not thread-safe 
+	 */
 	public void setSelection(Selectable connection, int mask, boolean onOff)
 	{
 		SelectionKey key = connection.getChannel().keyFor(selector);
+		int oldOps = key.interestOps();
 		if(onOff)
 			key.interestOps(key.interestOps() | mask);
 		else
 			key.interestOps(key.interestOps() & ~mask);
+		//wakeup();
 	}
 }

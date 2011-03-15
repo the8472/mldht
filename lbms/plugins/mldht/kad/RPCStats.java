@@ -36,24 +36,24 @@ public class RPCStats {
 	private long	tmpReceivedTimestamp;
 	private long	tmpSentTimestamp;
 
-	private int[][]	sentMessages;
-	private int[][]	receivedMessages;
-	private int[]	timeoutMessages;
+	private long[][]	sentMessages;
+	private long[][]	receivedMessages;
+	private long[]	timeoutMessages;
 
 	protected RPCStats () {
-		sentMessages = new int[Method.values().length][Type.values().length];
-		receivedMessages = new int[Method.values().length][Type.values().length];
-		timeoutMessages = new int[Method.values().length];
+		sentMessages = new long[Method.values().length][Type.values().length];
+		receivedMessages = new long[Method.values().length][Type.values().length];
+		timeoutMessages = new long[Method.values().length];
 	}
 	
 	@Override
 	public String toString() {
 		StringBuilder b = new StringBuilder();
 		b.append("### local RPCs\n");
-		b.append("REQ / RSP / Timeout\n");
+		b.append("REQ | RSP / Error / Timeout\n");
 		for(Method m : Method.values())
 		{
-			b.append(m).append('\t').append(sentMessages[m.ordinal()][Type.REQ_MSG.ordinal()]).append('/').append(receivedMessages[m.ordinal()][Type.RSP_MSG.ordinal()]).append('/').append(timeoutMessages[m.ordinal()]).append('\n');
+			b.append(m).append('\t').append(sentMessages[m.ordinal()][Type.REQ_MSG.ordinal()]).append('|').append(receivedMessages[m.ordinal()][Type.RSP_MSG.ordinal()]).append('/').append(receivedMessages[m.ordinal()][Type.ERR_MSG.ordinal()]).append('/').append(timeoutMessages[m.ordinal()]).append('\n');
 		}
 		b.append("### remote RPCs\n");
 		b.append("REQ / RSP\n");
@@ -61,9 +61,9 @@ public class RPCStats {
 		{
 			b.append(m).append('\t').append(receivedMessages[m.ordinal()][Type.REQ_MSG.ordinal()]).append('/').append(sentMessages[m.ordinal()][Type.RSP_MSG.ordinal()]).append('\n');
 		}
-		b.append("### errors\n");
+		b.append("### non-associated errors\n");
 		b.append("RX / TX");
-		b.append('\t').append(receivedMessages[Method.NONE.ordinal()][Type.ERR_MSG.ordinal()]).append('/').append(sentMessages[Method.NONE.ordinal()][Type.ERR_MSG.ordinal()]).append('\n');
+		b.append('\t').append(receivedMessages[Method.UNKNOWN.ordinal()][Type.ERR_MSG.ordinal()]).append('/').append(sentMessages[Method.UNKNOWN.ordinal()][Type.ERR_MSG.ordinal()]).append('\n');
 
 		
 		return b.toString();
@@ -118,7 +118,7 @@ public class RPCStats {
 	 * @param t The type of the message
 	 * @return count
 	 */
-	public int getSentMessageCount (Method m, Type t) {
+	public long getSentMessageCount (Method m, Type t) {
 		return sentMessages[m.ordinal()][t.ordinal()];
 	}
 
@@ -129,7 +129,7 @@ public class RPCStats {
 	 * @param t The type of the message
 	 * @return count
 	 */
-	public int getReceivedMessageCount (Method m, Type t) {
+	public long getReceivedMessageCount (Method m, Type t) {
 		return receivedMessages[m.ordinal()][t.ordinal()];
 	}
 
@@ -139,7 +139,7 @@ public class RPCStats {
 	 * @param m The method of the message
 	 * @return count
 	 */
-	public int getTimeoutMessageCount (Method m) {
+	public long getTimeoutMessageCount (Method m) {
 		return timeoutMessages[m.ordinal()];
 	}
 

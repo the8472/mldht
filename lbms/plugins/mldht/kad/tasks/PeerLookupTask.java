@@ -155,6 +155,9 @@ public class PeerLookupTask extends Task {
 				returnedItems.add(it);
 		}
 		
+		if(returnedItems.size() > 0 && firstResultTime == 0)
+			firstResultTime = System.currentTimeMillis();
+		
 		KBucketEntry entry = new KBucketEntry(rsp.getOrigin(), rsp.getID());
 		
 		cache.add(entry);

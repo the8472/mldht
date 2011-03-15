@@ -48,7 +48,7 @@ public class MessageDecoder {
 			} else if (msgType.equals(Type.RSP_MSG.getRPCTypeName())) {
 				mb = parseResponse(map, srv);
 			} else if (msgType.equals(Type.ERR_MSG.getRPCTypeName())) {
-				mb = parseError(map);
+				mb = parseError(map, srv);
 			} else
 				throw new MessageException("unknown RPC type (y="+msgType+")");
 
@@ -68,7 +68,7 @@ public class MessageDecoder {
 	 * @param map
 	 * @return
 	 */
-	private static MessageBase parseError (Map<String, Object> map) {
+	private static MessageBase parseError (Map<String, Object> map, RPCServer srv) {
 		Object error = map.get(Type.ERR_MSG.innerKey());
 		
 		int errorCode = 0;
@@ -95,8 +95,14 @@ public class MessageDecoder {
 			return null;
 
 		byte[] mtid = (byte[]) rawMtid;
+		
+		ErrorMessage msg = new ErrorMessage(mtid, errorCode,errorMsg);
+		
+		RPCCall call = srv.findCall(mtid);
+		if(call != null)
+			msg.method = call.getMessageMethod();
 
-		return new ErrorMessage(mtid, errorCode,errorMsg);
+		return msg;
 	}
 
 	/**
@@ -255,10 +261,23 @@ public class MessageDecoder {
 				ann.setSeed(Long.valueOf(1).equals(args.get("seed")));
 
 				msg = ann;
-			} else
+			} else {
 				throw new MessageException("missing arguments for announce",ErrorCode.ProtocolError);
+			}
+				
 		} else {
-			throw new MessageException("Received unknown Message Type: " + requestMethod,ErrorCode.MethodUnknown);
+			// we don't know what request type this is. check for a target being present
+			Object target = args.get("info_hash");
+			if(target == null || !(target instanceof byte[]))
+				target = args.get("target");
+			if(target != null && target instanceof byte[] && ((byte[])target).length == Key.SHA1_HASH_LENGTH)
+			{
+				msg = new UnknownTypeRequest(new Key((byte[])target));
+			} else
+			{
+				throw new MessageException("Received unknown Message Type: " + requestMethod,ErrorCode.MethodUnknown);
+			}
+			
 		}
 
 		if (msg != null) {

@@ -35,6 +35,7 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
+import lbms.plugins.mldht.utlis.NIOConnectionManager;
 
 public class PullMetaDataConnection implements Selectable {
 	
@@ -87,7 +88,7 @@ public class PullMetaDataConnection implements Selectable {
 	private static final int META_PIECE_DONE = 2;
 	
 	SocketChannel				channel;
-	NIOConnectionManager		connManager				= NIOConnectionManager.getInstance();
+	NIOConnectionManager		connManager;
 	boolean						incoming;
 	
 	Deque<ByteBuffer>			outputBuffers			= new LinkedList<ByteBuffer>();
@@ -184,7 +185,7 @@ public class PullMetaDataConnection implements Selectable {
 	
 	public void register() {
 		// set last rec time before registering, avoid instant termination
-		lastReceivedTime = System.currentTimeMillis();
+		
 		connManager.register(this);
 	}
 	
@@ -192,7 +193,9 @@ public class PullMetaDataConnection implements Selectable {
 		return channel;
 	}
 	
-	public void registrationEvent() throws IOException {
+	public void registrationEvent(NIOConnectionManager manager) throws IOException {
+		connManager = manager;
+		lastReceivedTime = System.currentTimeMillis();
 
 		if(isState(STATE_CONNECTING))
 		{
@@ -236,213 +239,201 @@ public class PullMetaDataConnection implements Selectable {
 		}
 	}
 	
-	public void canReadEvent() throws IOException {
-		try
+	
+	private void processInput() throws IOException {
+		inputBuffer.flip();
+
+		if(isState(STATE_BASIC_HANDSHAKING))
 		{
-			int bytesRead = channel.read(inputBuffer);
-			if(bytesRead == -1)
-				terminate("reached end of stream on read");
-		} catch (IOException e)
-		{
-			terminate("exception on read, cause: "+e.getMessage());
+			boolean connectionMatches = true;
+			byte[] temp = new byte[20];
+			byte[] otherBitfield = new byte[8];
+
+			// check preamble
+			inputBuffer.get(temp);
+			connectionMatches &= Arrays.equals(temp, preamble);
+
+
+			// check LTEP support
+			inputBuffer.get(otherBitfield);
+			connectionMatches &= (otherBitfield[5] & 0x10) != 0;
+
+			// check infohash
+			inputBuffer.get(temp);
+			if(infoHash != null) {
+				connectionMatches &= Arrays.equals(temp, infoHash);
+			} else {
+				infoHash = temp.clone();
+				if(!checker.isInfohashAcceptable(infoHash))
+				{
+					terminate("currently not handling this infohash");
+					return;						
+				}
+			}
+
+
+			// check peer ID
+			inputBuffer.get(temp);
+			if(temp[0] == '-' && temp[1] == 'S' && temp[2] == 'D' && temp[3] == '0' && temp[4] == '1' && temp[5] == '0' &&  temp[6] == '0' && temp[7] == '-')
+				connectionMatches = false; // xunlei claims ltep support but doesn't actually do it
+
+
+			if(!connectionMatches)
+			{
+				terminate("connction mismatch");
+				return;
+			}
+
+			// start parsing BT messages
+			if(incoming)
+				sendBTHandshake();
+
+			Map<String,Object> ltepHandshake = new HashMap<String, Object>();
+			Map<String,Object> messages = new HashMap<String, Object>();
+			ltepHandshake.put("m", messages);
+			ltepHandshake.put("v","mlDHT Torrent Spider");
+			ltepHandshake.put("metadata_size", -1);
+			messages.put("ut_metadata", LTEP_LOCAL_META_ID);
+
+			// send handshake
+			ByteBuffer handshakeBody = ByteBuffer.wrap(BEncoder.encode(ltepHandshake));
+			ByteBuffer handshakeHeader = ByteBuffer.allocate(BT_HEADER_LENGTH + 2);
+			handshakeHeader.putInt(handshakeBody.limit() + 2);
+			handshakeHeader.put((byte) LTEP_HEADER_ID);
+			handshakeHeader.put((byte) LTEP_HANDSHAKE_ID);
+			handshakeHeader.flip();
+			outputBuffers.addLast(handshakeHeader);
+			outputBuffers.addLast(handshakeBody);
+			connManager.setSelection(this, SelectionKey.OP_WRITE, true);
+
+			//System.out.println("got basic handshake");
+
+			inputBuffer.position(0);
+			inputBuffer.limit(BT_HEADER_LENGTH);
+			setState(STATE_BASIC_HANDSHAKING, false);
+			setState(STATE_LTEP_HANDSHAKING, true);
+			return;
 		}
-		
-		// message complete as far as we need it
-		if(inputBuffer.remaining() == 0)
+
+		// parse BT header
+		if(inputBuffer.limit() == BT_HEADER_LENGTH)
 		{
-			inputBuffer.flip();
-			
-			if(isState(STATE_BASIC_HANDSHAKING))
-			{
-				boolean connectionMatches = true;
-				byte[] temp = new byte[20];
-				byte[] otherBitfield = new byte[8];
+			int msgLength = inputBuffer.getInt();
 
-				// check preamble
-				inputBuffer.get(temp);
-				connectionMatches &= Arrays.equals(temp, preamble);
-				
-				
-				// check LTEP support
-				inputBuffer.get(otherBitfield);
-				connectionMatches &= (otherBitfield[5] & 0x10) != 0;
-				
-				// check infohash
-				inputBuffer.get(temp);
-				if(infoHash != null) {
-					connectionMatches &= Arrays.equals(temp, infoHash);
+			// keepalive... wait for next msg
+			if(msgLength == 0)
+			{ 
+				//terminate("we don't wait for keep-alives");
+				consecutiveKeepAlives++;
+				inputBuffer.flip();
+				return;
+			}
+
+			consecutiveKeepAlives = 0;
+
+			int newLength = BT_HEADER_LENGTH + msgLength; 
+
+			if(newLength > inputBuffer.capacity() || newLength < 0)
+			{
+				terminate("message size too large or < 0");
+				return;
+			}
+
+			// read payload
+			inputBuffer.limit(newLength);
+			return;
+		}
+
+		// skip header, we already processed that
+		inputBuffer.position(4);
+
+		// received a full message, reset timeout
+		lastReceivedTime = System.currentTimeMillis();
+
+
+
+		// read BT msg ID
+		int msgID = inputBuffer.get() & 0xFF; 
+		if(msgID == LTEP_HEADER_ID)
+		{
+			// read LTEP msg ID
+			msgID = inputBuffer.get() & 0xFF;
+
+			if(isState(STATE_LTEP_HANDSHAKING) && msgID == LTEP_HANDSHAKE_ID)
+			{
+				//System.out.println("got ltep handshake");
+
+				Map<String,Object> remoteHandshake = BDecoder.decode(inputBuffer.array(), inputBuffer.position(), inputBuffer.remaining());
+				Map<String,Object> messages = (Map<String, Object>) remoteHandshake.get("m");
+				if(messages == null)
+				{
+					terminate("no LTEP messages defined");
+					return;
+				}
+
+				Long metaMsgID = (Long) messages.get("ut_metadata");
+				Long metaLength = (Long) remoteHandshake.get("metadata_size");
+				Long maxR = (Long) remoteHandshake.get("reqq");
+				byte[] ver = (byte[]) remoteHandshake.get("v");
+				if(maxR != null)
+					maxRequests = maxR.intValue();
+				if(ver != null)
+					remoteClient = new String(ver,"UTF-8");
+				if(metaMsgID != null && metaLength != null)
+				{
+					int newInfoLength = metaLength.intValue();
+					if(newInfoLength < 10)
+					{
+						terminate("indicated meta length too small to be a torrent");
+						return;
+					}
+
+					if(metaData == null || newInfoLength != infoLength)
+					{
+						infoLength = newInfoLength;
+						metaData = ByteBuffer.allocate(infoLength);
+						metaPiecesState = new int[(int) Math.ceil(infoLength * 1.0 / (16*1024))];
+					}
+
+					LTEP_REMOTE_META_ID = metaMsgID.intValue();
+
+					setState(STATE_LTEP_HANDSHAKING, false);
+					setState(STATE_GETTING_METADATA, true);
+
+
+					doMetaRequests();
+
 				} else {
-					infoHash = temp.clone();
-					if(!checker.isInfohashAcceptable(infoHash))
-					{
-						terminate("currently not handling this infohash");
-						return;						
-					}
-				}
-					
-				
-				// check peer ID
-				inputBuffer.get(temp);
-				if(temp[0] == '-' && temp[1] == 'S' && temp[2] == 'D' && temp[3] == '0' && temp[4] == '1' && temp[5] == '0' &&  temp[6] == '0' && temp[7] == '-')
-					connectionMatches = false; // xunlei claims ltep support but doesn't actually do it
-				
-				
-				if(!connectionMatches)
-				{
-					terminate("connction mismatch");
+					terminate("no metadata exchange support detected in LTEP");
 					return;
 				}
-				
-				// start parsing BT messages
-				if(incoming)
-					sendBTHandshake();
-				
-				Map<String,Object> ltepHandshake = new HashMap<String, Object>();
-				Map<String,Object> messages = new HashMap<String, Object>();
-				ltepHandshake.put("m", messages);
-				ltepHandshake.put("v","mlDHT Torrent Spider");
-				ltepHandshake.put("metadata_size", -1);
-				messages.put("ut_metadata", LTEP_LOCAL_META_ID);
-				
-				// send handshake
-				ByteBuffer handshakeBody = ByteBuffer.wrap(BEncoder.encode(ltepHandshake));
-				ByteBuffer handshakeHeader = ByteBuffer.allocate(BT_HEADER_LENGTH + 2);
-				handshakeHeader.putInt(handshakeBody.limit() + 2);
-				handshakeHeader.put((byte) LTEP_HEADER_ID);
-				handshakeHeader.put((byte) LTEP_HANDSHAKE_ID);
-				handshakeHeader.flip();
-				outputBuffers.addLast(handshakeHeader);
-				outputBuffers.addLast(handshakeBody);
-				connManager.setSelection(this, SelectionKey.OP_WRITE, true);
-				
-				//System.out.println("got basic handshake");
-				
-				inputBuffer.position(0);
-				inputBuffer.limit(BT_HEADER_LENGTH);
-				setState(STATE_BASIC_HANDSHAKING, false);
-				setState(STATE_LTEP_HANDSHAKING, true);
-				return;
-			}
-			
-			// parse BT header
-			if(inputBuffer.limit() == BT_HEADER_LENGTH)
-			{
-				int msgLength = inputBuffer.getInt();
-				
-				// keepalive... wait for next msg
-				if(msgLength == 0)
-				{ 
-					//terminate("we don't wait for keep-alives");
-					consecutiveKeepAlives++;
-					inputBuffer.flip();
-					return;
-				}
-				
-				consecutiveKeepAlives = 0;
-				
-				int newLength = BT_HEADER_LENGTH + msgLength; 
-				
-				if(newLength > inputBuffer.capacity() || newLength < 0)
-				{
-					terminate("message size too large or < 0");
-					return;
-				}
-				
-				// read payload
-				inputBuffer.limit(newLength);
-				return;
-			}
-			
-			// skip header, we already processed that
-			inputBuffer.position(4);
-			
-			// received a full message, reset timeout
-			lastReceivedTime = System.currentTimeMillis();
-			
-			
-			
-			// read BT msg ID
-			int msgID = inputBuffer.get() & 0xFF; 
-			if(msgID == LTEP_HEADER_ID)
-			{
-				// read LTEP msg ID
-				msgID = inputBuffer.get() & 0xFF;
-				
-				if(isState(STATE_LTEP_HANDSHAKING) && msgID == LTEP_HANDSHAKE_ID)
-				{
-					//System.out.println("got ltep handshake");
-					
-					Map<String,Object> remoteHandshake = BDecoder.decode(inputBuffer.array(), inputBuffer.position(), inputBuffer.remaining());
-					Map<String,Object> messages = (Map<String, Object>) remoteHandshake.get("m");
-					if(messages == null)
-					{
-						terminate("no LTEP messages defined");
-						return;
-					}
-						
-					Long metaMsgID = (Long) messages.get("ut_metadata");
-					Long metaLength = (Long) remoteHandshake.get("metadata_size");
-					Long maxR = (Long) remoteHandshake.get("reqq");
-					byte[] ver = (byte[]) remoteHandshake.get("v");
-					if(maxR != null)
-						maxRequests = maxR.intValue();
-					if(ver != null)
-						remoteClient = new String(ver,"UTF-8");
-					if(metaMsgID != null && metaLength != null)
-					{
-						int newInfoLength = metaLength.intValue();
-						if(newInfoLength < 10)
-						{
-							terminate("indicated meta length too small to be a torrent");
-							return;
-						}
-							
-						if(metaData == null || newInfoLength != infoLength)
-						{
-							infoLength = newInfoLength;
-							metaData = ByteBuffer.allocate(infoLength);
-							metaPiecesState = new int[(int) Math.ceil(infoLength * 1.0 / (16*1024))];
-						}
 
-						LTEP_REMOTE_META_ID = metaMsgID.intValue();
-						
-						setState(STATE_LTEP_HANDSHAKING, false);
-						setState(STATE_GETTING_METADATA, true);
-						
-						
-						doMetaRequests();
-						
-					} else {
-						terminate("no metadata exchange support detected in LTEP");
-						return;
-					}
-						
+			}
+
+			if(isState(STATE_GETTING_METADATA) && msgID == LTEP_LOCAL_META_ID)
+			{
+				// consumes bytes as necessary for the bencoding
+				Map<String, Object> params = decoder.decodeByteBuffer(inputBuffer, false);
+				Long type = (Long) params.get("msg_type");
+				Long idx = (Long) params.get("piece");
+
+				if(type == 1)
+				{ // piece 
+					metaPiecesState[idx.intValue()] = META_PIECE_DONE;
+					outstandingRequests--;
+					// use remaining bytes for metadata
+					metaData.position((int) (16*1024 * idx));
+					metaData.put(inputBuffer);
+					doMetaRequests();
+					checkMetaRequests();
+				} else if(type == 2)
+				{ // reject
+					terminate("request was rejected");
+					return;
 				}
-				
-				if(isState(STATE_GETTING_METADATA) && msgID == LTEP_LOCAL_META_ID)
-				{
-					// consumes bytes as necessary for the bencoding
-					Map<String, Object> params = decoder.decodeByteBuffer(inputBuffer, false);
-					Long type = (Long) params.get("msg_type");
-					Long idx = (Long) params.get("piece");
-					
-					if(type == 1)
-					{ // piece 
-						metaPiecesState[idx.intValue()] = META_PIECE_DONE;
-						outstandingRequests--;
-						// use remaining bytes for metadata
-						metaData.position((int) (16*1024 * idx));
-						metaData.put(inputBuffer);
-						doMetaRequests();
-						checkMetaRequests();
-					} else if(type == 2)
-					{ // reject
-						terminate("request was rejected");
-						return;
-					}
-				}
-				
-			} /* else if(msgID == BT_BITFIELD_ID && isState(STATE_LTEP_HANDSHAKING))
+			}
+
+		} /* else if(msgID == BT_BITFIELD_ID && isState(STATE_LTEP_HANDSHAKING))
 			{
 				// just duplicate whatever they've sent but with 0-bits
 				ByteBuffer bitfield = ByteBuffer.allocate(inputBuffer.limit());
@@ -452,12 +443,36 @@ public class PullMetaDataConnection implements Selectable {
 				outputBuffers.addLast(bitfield);
 				conHandler.setSelection(this, SelectionKey.OP_WRITE, true);
 			}*/
+
+
+		// parse next BT header
+		inputBuffer.position(0);
+		inputBuffer.limit(BT_HEADER_LENGTH);
+		
+	}
+	
+	public void canReadEvent() throws IOException {
+		int bytesRead = 0;
+		
+		do {
+			try
+			{
+				bytesRead = channel.read(inputBuffer);
+			} catch (IOException e)
+			{
+				terminate("exception on read, cause: "+e.getMessage());
+			}
 			
-			
-			// parse next BT header
-			inputBuffer.position(0);
-			inputBuffer.limit(BT_HEADER_LENGTH);
-		}
+			if(bytesRead == -1)
+				terminate("reached end of stream on read");
+			// message complete as far as we need it
+			else if(inputBuffer.remaining() == 0)
+				processInput();
+		} while(bytesRead > 0 && !isState(STATE_CLOSED));
+		
+
+		
+		
 	}
 	
 	void doMetaRequests() throws IOException {
@@ -553,7 +568,7 @@ public class PullMetaDataConnection implements Selectable {
 			connManager.setSelection(this, SelectionKey.OP_WRITE, false);
 	}
 	
-	public void doTimeOutChecks(long now) throws IOException {
+	public void doStateChecks(long now) throws IOException {
 		if(now - lastReceivedTime > RCV_TIMEOUT || consecutiveKeepAlives >= 2)
 			terminate("closing idle connection");
 		else if(!channel.isOpen())
@@ -565,7 +580,7 @@ public class PullMetaDataConnection implements Selectable {
 			return;
 		//if(!isState(STATE_FINISHED) && !isState(STATE_CONNECTING))
 			MetaDataGatherer.log("closing connection for "+(infoHash != null ? new Key(infoHash).toString(false) : null)+" to "+destination+"/"+remoteClient+" state:"+state+" reason:"+reason);
-		NIOConnectionManager.getInstance().deRegister(this);
+		connManager.deRegister(this);
 		setState(STATE_CLOSED, true);
 		metaHandler.onTerminate(!isState(STATE_CONNECTING));
 		channel.close();

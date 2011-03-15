@@ -45,14 +45,15 @@ import lbms.plugins.mldht.kad.tasks.PeerLookupTask;
 import lbms.plugins.mldht.kad.tasks.Task;
 import lbms.plugins.mldht.kad.tasks.TaskListener;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
+import lbms.plugins.mldht.utlis.NIOConnectionManager;
 
 public class MetaDataGatherer {
 	
-	public static final int MAX_PEERS_PER_INFOHASH = 40;
+	public static final int MAX_PEERS_PER_INFOHASH = 50;
 	public static final int LOOKUPS_PER_VIRTUAL_NODE = 3;
 	public static final int PIVOT_EVERY_N_VIRTUAL_NODES = 3;
 	public static final int MIN_PIVOTS = 32;
-	public static final int MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE = 2;
+	public static final int MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE = 3;
 	public static final int MAX_FINISHED_UPDATE_CHARGE = 100;
 
 	ArrayList<Key> lookupPivotPoints = new ArrayList<Key>();
@@ -68,6 +69,9 @@ public class MetaDataGatherer {
 	
 
 	InfoHashGatherer info;
+	
+	NIOConnectionManager connectionManager;
+	
 	AtomicInteger activeIncomingConnections = new AtomicInteger();
 	MetaDataConnectionServer v4srv;
 	MetaDataConnectionServer v6srv;
@@ -100,6 +104,7 @@ public class MetaDataGatherer {
 	
 	public MetaDataGatherer(InfoHashGatherer info) {
 		this.info = info;
+		connectionManager = new NIOConnectionManager("mlDHT Indexer NIO Selector ");
 		initListeningService();
 		
 		try
@@ -131,7 +136,7 @@ public class MetaDataGatherer {
 					
 					for(DHTtype type : DHTtype.values())
 					{
-						int dhtMax = DHT.getDHT(type).getServers().size();
+						int dhtMax = DHT.getDHT(type).getServerManager().getActiveServerCount();
 						if(dhtServers == 0)
 							dhtServers = dhtMax;
 						else
@@ -234,10 +239,8 @@ public class MetaDataGatherer {
 		v6srv = new MetaDataConnectionServer(Inet6Address.class);
 		v4srv.connectionHandler = handler;
 		v6srv.connectionHandler = handler;
-		v4srv.register();
-		v6srv.register();
-		
-		
+		connectionManager.register(v4srv);
+		connectionManager.register(v6srv);
 	}
 	
 	private void updatePivots() {
@@ -302,7 +305,7 @@ public class MetaDataGatherer {
 					ceilKey = Key.MAX_KEY;
 
 				// due to the prefix-increment we'll already be +1ed here
-				boolean possibleWraparound = pivotIdx >= lookupPivotPoints.size();
+				boolean possibleWraparound = pivotIdx >= lookupPivotPoints.size() && !(startKey.equals(Key.MIN_KEY) && ceilKey.equals(Key.MAX_KEY));
 
 				// spread lookups over the pivot ranges
 				int wants = Math.min(targetNum, Math.max(1, (numVirtualNodes * LOOKUPS_PER_VIRTUAL_NODE) / lookupPivotPoints.size()));
@@ -383,11 +386,11 @@ public class MetaDataGatherer {
 			
 			log("starting DHT lookup for "+task.hash);
 
-			final AtomicInteger pendingLookups = new AtomicInteger();
+			final int[] pendingLookups = new int[1];
 
 			TaskListener lookupListener = new TaskListener() {
-				public void finished(Task t) {
-					int pending = pendingLookups.decrementAndGet();
+				public synchronized void finished(Task t) {
+					int pending = --pendingLookups[0];
 					if(pending >= 0)
 					{
 						PeerLookupTask pt = (PeerLookupTask) t;
@@ -399,7 +402,6 @@ public class MetaDataGatherer {
 					{
 						log("all DHT lookups done for"+task.hash);
 						activeLookups.decrementAndGet();
-						// remove all null entries that might have occured due to concurrent inserts
 						task.addresses.removeAll(Collections.singleton(null));
 						if(task.addresses.size() > 0) {
 							// trim to a limited amount of addresses to avoid 1 task being stuck for ages
@@ -415,7 +417,7 @@ public class MetaDataGatherer {
 				}
 			};
 
-			activeLookups.incrementAndGet();
+			
 
 			for(DHTtype type : DHTtype.values())
 			{
@@ -423,7 +425,7 @@ public class MetaDataGatherer {
 				PeerLookupTask lookupTask = dht.createPeerLookup(task.entry.info_hash);
 				if(lookupTask != null)
 				{
-					pendingLookups.incrementAndGet();
+					pendingLookups[0]++;
 					
 					lookupTask.setFastTerminate(true);
 					lookupTask.setNoAnnounce(true);
@@ -434,6 +436,11 @@ public class MetaDataGatherer {
 					dht.getTaskManager().addTask(lookupTask);
 				}
 			}
+			
+			if(pendingLookups[0] > 0)
+				activeLookups.incrementAndGet();
+			else // this really shouldn't happen but sometimes no RPC server may be availble despite numVirtualNodes > 0
+				fetchTaskTerminated(entry, 0);
 
 		}
 		
@@ -529,7 +536,6 @@ public class MetaDataGatherer {
 					activeOutgoingConnections.decrementAndGet();
 			}
 			
-			@Override
 			public void onConnect() {
 				activeOutgoingConnections.incrementAndGet();
 			}

@@ -60,7 +60,7 @@ public class Main {
 		
 		@Override
 		public boolean allowMultiHoming() {
-			return true;
+			return false;
 		}
 	};
 	

@@ -196,7 +196,7 @@ public abstract class MessageBase {
 	};
 
 	public static enum Method {
-		PING, FIND_NODE, GET_PEERS, ANNOUNCE_PEER, NONE;
+		PING, FIND_NODE, GET_PEERS, ANNOUNCE_PEER, UNKNOWN;
 		
 		String getRPCName()	{
 			return name().toLowerCase();						

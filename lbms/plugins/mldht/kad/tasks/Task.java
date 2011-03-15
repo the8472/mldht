@@ -50,6 +50,9 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	private AtomicInteger				outstandingRequests = new AtomicInteger();
 	private int							sentReqs;
 	private int							recvResponses;
+	long 								startTime;
+	long								firstResultTime;
+	long								finishTime;
 	private int							failedReqs;
 	private int							taskID;
 	private boolean						taskFinished;
@@ -274,6 +277,18 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	public String getInfo () {
 		return info;
 	}
+	
+	public long getStartTime() {
+		return startTime;
+	}
+	
+	public long getFinishedTime() {
+		return finishTime;
+	}
+	
+	public long getFirstResultTime() {
+		return firstResultTime;
+	}
 
 	/**
 	 * @param info the info to set
@@ -308,6 +323,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 
 	/// Kills the task
 	public void kill () {
+		finishTime = -1;
 		finished();
 	}
 
@@ -315,6 +331,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 * Starts the Timeout Timer
 	 */
 	private void startTimeout () {
+		startTime = System.currentTimeMillis();
 		timeoutTimer = DHT.getScheduler().schedule(new Runnable() {
 			/* (non-Javadoc)
 			 * @see java.lang.Runnable#run()
@@ -352,6 +369,9 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 				return;
 			taskFinished = true;
 		}
+		
+		if(finishTime != -1)
+			finishTime = System.currentTimeMillis();
 		
 		DHT.logDebug("Task finished: " + getTaskID());
 		if (timeoutTimer != null) {

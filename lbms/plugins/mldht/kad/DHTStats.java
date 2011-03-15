@@ -16,11 +16,15 @@
  */
 package lbms.plugins.mldht.kad;
 
+import lbms.plugins.mldht.kad.tasks.Task;
+
 /**
  * @author Damokles
  *
  */
 public class DHTStats {
+	
+	private static final double EMA_WEIGHT = 0.01;
 
 	private DatabaseStats	dbStats;
 
@@ -38,6 +42,9 @@ public class DHTStats {
 	private int				numSentPackets;
 
 	private int				numRpcCalls;
+	
+	private double			avgFirstResultTime = 10000;
+	private double			avgFinishTime = 10000;
 
 	/**
 	 * @return the num_peers
@@ -108,6 +115,19 @@ public class DHTStats {
 	protected void setNumTasks (int num_tasks) {
 		this.numTasks = num_tasks;
 	}
+	
+	public void taskFinished(Task t)
+	{
+		if(t.getFinishedTime() <= 0)
+			return;
+		avgFinishTime = (t.getFinishedTime() - t.getStartTime()) * EMA_WEIGHT + avgFinishTime * (1.0 - EMA_WEIGHT);
+		System.out.println("fin "+(t.getFinishedTime() - t.getStartTime()));
+		if(t.getFirstResultTime() <= 0)
+			return;
+		avgFirstResultTime = (t.getFirstResultTime() - t.getStartTime()) * EMA_WEIGHT + avgFirstResultTime * (1.0 - EMA_WEIGHT);
+		
+		System.out.println("1st "+(t.getFirstResultTime() - t.getStartTime()));
+	}
 
 	/**
 	 * @param num_received_packets the num_received_packets to set
@@ -153,7 +173,8 @@ public class DHTStats {
 		StringBuilder b = new StringBuilder();
 		b.append("DB Keys: ").append(dbStats.getKeyCount()).append('\n');
 		b.append("DB Items: ").append(dbStats.getItemCount()).append('\n');
-		b.append("TX sum: ").append(numSentPackets).append(" RX sum").append(numReceivedPackets).append('\n');
+		b.append("TX sum: ").append(numSentPackets).append(" RX sum: ").append(numReceivedPackets).append('\n');
+		b.append("avg task time/avg 1st result time (ms): ").append((int)avgFinishTime).append('/').append((int)avgFirstResultTime).append('\n');
 		b.append("RPC stats\n");
 		b.append(rpcStats.toString());
 		return b.toString();

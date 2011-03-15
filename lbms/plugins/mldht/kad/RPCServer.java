@@ -18,11 +18,17 @@ package lbms.plugins.mldht.kad;
 
 import java.io.IOException;
 import java.net.*;
+import java.nio.ByteBuffer;
+import java.nio.channels.DatagramChannel;
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.SelectionKey;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import lbms.plugins.mldht.indexer.Selectable;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.messages.*;
 import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
@@ -31,6 +37,7 @@ import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.ByteWrapper;
 import lbms.plugins.mldht.kad.utils.ResponseTimeoutFilter;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
+import lbms.plugins.mldht.utlis.NIOConnectionManager;
 
 import org.gudy.azureus2.core3.util.BDecoder;
 
@@ -38,33 +45,41 @@ import org.gudy.azureus2.core3.util.BDecoder;
  * @author The_8472, Damokles
  *
  */
-public class RPCServer implements Runnable {
+public class RPCServer {
 	
-	static Map<InetAddress,RPCServer> interfacesInUse = new HashMap<InetAddress, RPCServer>(); 
-	
-	private DatagramSocket							sock;
+	private InetAddress						addr;
 	private DHT										dh_table;
+	private RPCServerManager						manager;
 	private ConcurrentMap<ByteWrapper, RPCCall>		calls;
 	private Queue<RPCCall>							call_queue;
-	private volatile boolean						running;
-	private Thread									thread;
+	private Queue<EnqueuedSend>						pipeline;
 	private int										numReceived;
 	private int										numSent;
 	private int										port;
 	private RPCStats								stats;
 	private ResponseTimeoutFilter					timeoutFilter;
-	
 	private Key										derivedId;
+	
+	
+	private boolean isReachable = false;
+	private int		numReceivesAtLastCheck = 0;
+	private long	timeOfLastReceiveCountChange = 0;
+	
 
-	public RPCServer (DHT dh_table, int port, RPCStats stats) {
+	private SocketHandler sel;
+
+	public RPCServer (RPCServerManager manager, InetAddress addr, int port, RPCStats stats) {
 		this.port = port;
-		this.dh_table = dh_table;
+		this.dh_table = manager.dht;
 		timeoutFilter = new ResponseTimeoutFilter();
+		pipeline = new ConcurrentLinkedQueue<EnqueuedSend>();
 		calls = new ConcurrentHashMap<ByteWrapper, RPCCall>(80,0.75f,3);
 		call_queue = new ConcurrentLinkedQueue<RPCCall>();
 		this.stats = stats;
-		
-		start();
+		this.addr = addr;
+		this.manager = manager;
+		// reserve an ID
+		derivedId = dh_table.getNode().registerServer(this);
 	}
 	
 	public DHT getDHT()
@@ -72,69 +87,33 @@ public class RPCServer implements Runnable {
 		return dh_table;
 	}
 	
-	private boolean createSocket() 
-	{
-		if(sock != null)
-			sock.close();
-		
-		synchronized (interfacesInUse)
-		{
-			interfacesInUse.values().remove(this);
-			
-			InetAddress addr = null;
-			
-			try {
-				LinkedList<InetAddress> addrs = AddressUtils.getAvailableAddrs(dh_table.getConfig().allowMultiHoming(), dh_table.getType().PREFERRED_ADDRESS_TYPE);
-				addrs.removeAll(interfacesInUse.keySet());
-				addr = addrs.peekFirst();
-				
-				timeoutFilter.reset();
-				
-				if(addr == null)
-					throw new NullPointerException("valid address expected");
-
-				sock = new DatagramSocket(null);
-				sock.setReuseAddress(true);
-				sock.bind(new InetSocketAddress(addr, port));
-
-				interfacesInUse.put(addr, this);
-				return true;
-			} catch (Exception e) {
-				if(sock != null)
-					sock.close();
-				destroy();
-				return false;
-			}
-		}
-
-	}
-	
 	public int getPort() {
 		return port;
 	}
 	
+	public InetAddress getBindAddress() {
+		return addr;
+	}
 	
 	/**
 	 * @return external addess, if known (only ipv6 for now)
 	 */
 	public InetAddress getPublicAddress() {
-		InetAddress addr = sock.getLocalAddress();
+		if(sel == null)
+			return null;
+		InetAddress addr = ((DatagramChannel)sel.getChannel()).socket().getLocalAddress();
 		if(dh_table.getType().PREFERRED_ADDRESS_TYPE.isInstance(addr) && AddressUtils.isGlobalUnicast(addr))
 			return addr;
 		return null;
 	}
 
-	/* (non-Javadoc)
-	 * @see java.lang.Runnable#run()
-	 */
-	/* (non-Javadoc)
-	 * @see lbms.plugins.mldht.kad.RPCServerBase#run()
-	 */
+	
+	/*
 	public void run() {
 		
 		int delay = 1;
 		
-		byte[] buffer = new byte[DHTConstants.RECEIVE_BUFFER_SIZE];
+		
 		
 		while (running)
 		{
@@ -180,7 +159,7 @@ public class RPCServer implements Runnable {
 		destroy();
 		DHT.logInfo("Stopped RPC Server");
 	}
-	
+	*/
 	public Key getDerivedID() {
 		return derivedId;
 	}
@@ -191,46 +170,27 @@ public class RPCServer implements Runnable {
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#start()
 	 */
 	public void start() {
-		if(!createSocket())
-			return;
-		
-		running = true;
-		
 		DHT.logInfo("Starting RPC Server");
+		sel = new SocketHandler();
+	}
+	
+	public void stop() {
 		
-		// reserve an ID
-		derivedId = dh_table.getNode().registerServer(this);
-		
-		// make ourselves known once everything is ready
-		dh_table.addServer(this);
-		
-		// start thread after registering so the DHT can handle incoming packets properly
-		thread = new Thread(this, "mlDHT RPC Thread "+dh_table.getType());
-		thread.setPriority(Thread.MIN_PRIORITY);
-		thread.setDaemon(true);
-		thread.start();
-		
-
 	}
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#stop()
-	 */
+	 
 	public void destroy () {
 		if(running)
 			DHT.logInfo("Stopping RPC Server");
 		running = false;
-		dh_table.removeServer(this);
 		dh_table.getNode().removeServer(this);
-		synchronized (interfacesInUse)
-		{
-			interfacesInUse.values().remove(this);
-		}
 		if(sock != null)
 			sock.close();
 		thread = null;
 		
-	}
+	}*/
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#doCall(lbms.plugins.mldht.kad.messages.MessageBase)
@@ -269,16 +229,6 @@ public class RPCServer implements Runnable {
 		public void onResponse(RPCCall c, MessageBase rsp) {}
 	}; 
 	
-	private void dispatchCall(RPCCall call, short mtid)
-	{
-		MessageBase msg = call.getRequest();
-		msg.setMTID(mtid);
-		call.addListener(rpcListener);
-		timeoutFilter.registerCall(call);
-		call.sent();
-		sendMessage(msg);
-	}
-
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#ping(lbms.plugins.mldht.kad.Key, java.net.InetSocketAddress)
 	 */
@@ -325,20 +275,39 @@ public class RPCServer implements Runnable {
 		return stats;
 	}
 	
+	public void checkReachability(long now) {
+		// don't do pings too often if we're not receiving anything (connection might be dead)
+		if(numReceived != numReceivesAtLastCheck)
+		{
+			isReachable = true;
+			timeOfLastReceiveCountChange = now;
+			numReceivesAtLastCheck = numReceived;
+		} else if(now - timeOfLastReceiveCountChange > DHTConstants.REACHABILITY_TIMEOUT)
+		{
+			isReachable = false;
+			timeoutFilter.reset();
+		}
+	}
+	
+	public boolean isReachable() {
+		return isReachable;
+	}
+	
 	// we only decode in the listening thread, so reused the decoder
 	private BDecoder decoder = new BDecoder();
 
-	private void handlePacket (DatagramPacket p) {
+	private void handlePacket (ByteBuffer p, SocketAddress soa) {
+		InetSocketAddress source = (InetSocketAddress) soa;
+		
 		numReceived++;
-		stats.addReceivedBytes(p.getLength() + dh_table.getType().HEADER_LENGTH);
+		stats.addReceivedBytes(p.limit() + dh_table.getType().HEADER_LENGTH);
 		// ignore port 0, can't respond to them anyway and responses to requests from port 0 will be useless too
-		if(p.getPort() == 0)
+		if(source.getPort() == 0)
 			return;
 
 		if (DHT.isLogLevelEnabled(LogLevel.Verbose)) {
 			try {
-				DHT.logVerbose(new String(p.getData(), 0, p.getLength(),
-						"UTF-8"));
+				DHT.logVerbose(new String(p.array(), 0, p.limit(),"UTF-8"));
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -349,11 +318,11 @@ public class RPCServer implements Runnable {
 		MessageBase msg = null;
 		
 		try {
-			bedata = decoder.decodeByteArray(p.getData(), 0, p.getLength() , false);
+			bedata = decoder.decodeByteBuffer(p, false);
 		} catch(IOException e) {
 			DHT.log(e, LogLevel.Debug);
 			MessageBase err = new ErrorMessage(new byte[] {0,0,0,0}, ErrorCode.ProtocolError.code,"invalid bencoding: "+e.getMessage());
-			err.setDestination(new InetSocketAddress(p.getAddress(), p.getPort()));
+			err.setDestination(source);
 			sendMessage(err);
 			return;
 		}
@@ -367,22 +336,22 @@ public class RPCServer implements Runnable {
 				mtid = (byte[]) bedata.get("t");
 			DHT.log(e, LogLevel.Debug);
 			MessageBase err = new ErrorMessage(mtid, e.errorCode.code,e.getMessage());
-			err.setDestination(new InetSocketAddress(p.getAddress(), p.getPort()));
+			err.setDestination(source);
 			sendMessage(err);
 			return;
 		}
 		
 		if(DHT.isLogLevelEnabled(LogLevel.Debug))
-			DHT.logDebug("RPC received message ["+p.getAddress().getHostAddress()+"] "+msg.toString());
+			DHT.logDebug("RPC received message ["+source.getAddress().getHostAddress()+"] "+msg.toString());
 		stats.addReceivedMessageToCount(msg);
-		msg.setOrigin(new InetSocketAddress(p.getAddress(), p.getPort()));
+		msg.setOrigin(source);
 		msg.setServer(this);
 		msg.apply(dh_table);
 		
 		// check if this is a response to an outstanding request
 		RPCCall c = calls.get(new ByteWrapper(msg.getMTID()));
 		
-		if (msg.getType() == Type.RSP_MSG || msg.getType() == Type.ERR_MSG && c != null) {
+		if ((msg.getType() == Type.RSP_MSG || msg.getType() == Type.ERR_MSG) && c != null) {
 			if(c.getRequest().getDestination().equals(msg.getOrigin()))
 			{
 				// delete the call, but first notify it of the response
@@ -396,29 +365,37 @@ public class RPCServer implements Runnable {
 		}
 
 	}
+	
+	private void fillPipe(EnqueuedSend es) {
+		pipeline.add(es);
+		if(pipeline.peek() == es)
+			sel.connectionManager.wakeup();
+	}
 		
+
+	private void dispatchCall(RPCCall call, short mtid)
+	{
+		MessageBase msg = call.getRequest();
+		msg.setMTID(mtid);
+		call.addListener(rpcListener);
+		timeoutFilter.registerCall(call);
+		EnqueuedSend es = new EnqueuedSend(msg);
+		es.associatedCall = call;
+		fillPipe(es);
+	}
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#sendMessage(lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
 	public void sendMessage (MessageBase msg) {
-		try {
-			if(msg.getID() == null)
-				msg.setID(getDerivedID());
-			stats.addSentMessageToCount(msg);
-			send(msg.getDestination(), msg.encode());
-			if(DHT.isLogLevelEnabled(LogLevel.Debug))
-				DHT.logDebug("RPC send Message: [" + msg.getDestination().getAddress().getHostAddress() + "] "+ msg.toString());
-		} catch (IOException e) {
-			System.out.print(sock.getLocalAddress()+" -> "+msg.getDestination()+" ");
-			e.printStackTrace();
-		}
+		fillPipe(new EnqueuedSend(msg));
 	}
 	
 	public ResponseTimeoutFilter getTimeoutFilter() {
 		return timeoutFilter;
 	}
 
+	/*
 	private void send (InetSocketAddress addr, byte[] msg) throws IOException {
 		if (!sock.isClosed()) {
 			DatagramPacket p = new DatagramPacket(msg, msg.length);
@@ -437,10 +414,9 @@ public class RPCServer implements Runnable {
 					throw e;
 				}
 			}
-			stats.addSentBytes(msg.length + dh_table.getType().HEADER_LENGTH);
-			numSent++;
+
 		}
-	}
+	}*/
 
 	private void doQueuedCalls () {
 		while (call_queue.peek() != null && calls.size() < DHTConstants.MAX_ACTIVE_CALLS) {
@@ -464,6 +440,165 @@ public class RPCServer implements Runnable {
 		b.append(getDerivedID()).append("\t").append(getPublicAddress()).append(":").append(getPort()).append('\n');
 		b.append("rx: ").append(numReceived).append(" tx:").append(numSent).append(" active:").append(getNumActiveRPCCalls()).append(" baseRTT:").append(timeoutFilter.getStallTimeout()).append('\n');
 		return b.toString();
+	}
+	
+	static ThreadLocal<ByteBuffer> buf = new ThreadLocal<ByteBuffer>();
+
+	private class SocketHandler implements Selectable {
+		DatagramChannel channel;
+		
+		{
+			try
+			{
+				timeoutFilter.reset();
+	
+				channel = DatagramChannel.open();
+				channel.configureBlocking(false);
+				channel.socket().setReuseAddress(true);
+				channel.socket().bind(new InetSocketAddress(addr, port));
+				dh_table.getConnectionManager().register(this);
+			} catch (IOException e)
+			{
+				e.printStackTrace();
+			}
+		}
+		
+		
+		NIOConnectionManager connectionManager;
+
+		
+		@Override
+		public void selectionEvent(SelectionKey key) throws IOException {
+			if(key.isValid() && key.isReadable())
+				readEvent();
+			if(key.isValid() && key.isWritable())
+				writeEvent(channel);
+				
+		}
+		
+		private final Runnable readEventHandler = new Runnable() {
+			public void run() {
+				ByteBuffer buffer = buf.get();
+				if(buffer == null)
+				{
+					buffer = ByteBuffer.allocate(DHTConstants.RECEIVE_BUFFER_SIZE);
+					buf.set(buffer);
+				}
+				
+				try
+				{
+					while(true)
+					{
+						buffer.clear();
+						SocketAddress soa = channel.receive(buffer);
+						if(soa == null)
+							break;
+						buffer.flip();
+						handlePacket(buffer,soa);
+					}
+				} catch (IOException e)
+				{
+					e.printStackTrace();
+				} finally {
+					processingReads.set(false);
+					connectionManager.wakeup();
+				}
+				
+			}
+		};
+		
+		private AtomicBoolean processingReads = new AtomicBoolean();
+		
+		private void readEvent() throws IOException {
+			if(processingReads.compareAndSet(false, true))
+			{
+				connectionManager.setSelection(this, SelectionKey.OP_READ, false);
+				DHT.getScheduler().execute(readEventHandler);
+			}
+
+		}
+		
+		private void writeEvent(DatagramChannel chan)
+		{
+			EnqueuedSend es;
+			while(true)
+			{
+				es = pipeline.poll();
+				if(es == null)
+					break;
+				try
+				{
+					ByteBuffer buf = es.getBuffer();
+					
+					if(chan.send(buf, es.toSend.getDestination()) == 0)
+					{
+						pipeline.add(es);
+						break;
+					}
+					
+					if(es.associatedCall != null)
+						es.associatedCall.sent();
+					
+					stats.addSentMessageToCount(es.toSend);
+					stats.addSentBytes(buf.limit() + dh_table.getType().HEADER_LENGTH);
+					if(DHT.isLogLevelEnabled(LogLevel.Debug))
+						DHT.logDebug("RPC send Message: [" + es.toSend.getDestination().getAddress().getHostAddress() + "] "+ es.toSend.toString());
+				} catch (IOException e)
+				{
+					pipeline.add(es);
+					break;
+				}
+				
+				
+				numSent++;
+			}
+	
+		}
+		
+		@Override
+		public void registrationEvent(NIOConnectionManager manager) throws IOException {
+			connectionManager = manager;
+			connectionManager.setSelection(this, SelectionKey.OP_READ, true);
+		}
+		
+		@Override
+		public SelectableChannel getChannel() {
+			return channel;
+		}
+		
+		@Override
+		public void doStateChecks(long now) throws IOException {
+			if(!channel.isOpen() || (!addr.isAnyLocalAddress() && NetworkInterface.getByInetAddress(addr) == null))
+			{
+				channel.close();
+				connectionManager.deRegister(this);
+				stop();
+				//sel = null;
+				return;
+			}
+				
+			
+			connectionManager.setSelection(this, SelectionKey.OP_WRITE, pipeline.peek() != null);
+			connectionManager.setSelection(this, SelectionKey.OP_READ, !processingReads.get());
+		}
+	}
+
+	private class EnqueuedSend {
+		MessageBase toSend;
+		RPCCall associatedCall;
+		ByteBuffer buf;
+		
+		public EnqueuedSend(MessageBase msg) {
+			toSend = msg;
+			if(toSend.getID() == null)
+				toSend.setID(getDerivedID());
+		}
+		
+		ByteBuffer getBuffer() throws IOException {
+			if(buf != null)
+				return buf;
+			return buf = ByteBuffer.wrap(toSend.encode());
+		}
 	}
 
 }

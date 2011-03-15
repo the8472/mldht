@@ -40,7 +40,7 @@ public class ErrorMessage extends MessageBase {
 	 * @param msg
 	 */
 	public ErrorMessage (byte[] mtid, int code, String msg) {
-		super(mtid, Method.NONE, Type.ERR_MSG);
+		super(mtid, Method.UNKNOWN, Type.ERR_MSG);
 		this.msg = msg;
 		this.code = code;
 	}

@@ -291,7 +291,7 @@ public class KBucket implements Externalizable {
 		p.setDestination(entry.getAddress());
 		pendingPings.put(entry.getID(),entry);
 		
-		new RPCCall(node.getDHT().getRandomServer(), p).setExpectedID(entry.getID()).addListener(listener).addListener(new RPCCallListener() {
+		new RPCCall(node.getDHT().getServerManager().getRandomActiveServer(false), p).setExpectedID(entry.getID()).addListener(listener).addListener(new RPCCallListener() {
 			public void onTimeout(RPCCall c) {
 				pendingPings.remove(entry.getID());
 			}

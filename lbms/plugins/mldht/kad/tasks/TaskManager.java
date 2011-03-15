@@ -20,7 +20,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import lbms.plugins.mldht.kad.DHTBase;
+import lbms.plugins.mldht.kad.DHT;
 
 /**
  * Manages all dht tasks.
@@ -31,16 +31,18 @@ public class TaskManager {
 
 	private ConcurrentSkipListSet<Task>	tasks;
 	private Deque<Task>			queued;
+	private DHT					dht;
 	private AtomicInteger		next_id = new AtomicInteger();
 	private TaskListener		finishListener 	= new TaskListener() {
 		public void finished(Task t) {
 			tasks.remove(t);				
-			
+			dht.getStats().taskFinished(t);
 			dequeue();
 		}
 	};
 
-	public TaskManager () {
+	public TaskManager (DHT dht) {
+		this.dht = dht;
 		tasks = new ConcurrentSkipListSet<Task>();
 		queued = new LinkedList<Task>();
 		next_id.set(1);
@@ -55,7 +57,7 @@ public class TaskManager {
 	public void dequeue() {
 		synchronized (queued) {
 			Task t = null;
-			while ((t = queued.peekFirst()) != null && t.getRPC().getDHT().canStartTask(t)) {
+			while ((t = queued.peekFirst()) != null && dht.canStartTask(t)) {
 				queued.removeFirst();
 				tasks.add(t);
 				t.start();

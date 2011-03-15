@@ -20,14 +20,14 @@ import java.io.IOException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 
-public interface Selectable {
-	public void register();
+import lbms.plugins.mldht.utlis.NIOConnectionManager;
 
+public interface Selectable {
 	public SelectableChannel getChannel();
 
-	public void registrationEvent() throws IOException;
+	public void registrationEvent(NIOConnectionManager manager) throws IOException;
 	
 	public void selectionEvent(SelectionKey key) throws IOException;
 
-	public void doTimeOutChecks(long now) throws IOException;
+	public void doStateChecks(long now) throws IOException;
 }

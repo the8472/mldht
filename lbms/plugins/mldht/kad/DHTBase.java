@@ -52,13 +52,6 @@ public interface DHTBase {
 	void update ();
 
 	/**
-	 * A Peer has received a PORT message, and uses this function to alert the DHT of it.
-	 * @param ip The IP of the peer
-	 * @param port The port in the PORT message
-	 */
-	void portRecieved (String ip, int port);
-
-	/**
 	 * Do an announce/scrape lookup on the DHT network
 	 * @param info_hash The info_hash
 	 * @return The task which handles this

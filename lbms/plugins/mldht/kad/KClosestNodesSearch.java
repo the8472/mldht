@@ -101,7 +101,7 @@ public class KClosestNodesSearch {
 			reachedMax = reachedMax || center+i >= table.size() || insertBucket(table.get(center+i).getBucket());
 		}
 		
-		RPCServer srv = owner.getRandomServer();
+		RPCServer srv = owner.getServerManager().getRandomActiveServer(true);
 		
 		if(includeOurself && srv.getPublicAddress() != null && entries.size() < max_entries)
 		{

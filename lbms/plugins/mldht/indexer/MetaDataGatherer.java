@@ -231,7 +231,7 @@ public class MetaDataGatherer {
 					}
 				};
 				
-				conn.register();
+				connectionManager.register(conn);
 			}
 		};
 		
@@ -541,7 +541,7 @@ public class MetaDataGatherer {
 			}
 		};
 		// connect after registering the handler in case we get an immediate terminate event
-		conn.register();
+		connectionManager.register(conn);
 		log("starting metadata connection for "+task.hash);
 	}
 	

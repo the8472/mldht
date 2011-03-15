@@ -183,12 +183,6 @@ public class PullMetaDataConnection implements Selectable {
 		outputBuffers.addLast(outputBuffer);
 	}
 	
-	public void register() {
-		// set last rec time before registering, avoid instant termination
-		
-		connManager.register(this);
-	}
-	
 	public SelectableChannel getChannel() {
 		return channel;
 	}

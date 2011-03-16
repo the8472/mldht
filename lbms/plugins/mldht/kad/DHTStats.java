@@ -121,12 +121,11 @@ public class DHTStats {
 		if(t.getFinishedTime() <= 0)
 			return;
 		avgFinishTime = (t.getFinishedTime() - t.getStartTime()) * EMA_WEIGHT + avgFinishTime * (1.0 - EMA_WEIGHT);
-		System.out.println("fin "+(t.getFinishedTime() - t.getStartTime()));
+		//System.out.println("fin "+(t.getFinishedTime() - t.getStartTime()));
 		if(t.getFirstResultTime() <= 0)
 			return;
 		avgFirstResultTime = (t.getFirstResultTime() - t.getStartTime()) * EMA_WEIGHT + avgFirstResultTime * (1.0 - EMA_WEIGHT);
-		
-		System.out.println("1st "+(t.getFirstResultTime() - t.getStartTime()));
+		//System.out.println("1st "+(t.getFirstResultTime() - t.getStartTime()));
 	}
 
 	/**

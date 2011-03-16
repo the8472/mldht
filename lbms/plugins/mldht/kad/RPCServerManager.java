@@ -5,6 +5,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 
@@ -18,12 +19,14 @@ public class RPCServerManager {
 	
 	DHT dht;
 	private Map<InetAddress,RPCServer> interfacesInUse = new ConcurrentHashMap<InetAddress, RPCServer>();
-	private volatile RPCServer[] activeServers = new RPCServer[0];  
+	private volatile RPCServer[] activeServers = new RPCServer[0];
+	private Set<InetAddress> validAddresses;
 	
 	public void refresh(long now) {
 		if(destroyed)
 			return;
 		List<InetAddress> addrs = AddressUtils.getAvailableAddrs(dht.config.allowMultiHoming(), dht.getType().PREFERRED_ADDRESS_TYPE);
+		validAddresses = new HashSet<InetAddress>(addrs);
 		addrs.removeAll(interfacesInUse.keySet());
 		for(InetAddress addr : addrs)
 		{
@@ -42,6 +45,11 @@ public class RPCServerManager {
 		}
 		
 		activeServers = newServers.toArray(new RPCServer[newServers.size()]);
+	}
+	
+	public boolean isAddressValid(InetAddress addr)
+	{
+		return validAddresses.contains(addr);
 	}
 	
 	void serverRemoved(RPCServer srv) {

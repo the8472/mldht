@@ -568,7 +568,7 @@ public class RPCServer {
 		
 		@Override
 		public void doStateChecks(long now) throws IOException {
-			if(!channel.isOpen() || (!addr.isAnyLocalAddress() && NetworkInterface.getByInetAddress(addr) == null))
+			if(!channel.isOpen() || !manager.isAddressValid(addr))
 			{
 				channel.close();
 				connectionManager.deRegister(this);

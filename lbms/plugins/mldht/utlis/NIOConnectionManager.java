@@ -41,6 +41,7 @@ public class NIOConnectionManager {
 	
 	String name;
 	Selector selector;
+	volatile boolean isSelecting;
 	
 	public NIOConnectionManager(String name) {
 		this.name = name;
@@ -62,7 +63,9 @@ public class NIOConnectionManager {
 			{
 				try
 				{
+					isSelecting = true;
 					selector.select(100);
+					isSelecting = false;
 					
 					// handle active connections
 					Set<SelectionKey> keys = selector.selectedKeys();
@@ -94,13 +97,19 @@ public class NIOConnectionManager {
 				
 				iterations++;
 				
-				if(iterations > 10 && connections.size() == 0 && registrations.peek() == null)
+				if(connections.size() == 0 && registrations.peek() == null)
 				{
-					workerThread.set(null);
-					ensureRunning();
-					break;
+					if(iterations > 10)
+					{
+						workerThread.set(null);
+						ensureRunning();
+						break;
+					}
 				} else
+				{
 					iterations = 0;
+				}
+					
 			}
 		}
 	};
@@ -141,6 +150,13 @@ public class NIOConnectionManager {
 		ensureRunning();
 		wakeup();
 	}
+	
+	public void asyncSetSelection(Selectable connection, int mask)
+	{
+		connection.getChannel().keyFor(selector).interestOps(mask);
+		if(isSelecting)
+			selector.wakeup();
+	}
 
 	/**
 	 * note: this method is not thread-safe 
@@ -148,7 +164,6 @@ public class NIOConnectionManager {
 	public void setSelection(Selectable connection, int mask, boolean onOff)
 	{
 		SelectionKey key = connection.getChannel().keyFor(selector);
-		int oldOps = key.interestOps();
 		if(onOff)
 			key.interestOps(key.interestOps() | mask);
 		else

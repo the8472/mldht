@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import lbms.plugins.mldht.indexer.Selectable;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -299,8 +300,6 @@ public class RPCServer {
 	private void handlePacket (ByteBuffer p, SocketAddress soa) {
 		InetSocketAddress source = (InetSocketAddress) soa;
 		
-		numReceived++;
-		stats.addReceivedBytes(p.limit() + dh_table.getType().HEADER_LENGTH);
 		// ignore port 0, can't respond to them anyway and responses to requests from port 0 will be useless too
 		if(source.getPort() == 0)
 			return;
@@ -368,8 +367,7 @@ public class RPCServer {
 	
 	private void fillPipe(EnqueuedSend es) {
 		pipeline.add(es);
-		if(pipeline.peek() == es)
-			sel.connectionManager.wakeup();
+		sel.updateSelection();
 	}
 		
 
@@ -442,8 +440,6 @@ public class RPCServer {
 		return b.toString();
 	}
 	
-	static ThreadLocal<ByteBuffer> buf = new ThreadLocal<ByteBuffer>();
-
 	private class SocketHandler implements Selectable {
 		DatagramChannel channel;
 		
@@ -476,46 +472,23 @@ public class RPCServer {
 				
 		}
 		
-		private final Runnable readEventHandler = new Runnable() {
-			public void run() {
-				ByteBuffer buffer = buf.get();
-				if(buffer == null)
-				{
-					buffer = ByteBuffer.allocate(DHTConstants.RECEIVE_BUFFER_SIZE);
-					buf.set(buffer);
-				}
-				
-				try
-				{
-					while(true)
-					{
-						buffer.clear();
-						SocketAddress soa = channel.receive(buffer);
-						if(soa == null)
-							break;
-						buffer.flip();
-						handlePacket(buffer,soa);
-					}
-				} catch (IOException e)
-				{
-					e.printStackTrace();
-				} finally {
-					processingReads.set(false);
-					connectionManager.wakeup();
-				}
-				
-			}
-		};
-		
-		private AtomicBoolean processingReads = new AtomicBoolean();
-		
 		private void readEvent() throws IOException {
-			if(processingReads.compareAndSet(false, true))
+			
+			while(true)
 			{
-				connectionManager.setSelection(this, SelectionKey.OP_READ, false);
-				DHT.getScheduler().execute(readEventHandler);
+				final ByteBuffer buf =  ByteBuffer.allocate(DHTConstants.RECEIVE_BUFFER_SIZE);
+				final SocketAddress soa = channel.receive(buf);
+				if(soa == null)
+					break;
+				buf.flip();
+				numReceived++;
+				stats.addReceivedBytes(buf.limit() + dh_table.getType().HEADER_LENGTH);
+				DHT.getScheduler().execute(new Runnable() {
+					public void run() {
+						handlePacket(buf, soa);
+					}
+				});
 			}
-
 		}
 		
 		private void writeEvent(DatagramChannel chan)
@@ -558,7 +531,7 @@ public class RPCServer {
 		@Override
 		public void registrationEvent(NIOConnectionManager manager) throws IOException {
 			connectionManager = manager;
-			connectionManager.setSelection(this, SelectionKey.OP_READ, true);
+			updateSelection();
 		}
 		
 		@Override
@@ -576,10 +549,30 @@ public class RPCServer {
 				//sel = null;
 				return;
 			}
-				
 			
-			connectionManager.setSelection(this, SelectionKey.OP_WRITE, pipeline.peek() != null);
-			connectionManager.setSelection(this, SelectionKey.OP_READ, !processingReads.get());
+			updateSelection();
+		}
+		
+		AtomicInteger selection = new AtomicInteger();
+		
+		public void updateSelection() {
+			while(true) {
+				int currentSel = selection.get();
+				int newSel = SelectionKey.OP_READ;
+				if(pipeline.peek() != null)
+					newSel |= SelectionKey.OP_WRITE;
+				if(currentSel != newSel)
+				{
+					connectionManager.asyncSetSelection(this, newSel);
+					if(selection.compareAndSet(currentSel, newSel))
+						break;
+				} else
+				{
+					if(newSel == selection.get())
+						break;
+				}
+			}
+			
 		}
 	}
 

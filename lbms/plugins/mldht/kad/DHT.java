@@ -31,7 +31,6 @@ import lbms.plugins.mldht.kad.tasks.*;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.ByteWrapper;
 import lbms.plugins.mldht.kad.utils.PopulationEstimator;
-import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import lbms.plugins.mldht.utlis.NIOConnectionManager;
 
 /**
@@ -71,7 +70,7 @@ public class DHT implements DHTBase {
 		int threads = Math.max(Runtime.getRuntime().availableProcessors(),2);
 		scheduler = new ScheduledThreadPoolExecutor(threads, new ThreadFactory() {
 			public Thread newThread (Runnable r) {
-				Thread t = new Thread(executorGroup, r, "mlDHT Executor");
+				Thread t = new Thread(executorGroup, r, "mlDHT Scheduler");
 
 				t.setDaemon(true);
 				return t;
@@ -81,6 +80,7 @@ public class DHT implements DHTBase {
 		scheduler.setMaximumPoolSize(threads*2);
 		scheduler.setKeepAliveTime(20, TimeUnit.SECONDS);
 		scheduler.allowCoreThreadTimeOut(true);
+
 
 		logger = new DHTLogger() {
 			public void log (String message) {

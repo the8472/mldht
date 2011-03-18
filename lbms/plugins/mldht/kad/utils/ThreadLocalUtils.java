@@ -4,12 +4,15 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Random;
 
+import org.gudy.azureus2.core3.util.BDecoder;
 import org.gudy.azureus2.core3.util.SHA1;
 
 public class ThreadLocalUtils {
 
-	public static ThreadLocal<Random> randTL = new ThreadLocal<Random>();
-	public static ThreadLocal<SHA1> sha1TL = new ThreadLocal<SHA1>();
+	private static ThreadLocal<Random> randTL = new ThreadLocal<Random>();
+	private static ThreadLocal<SHA1> sha1TL = new ThreadLocal<SHA1>();
+	private static ThreadLocal<BDecoder> decoder = new ThreadLocal<BDecoder>();
+	
 
 	public static Random getThreadLocalRandom() {
 		Random rand = randTL.get();
@@ -25,6 +28,16 @@ public class ThreadLocalUtils {
 			randTL.set(rand);
 		}
 		return rand;
+	}
+	
+	public static BDecoder getDecoder() {
+		BDecoder dec = decoder.get();
+		if(dec == null)
+		{
+			dec = new BDecoder();
+			decoder.set(dec);
+		}
+		return dec;
 	}
 	
 	public static SHA1 getThreadLocalSHA1() {

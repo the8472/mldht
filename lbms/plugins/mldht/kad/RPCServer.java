@@ -294,9 +294,6 @@ public class RPCServer {
 		return isReachable;
 	}
 	
-	// we only decode in the listening thread, so reused the decoder
-	private BDecoder decoder = new BDecoder();
-
 	private void handlePacket (ByteBuffer p, SocketAddress soa) {
 		InetSocketAddress source = (InetSocketAddress) soa;
 		
@@ -317,7 +314,7 @@ public class RPCServer {
 		MessageBase msg = null;
 		
 		try {
-			bedata = decoder.decodeByteBuffer(p, false);
+			bedata = ThreadLocalUtils.getDecoder().decodeByteBuffer(p, false);
 		} catch(IOException e) {
 			DHT.log(e, LogLevel.Debug);
 			MessageBase err = new ErrorMessage(new byte[] {0,0,0,0}, ErrorCode.ProtocolError.code,"invalid bencoding: "+e.getMessage());

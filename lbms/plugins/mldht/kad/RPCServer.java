@@ -439,13 +439,12 @@ public class RPCServer {
 	
 	private class SocketHandler implements Selectable {
 		DatagramChannel channel;
-		AtomicInteger selection;
+
 		
 		{
 			try
 			{
 				timeoutFilter.reset();
-				selection = new AtomicInteger();
 	
 				channel = DatagramChannel.open();
 				channel.configureBlocking(false);
@@ -508,8 +507,6 @@ public class RPCServer {
 						break;
 					}
 					
-					System.out.println(System.currentTimeMillis() - es.start);
-					
 					if(es.associatedCall != null)
 						es.associatedCall.sent();
 					
@@ -561,32 +558,6 @@ public class RPCServer {
 			if(pipeline.peek() != null)
 				newSel |= SelectionKey.OP_WRITE;
 			connectionManager.asyncSetSelection(this, newSel);
-
-
-			/*
-			while(true) {
-				int currentVal = selection.get();
-				boolean isInModification = (currentVal & 0x80000000) != 0;
-				int currentSel = currentVal & ~0x80000000;
-				int newSel = SelectionKey.OP_READ;
-				if(pipeline.peek() != null)
-					newSel |= SelectionKey.OP_WRITE;
-				
-				if(currentSel != newSel)
-				{
-					if(!isInModification && selection.compareAndSet(currentVal, newSel | 0x80000000))
-					{
-						connectionManager.asyncSetSelection(this, newSel);
-						if(selection.compareAndSet(newSel | 0x80000000 , newSel))
-							break;
-					} 
-				} else
-				{
-					if(newSel == selection.get())
-						break;
-				}
-			}*/
-			
 		}
 	}
 
@@ -594,7 +565,6 @@ public class RPCServer {
 		MessageBase toSend;
 		RPCCall associatedCall;
 		ByteBuffer buf;
-		long start = System.currentTimeMillis();
 		
 		public EnqueuedSend(MessageBase msg) {
 			toSend = msg;

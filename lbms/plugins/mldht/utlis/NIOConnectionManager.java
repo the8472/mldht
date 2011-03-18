@@ -114,10 +114,6 @@ public class NIOConnectionManager {
 		}
 	};
 	
-	public void wakeup() {
-		selector.wakeup();
-	}
-	
 	private void ensureRunning() {
 		while(true)
 		{
@@ -148,7 +144,7 @@ public class NIOConnectionManager {
 	{
 		registrations.add(connection);
 		ensureRunning();
-		wakeup();
+		selector.wakeup();
 	}
 	
 	public void asyncSetSelection(Selectable connection, int mask)

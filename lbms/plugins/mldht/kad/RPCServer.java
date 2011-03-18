@@ -442,11 +442,13 @@ public class RPCServer {
 	
 	private class SocketHandler implements Selectable {
 		DatagramChannel channel;
+		AtomicInteger selection;
 		
 		{
 			try
 			{
 				timeoutFilter.reset();
+				selection = new AtomicInteger();
 	
 				channel = DatagramChannel.open();
 				channel.configureBlocking(false);
@@ -553,7 +555,7 @@ public class RPCServer {
 			updateSelection();
 		}
 		
-		AtomicInteger selection = new AtomicInteger();
+		
 		
 		public void updateSelection() {
 			while(true) {

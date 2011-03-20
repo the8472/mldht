@@ -385,7 +385,7 @@ public class KBucket implements Externalizable {
 	{
 		while(true) {
 			int current = currentReplacementPointer.get();
-			int newValue = current--;
+			int newValue = current-1;
 			if(newValue < 0)
 				newValue = replacementBucket.length()-1;
 			if(currentReplacementPointer.compareAndSet(current, newValue))

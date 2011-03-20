@@ -184,6 +184,8 @@ public class KBucketEntry implements Serializable {
 	 * violating the equals contract (specifically: the transitivity requirement) here, use with care
 	 */
 	public boolean equals (KBucketEntry other) {
+		if(other == null)
+			return false;
 		return nodeID.equals(other.nodeID) || addr.getAddress().equals(other.addr.getAddress());
 	}
 

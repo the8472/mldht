@@ -22,6 +22,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.messages.MessageBase;
@@ -47,8 +49,9 @@ public class KBucket implements Externalizable {
 	 * using copy-on-write semantics for this list, referencing it is safe if you make local copy 
 	 */
 	private volatile List<KBucketEntry>	entries;
-	// replacements are synchronized on entries, not on replacementBucket! using a liked list since we use it as queue, not as stack
-	private ConcurrentLinkedQueue<KBucketEntry>	replacementBucket;
+	
+	private AtomicInteger						currentReplacementPointer;
+	private AtomicReferenceArray<KBucketEntry>	replacementBucket;
 	
 	private Node						node;
 	private Map<Key,KBucketEntry>		pendingPings;
@@ -57,7 +60,8 @@ public class KBucket implements Externalizable {
 	
 	public KBucket () {
 		entries = new ArrayList<KBucketEntry>(); // using arraylist here since reading/iterating is far more common than writing.
-		replacementBucket = new ConcurrentLinkedQueue<KBucketEntry>();
+		currentReplacementPointer = new AtomicInteger(0);
+		replacementBucket = new AtomicReferenceArray<KBucketEntry>(DHTConstants.MAX_ENTRIES_PER_BUCKET);
 		// .size() is called on every insert, it's rarely used and is limited to 2... so use a cow set for high throughput
 		pendingPings = new ConcurrentSkipListMap<Key, KBucketEntry>();
 	}
@@ -196,7 +200,11 @@ public class KBucket implements Externalizable {
 	}
 	
 	public int getNumReplacements() {
-		return replacementBucket.size();
+		int c = 0;
+		for(int i=0;i<replacementBucket.length();i++)
+			if(replacementBucket.get(i) != null)
+				c++;
+		return c;
 	}
 
 	/**
@@ -207,7 +215,15 @@ public class KBucket implements Externalizable {
 	}
 	
 	public List<KBucketEntry> getReplacementEntries() {
-		return new ArrayList<KBucketEntry>(replacementBucket);
+		List<KBucketEntry> repEntries = new ArrayList<KBucketEntry>(replacementBucket.length());
+		int current = currentReplacementPointer.get();
+		for(int i=1;i<=replacementBucket.length();i++)
+		{
+			KBucketEntry e = replacementBucket.get((current + i) % replacementBucket.length());
+			if(e != null)
+				repEntries.add(e);
+		}
+		return repEntries;
 	}
 
 	/**
@@ -367,17 +383,16 @@ public class KBucket implements Externalizable {
 	
 	private KBucketEntry getYoungestReplacementEntry()
 	{
-		// fetches the last element from the queue. since it's not double-ended we have to iterate through it
-		for(Iterator<KBucketEntry> it = replacementBucket.iterator();it.hasNext();)
-		{
-			KBucketEntry e = it.next();
-			if(!it.hasNext())
+		while(true) {
+			int current = currentReplacementPointer.get();
+			int newValue = current--;
+			if(newValue < 0)
+				newValue = replacementBucket.length()-1;
+			if(currentReplacementPointer.compareAndSet(current, newValue))
 			{
-				it.remove();
-				return e;
+				return replacementBucket.getAndSet(current, null);
 			}
 		}
-		return null;
 	}
 	
 	private void insertInReplacementBucket(KBucketEntry entry)
@@ -385,27 +400,30 @@ public class KBucket implements Externalizable {
 		if(entry == null)
 			return;
 		
-		// start counting from 1 since we'll add 1 entry
-		int size = 1; 
-		
-		//if it is already inserted remove it and add it to the end
-		for(Iterator<KBucketEntry> it = replacementBucket.iterator();it.hasNext();)
+		outer:
+		while(true)
 		{
-			KBucketEntry oldEntry = it.next();
-			if(oldEntry.equals(entry))
+			int current = currentReplacementPointer.get();
+			int next = (current+1) % replacementBucket.length();
+			
+			KBucketEntry nextEntry = replacementBucket.get(next);
+			if(nextEntry == null || entry.getLastSeen() - nextEntry.getLastSeen() > 1000)
 			{
-				it.remove();
-				oldEntry.mergeTimestamps(entry);
-				replacementBucket.add(oldEntry);
-				return;
+				for(int i=0;i<replacementBucket.length();i++)
+				{
+					if(entry.equals(replacementBucket.get(i)))
+						break outer;
+				}
+				if(currentReplacementPointer.compareAndSet(current, next))
+				{
+					replacementBucket.set(next, entry);
+					break;
+				}
+			} else
+			{
+				break;
 			}
-			size++;
 		}
-		
-		replacementBucket.add(entry);
-		
-		while(size-- > DHTConstants.MAX_ENTRIES_PER_BUCKET)
-			replacementBucket.poll(); //remove the least recently seen one
 	}
 	
 	/**
@@ -515,14 +533,19 @@ public class KBucket implements Externalizable {
 			entries.addAll((Collection<KBucketEntry>)obj);
 		obj = serialized.get("replacementBucket");
 		if(obj instanceof Collection<?>)
-			replacementBucket.addAll((Collection<KBucketEntry>)obj);
+		{
+			// we are possibly violating the last-seen ordering of the replacement bucket here
+			// but since we're probably deserializing old data that's hardly relevant
+			for(KBucketEntry e : (Collection<KBucketEntry>)obj)
+				insertInReplacementBucket(e);
+		}
+			
 		obj = serialized.get("lastModifiedTime");
 		if(obj instanceof Long)
 			last_modified = (Long)obj;
 		obj = serialized.get("prefix");
 		
 		entries.removeAll(Collections.singleton(null));
-		replacementBucket.removeAll(Collections.singleton(null));
 		Collections.sort(entries, KBucketEntry.AGE_ORDER);
 		//Collections.sort(replacementBucket,KBucketEntry.LAST_SEEN_ORDER);
 	}
@@ -531,7 +554,7 @@ public class KBucket implements Externalizable {
 		Map<String,Object> serialized = new HashMap<String, Object>();
 		// put entries as any type of collection, will convert them on deserialisation
 		serialized.put("mainBucket", entries);
-		serialized.put("replacementBucket", replacementBucket);
+		serialized.put("replacementBucket", getReplacementEntries());
 		serialized.put("lastModifiedTime", last_modified);
 
 		out.writeObject(serialized);

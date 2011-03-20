@@ -125,7 +125,7 @@ public class Node {
 	
 	
 	public void insertEntry (KBucketEntry entry, boolean internalInsert) {
-		if(usedIDs.containsKey(entry.getID()) || AddressUtils.isBogon(entry.getAddress()) || !dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(entry.getAddress().getAddress()))
+		if(entry == null || usedIDs.containsKey(entry.getID()) || AddressUtils.isBogon(entry.getAddress()) || !dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(entry.getAddress().getAddress()))
 			return;
 		
 		Key nodeID = entry.getID();

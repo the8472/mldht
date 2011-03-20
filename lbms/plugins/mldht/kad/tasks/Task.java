@@ -66,6 +66,8 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 * @param node The node
 	 */
 	Task (Key target, RPCServer rpc, Node node) {
+		if(rpc == null)
+			throw new IllegalArgumentException("RPC must not be null");
 		this.targetKey = target;
 		this.rpc = rpc;
 		this.node = node;

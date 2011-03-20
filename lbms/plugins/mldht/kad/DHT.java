@@ -379,7 +379,10 @@ public class DHT implements DHTBase {
 	@Override
 	public PingRefreshTask refreshBuckets (List<RoutingTableEntry> buckets,
 			boolean cleanOnTimeout) {
-		PingRefreshTask prt = new PingRefreshTask(serverManager.getRandomActiveServer(true), node, buckets,cleanOnTimeout);
+		RPCServer srv = serverManager.getRandomActiveServer(true);
+		if(srv == null)
+			return null;
+		PingRefreshTask prt = new PingRefreshTask(srv, node, buckets,cleanOnTimeout);
 
 		tman.addTask(prt, true);
 		return prt;

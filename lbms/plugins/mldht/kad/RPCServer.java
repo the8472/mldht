@@ -516,6 +516,7 @@ public class RPCServer {
 						DHT.logDebug("RPC send Message: [" + es.toSend.getDestination().getAddress().getHostAddress() + "] "+ es.toSend.toString());
 				} catch (IOException e)
 				{
+					DHT.log(e, LogLevel.Error);
 					pipeline.add(es);
 					break;
 				}

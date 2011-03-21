@@ -17,6 +17,7 @@
 package lbms.plugins.mldht.kad.tasks;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import lbms.plugins.mldht.kad.*;
@@ -53,7 +54,7 @@ public class PeerLookupTask extends Task {
 			Key info_hash) {
 		super(info_hash, rpc, node);
 		announceCanidates = new ArrayList<KBucketEntryAndToken>(20);
-		returnedItems = new HashSet<PeerAddressDBItem>();
+		returnedItems = Collections.newSetFromMap(new ConcurrentHashMap<PeerAddressDBItem, Boolean>());
 
 		this.closestSet = new TreeSet<KBucketEntryAndToken>(new KBucketEntry.DistanceOrder(targetKey));
 		cache = rpc.getDHT().getCache();

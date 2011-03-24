@@ -66,7 +66,7 @@ public class RPCCall {
 	public void start () {
 		rpc.doCall(this);
 	}
-
+	
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCCallBase#response(lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
@@ -140,6 +140,12 @@ public class RPCCall {
 				}
 			}
 		}, rpc.getTimeoutFilter().getStallTimeout(), TimeUnit.MILLISECONDS);
+	}
+
+	void sendFailed() {
+		// fudge it, never sent it in the first place
+		awaitingResponse = true;
+		onCallTimeout();
 	}
 
 	private synchronized void onCallResponse (MessageBase rsp) {

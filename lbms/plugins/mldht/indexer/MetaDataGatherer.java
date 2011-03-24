@@ -120,6 +120,9 @@ public class MetaDataGatherer {
 			public void run() {
 				try
 				{
+					if(new File("./torrents/").getUsableSpace() < 512*1024*1024)
+						return;
+					
 					dhtLookup();
 				} catch (Exception e)
 				{

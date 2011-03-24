@@ -516,8 +516,12 @@ public class RPCServer {
 						DHT.logDebug("RPC send Message: [" + es.toSend.getDestination().getAddress().getHostAddress() + "] "+ es.toSend.toString());
 				} catch (IOException e)
 				{
-					DHT.log(e, LogLevel.Error);
-					pipeline.add(es);
+					DHT.log(new IOException(addr+" -> "+es.toSend.getDestination(), e), LogLevel.Error);
+					if(es.associatedCall != null)
+					{ // need to notify listeners
+						es.associatedCall.sendFailed();
+					}
+					//pipeline.add(es);
 					break;
 				}
 				

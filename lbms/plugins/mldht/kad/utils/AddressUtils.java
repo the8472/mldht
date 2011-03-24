@@ -26,6 +26,8 @@ public class AddressUtils {
 	
 	public static boolean isGlobalUnicast(InetAddress addr)
 	{
+		if(addr instanceof Inet4Address && addr.getAddress()[0] == 0)
+			return false;
 		return !(addr.isAnyLocalAddress() || addr.isLinkLocalAddress() || addr.isLoopbackAddress() || addr.isMulticastAddress() || addr.isSiteLocalAddress());
 	}
 

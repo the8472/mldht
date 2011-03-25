@@ -26,8 +26,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import lbms.plugins.mldht.indexer.Selectable;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -39,8 +37,6 @@ import lbms.plugins.mldht.kad.utils.ByteWrapper;
 import lbms.plugins.mldht.kad.utils.ResponseTimeoutFilter;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import lbms.plugins.mldht.utlis.NIOConnectionManager;
-
-import org.gudy.azureus2.core3.util.BDecoder;
 
 /**
  * @author The_8472, Damokles
@@ -350,9 +346,9 @@ public class RPCServer {
 		if ((msg.getType() == Type.RSP_MSG || msg.getType() == Type.ERR_MSG) && c != null) {
 			if(c.getRequest().getDestination().equals(msg.getOrigin()))
 			{
-				// delete the call, but first notify it of the response
-				c.response(msg);
+				// remove call first in case of exception
 				calls.remove(new ByteWrapper(msg.getMTID()));
+				c.response(msg);
 				doQueuedCalls();						
 			} else {
 				DHT.logInfo("Response source ("+msg.getOrigin()+") mismatches request destination ("+c.getRequest().getDestination()+"); ignoring response");
@@ -483,7 +479,12 @@ public class RPCServer {
 				stats.addReceivedBytes(buf.limit() + dh_table.getType().HEADER_LENGTH);
 				DHT.getScheduler().execute(new Runnable() {
 					public void run() {
-						handlePacket(buf, soa);
+						try {
+							handlePacket(buf, soa);							
+						} catch (Exception e) {
+							DHT.log(e, LogLevel.Error);
+						}
+						
 					}
 				});
 			}

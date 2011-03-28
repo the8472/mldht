@@ -38,6 +38,8 @@ public class AddressUtils {
 		{
 			for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces()))
 			{
+				if(!iface.isUp())
+					continue;
 				for (InterfaceAddress ifaceAddr : iface.getInterfaceAddresses())
 				{
 					if (type == Inet6Address.class && ifaceAddr.getAddress() instanceof Inet6Address)

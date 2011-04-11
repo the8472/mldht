@@ -30,7 +30,7 @@ public class ResponseTimeoutFilter {
 	
 	
 	final long[] rttRingbuffer = new long[NUM_SAMPLES];
-	int bufferIndex;
+	volatile int bufferIndex;
 	long targetTimeoutMillis;
 	
 	
@@ -57,10 +57,11 @@ public class ResponseTimeoutFilter {
 	}
 	
 	private void update(long newRTT) {
-		rttRingbuffer[bufferIndex++] = newRTT;
-		bufferIndex %= NUM_SAMPLES;
+		int idx = bufferIndex;
+		rttRingbuffer[idx++] = newRTT;
+		bufferIndex = idx % NUM_SAMPLES;
 		// update target timeout every 16 packets
-		if((bufferIndex & 0x0F) == 0)
+		if((idx & 0x0F) == 0)
 		{
 			long[] sortableBuffer = rttRingbuffer.clone();
 			Arrays.sort(sortableBuffer);

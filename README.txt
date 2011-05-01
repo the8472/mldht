@@ -69,7 +69,7 @@ Setup for mysql
 
 * modify the following properties in the hibernate.cfg.xml:
 
-				<property name="connection.url">jdbc:mysql://localhost/YOUR DATABASE HERE</property> <!-- ?useCursorFetch=true&amp;useServerPrepStmts=true -->
+                <property name="connection.url">jdbc:mysql://localhost/YOUR DATABASE HERE</property> <!-- ?useCursorFetch=true&amp;useServerPrepStmts=true -->
                 <property name="connection.username">YOUR USERNAME HERE</property>
                 <property name="connection.password">YOUR PASSWORD HERE</property>
                 <property name="dialect">lbms.plugins.mldht.indexer.db.MySQLIdxHintDialect</property>
@@ -82,7 +82,7 @@ Setup for mysql
 	  `info_hash` binary(20) NOT NULL,
 	  `hitCount` int(10) unsigned NOT NULL DEFAULT '0',
 	  `status` tinyint(3) unsigned NOT NULL DEFAULT '0',
-	  `lastFetchAttempt` int(10) unsigned NOT NULL DEFAULT '0',
+	  `lastLookupTime` int(10) unsigned NOT NULL DEFAULT '0',
 	  `fetchAttemptCount` int(10) unsigned NOT NULL DEFAULT '0',
 	  `indexAttemptCount` tinyint(10) unsigned NOT NULL DEFAULT '0',
 	  `added` int(10) unsigned NOT NULL DEFAULT '0',
@@ -91,4 +91,15 @@ Setup for mysql
 	  UNIQUE KEY `infohashIdx` (`info_hash`),
 	  KEY `statusIdx` (`status`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1
+
+	CREATE TABLE `scrapes` (
+		`infoId` INT(10) UNSIGNED NOT NULL,
+		`created` INT(10) UNSIGNED NOT NULL,
+		`seeds` INT(10) UNSIGNED NOT NULL,
+		`leechers` INT(10) UNSIGNED NOT NULL,
+		`overall` INT(10) UNSIGNED NOT NULL,
+		PRIMARY KEY (`infoId`, `created`),
+		CONSTRAINT `FK__ihdata` FOREIGN KEY (`infoId`) REFERENCES `ihdata` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+	)
+	ENGINE=InnoDB
 

@@ -36,11 +36,9 @@ import org.hibernate.criterion.*;
 import lbms.plugins.mldht.indexer.MetaDataConnectionServer.IncomingConnectionHandler;
 import lbms.plugins.mldht.indexer.PullMetaDataConnection.InfohashChecker;
 import lbms.plugins.mldht.indexer.PullMetaDataConnection.MetaConnectionHandler;
-import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
-import lbms.plugins.mldht.kad.Key;
-import lbms.plugins.mldht.kad.PeerAddressDBItem;
 import lbms.plugins.mldht.kad.tasks.PeerLookupTask;
 import lbms.plugins.mldht.kad.tasks.Task;
 import lbms.plugins.mldht.kad.tasks.TaskListener;
@@ -49,7 +47,7 @@ import lbms.plugins.mldht.utlis.NIOConnectionManager;
 
 public class MetaDataGatherer {
 	
-	public static final int MAX_PEERS_PER_INFOHASH = 50;
+	public static final int MAX_ATTEMPTS_PER_INFOHASH = 50;
 	public static final int LOOKUPS_PER_VIRTUAL_NODE = 3;
 	public static final int PIVOT_EVERY_N_VIRTUAL_NODES = 3;
 	public static final int MIN_PIVOTS = 32;
@@ -123,7 +121,7 @@ public class MetaDataGatherer {
 					if(new File("./torrents/").getUsableSpace() < 512*1024*1024)
 						return;
 					
-					dhtLookup();
+					dhtLookups();
 				} catch (Exception e)
 				{
 					DHT.log(e, LogLevel.Error);
@@ -209,7 +207,7 @@ public class MetaDataGatherer {
 
 										// and immediately finish it. we don't use the queue to avoid deadlocks
 										writeTorrentFile(conn, task);
-										fetchTaskTerminated(entry, 2);
+										fetchTaskTerminated(task, 2);
 									} catch (IOException e)
 									{
 										DHT.log(e, LogLevel.Error);
@@ -254,150 +252,39 @@ public class MetaDataGatherer {
 			lookupPivotPoints.add(k.getDerivedKey(i++));
 		while(lookupPivotPoints.size() > numPivots)
 			lookupPivotPoints.remove(lookupPivotPoints.size()-1);
+		
+		Collections.sort(lookupPivotPoints);
 	}
 	
-	
-	
-	private void dhtLookup() {
-		Set<TorrentDBEntry> toLookup = new TreeSet<TorrentDBEntry>();
-		//TorrentDBEntry result = null;
-		
+	private void dhtLookups() {
 		updatePivots();
+		Set<TorrentDBEntry> entries = getLookupCandidates();
 		
-		int queuedConnections = fetchTasks.size();
-		int activeAndQueuedConnections = activeOutgoingConnections.get() + queuedConnections;
-		int maxConnections = numVirtualNodes * MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE;
-		int currentLookups = activeLookups.get();
-		int maxLookups = numVirtualNodes * LOOKUPS_PER_VIRTUAL_NODE;
-		
-		int targetNum = 0;
-		// too few connections, let's do as many lookups as we can
-		if(activeAndQueuedConnections <= maxConnections)
-			targetNum = maxLookups - currentLookups;
-		else if(queuedConnections < maxConnections)
-		{ // we have enough connections, but lets do some more lookups to fill the queue
-			// as the buffer fills up we scale down the number of lookups we will do
-			maxLookups = (int) (maxLookups * (1.0- queuedConnections*1.0/maxConnections));
-			
-			// may become negative
-			targetNum = maxLookups - currentLookups;
-		}
-			
-		
-		Session session = HibernateUtil.getSessionFactory().openSession();
-		Transaction tx = session.beginTransaction();
-		ArrayList<Key> pivotBackup = (ArrayList<Key>) lookupPivotPoints.clone();
-
-		try
-		{
-			while(true)
-			{
-
-				Collections.sort(lookupPivotPoints);
-
-				Key startKey = Key.MIN_KEY;
-				Key ceilKey = Key.MAX_KEY;
-				
-				int pivotIdx = ThreadLocalUtils.getThreadLocalRandom().nextInt(lookupPivotPoints.size());
-				startKey = lookupPivotPoints.get(pivotIdx);
-				ceilKey = startKey;
-				// skip identical keys to find the next-higher one
-				while(++pivotIdx  < lookupPivotPoints.size() && (ceilKey = lookupPivotPoints.get(pivotIdx)).equals(startKey))
-					;
-				if(ceilKey.equals(startKey))
-					ceilKey = Key.MAX_KEY;
-
-				// due to the prefix-increment we'll already be +1ed here
-				boolean possibleWraparound = pivotIdx >= lookupPivotPoints.size() && !(startKey.equals(Key.MIN_KEY) && ceilKey.equals(Key.MAX_KEY));
-
-				// spread lookups over the pivot ranges
-				int wants = Math.min(targetNum, Math.max(1, (numVirtualNodes * LOOKUPS_PER_VIRTUAL_NODE) / lookupPivotPoints.size()));
-				if(wants < 1)
-					break;
-
-				List<TorrentDBEntry> results = session.createQuery("from ihdata e where useindex(e, infohashIdx) is true and e.info_hash > ? and e.info_hash < ? and e.status = 0 and e.hitCount > 0 and e.lastFetchAttempt < ? order by e.info_hash")
-					.setBinary(0, startKey.getHash())
-					.setBinary(1, ceilKey.getHash())
-					.setLong(2, System.currentTimeMillis()/1000 - 3600)
-					.setFirstResult(0)
-					//.setComment("useIndex(e,primary)")
-					.setMaxResults(wants)
-					.setFetchSize(wants)
-					.list();
-
-
-				//from ihdata where status = 0 and hitcount = (SELECT MAX(hitcount) FROM ihdata where status = 0 and fetchAttemptCount = (SELECT MIN(fetchAttemptCount) FROM ihdata WHERE status = 0)) and fetchAttemptCount = (SELECT MIN(fetchAttemptCount) FROM ihdata WHERE status = 0) ORDER BY info_hash asc limit 1
-
-
-				if(!results.isEmpty())
-				{
-					lookupPivotPoints.remove(startKey);
-					lookupPivotPoints.add(new Key(results.get(results.size()-1).info_hash));
-					//System.out.println("lookup for "+entry.info_hash+" updated:"+entry.added);
-					
-					targetNum-=results.size();
-					toLookup.addAll(results);
-				} else if(possibleWraparound) {
-					// wrap-around, start from the beginning
-					lookupPivotPoints.remove(startKey);
-					lookupPivotPoints.add(Key.MIN_KEY); 
-				} else if(startKey.equals(Key.MIN_KEY) && ceilKey.equals(Key.MAX_KEY))
-				{ // scanned everything and found nothing, avoid infinite loops
-					break;
-				} else
-				{
-					// we found nothing based on this pivot point. assume we caught up to the previous key... next round will generate a new one.
-					lookupPivotPoints.remove(startKey);
-				}
-
-
-			}
-
-			// update in ascending order to avoid deadlocks
-			long now = System.currentTimeMillis()/1000;
-			for(TorrentDBEntry e : toLookup)
-			{
-				e.lastFetchAttempt = now;
-				e.status = 1;
-				session.update(e);
-			}
-				
-
-			tx.commit();
-		} catch(Exception e)
-		{
-			tx.rollback();
-			DHT.log(e, LogLevel.Info);
-			// restore on failure
-			lookupPivotPoints = pivotBackup;
-			// rolled back, don't start lookups
-			return;
-		} finally {
-			session.close();
-		}
-		
-		for(final TorrentDBEntry entry : toLookup)
+		for(final TorrentDBEntry entry : entries)
 		{
 			final FetchTask task = new FetchTask();
-
 			task.entry = entry;
 			task.addresses = new ArrayList<PeerAddressDBItem>();
-
-			
-
 			task.hash = new Key(entry.info_hash).toString(false);;
 			
 			log("starting DHT lookup for "+task.hash);
 
 			final int[] pendingLookups = new int[1];
 
+			final ScrapeResponseHandler scrapeHandler = new ScrapeResponseHandler(); 
+			
 			TaskListener lookupListener = new TaskListener() {
 				public synchronized void finished(Task t) {
 					int pending = --pendingLookups[0];
 					if(pending >= 0)
 					{
-						PeerLookupTask pt = (PeerLookupTask) t;
-						task.addresses.addAll(pt.getReturnedItems());
+						if(task.entry.status == TorrentDBEntry.STATE_CURRENTLY_ATTEMPTING_TO_FETCH)
+						{
+							PeerLookupTask pt = (PeerLookupTask) t;
+							task.addresses.addAll(pt.getReturnedItems());
+														
+						}
+
 						log("one DHT lookup done for "+task.hash);
 					}
 
@@ -405,16 +292,20 @@ public class MetaDataGatherer {
 					{
 						log("all DHT lookups done for"+task.hash);
 						activeLookups.decrementAndGet();
-						task.addresses.removeAll(Collections.singleton(null));
-						if(task.addresses.size() > 0) {
-							// trim to a limited amount of addresses to avoid 1 task being stuck for ages
-							if(task.addresses.size() > MAX_PEERS_PER_INFOHASH)
-								task.addresses.subList(MAX_PEERS_PER_INFOHASH, task.addresses.size()).clear();
-							fetchTasks.add(task);
-							log("added metadata task based on DHT for "+task.hash);
+						
+						if(task.entry.status == TorrentDBEntry.STATE_CURRENTLY_ATTEMPTING_TO_FETCH)
+						{
+							task.addresses.removeAll(Collections.singleton(null));
+							if(task.addresses.size() > 0) {
+								fetchTasks.add(task);
+								log("added metadata task based on DHT for "+task.hash);
+							} else {
+								log("found no DHT entires for "+task.hash);
+								fetchTaskTerminated(task, 0);
+							}
+							
 						} else {
-							log("found no DHT entires for "+task.hash);
-							fetchTaskTerminated(task.entry, 0);
+							fetchTaskTerminated(task, -1);
 						}
 					}
 				}
@@ -434,6 +325,7 @@ public class MetaDataGatherer {
 					lookupTask.setNoAnnounce(true);
 					lookupTask.setLowPriority(false);
 					lookupTask.addListener(lookupListener);
+					lookupTask.setScrapeHandler(scrapeHandler);
 					lookupTask.setInfo("Grabbing .torrent for "+task.hash);
 					lookupTask.setNoSeeds(false);
 					dht.getTaskManager().addTask(lookupTask);
@@ -442,11 +334,136 @@ public class MetaDataGatherer {
 			
 			if(pendingLookups[0] > 0)
 				activeLookups.incrementAndGet();
-			else // this really shouldn't happen but sometimes no RPC server may be availble despite numVirtualNodes > 0
-				fetchTaskTerminated(entry, 0);
+			else // this usually shouldn't happen but sometimes no RPC server may be availble despite numVirtualNodes > 0
+				fetchTaskTerminated(task, 0);
 
 		}
+	}
+
+	
+	private Set<TorrentDBEntry> getLookupCandidates() {
+		Set<TorrentDBEntry> toLookup = new TreeSet<TorrentDBEntry>();
+		//TorrentDBEntry result = null;
 		
+		
+		int queuedConnections = fetchTasks.size();
+		int activeAndQueuedConnections = activeOutgoingConnections.get() + queuedConnections;
+		int maxConnections = numVirtualNodes * MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE;
+		int currentLookups = activeLookups.get();
+		int maxLookups = numVirtualNodes * LOOKUPS_PER_VIRTUAL_NODE;
+		
+		int maxMetaGetLookups = 0;
+		// too few connections, let's do as many lookups as we can
+		if(activeAndQueuedConnections <= maxConnections)
+			maxMetaGetLookups = maxLookups - currentLookups;
+		else if(queuedConnections < maxConnections)
+		{ // we have enough connections, but lets do some more lookups to fill the queue
+			// as the buffer fills up we scale down the number of lookups we will do
+			maxLookups = (int) (maxLookups * (1.0- queuedConnections*1.0/maxConnections));
+			
+			// may become negative
+			maxMetaGetLookups = maxLookups - currentLookups;
+		}
+			
+		
+		Session session = HibernateUtil.getSessionFactory().openSession();
+		Transaction tx = session.beginTransaction();
+		ArrayList<Key> pivotBackup = (ArrayList<Key>) lookupPivotPoints.clone();
+
+		try
+		{
+
+			int pivotIdx = ThreadLocalUtils.getThreadLocalRandom().nextInt(lookupPivotPoints.size());
+			Key startKey = lookupPivotPoints.get(pivotIdx);
+			Key endKey = lookupPivotPoints.get((pivotIdx+1) % lookupPivotPoints.size());
+
+			// spread lookups over the pivot ranges
+			int wants = Math.min(maxMetaGetLookups, maxLookups);
+
+			List<TorrentDBEntry> results = Collections.EMPTY_LIST;
+			Key firstMatch = startKey;
+
+			// handle wrap-around
+			String range = startKey.compareTo(endKey) < 1 ? "(e.info_hash > ? and e.info_hash < ?)" : "(e.info_hash > ? or e.info_hash < ?)"; 
+
+			// get canidates for combined scrape+retrieve
+			if(wants > 0)
+			{
+				String query = "from ihdata e where useindex(e, infohashIdx) is true and "+range+" and e.status = ? and e.hitCount > 0 and e.lastFetchAttempt < ? order by e.info_hash";
+
+				results = session.createQuery(query)
+				.setInteger(0, TorrentDBEntry.STATE_METADATA_NEVER_OBTAINED)
+				.setBinary(1, startKey.getHash())
+				.setBinary(2, endKey.getHash())
+				.setLong(3, System.currentTimeMillis()/1000 - 3600)
+				.setFirstResult(0)
+				//.setComment("useIndex(e,primary)")
+				.setMaxResults(wants)
+				.setFetchSize(wants)
+				.list();
+
+				if(results.size() > 0)
+					firstMatch = new Key(results.get(0).info_hash);
+				toLookup.addAll(results);
+			}
+
+			wants = maxLookups - results.size();
+
+
+			// get canidates for scrape
+			if(wants > 0)
+			{
+				String query = "from ihdata e where useindex(e, infohashIdx) is true and "+range+" and e.status = ? and e.hitCount > 0 and e.lastFetchAttempt < ? order by e.info_hash";
+
+				results = session.createQuery(query)
+				.setInteger(0, TorrentDBEntry.STATE_TORRENT_UPLOADED_TO_EXTERNAL_STORAGE)
+				.setBinary(1, startKey.getHash())
+				.setBinary(2, endKey.getHash())
+				.setLong(3, System.currentTimeMillis()/1000 - 3600)
+				.setFirstResult(0)
+				//.setComment("useIndex(e,primary)")
+				.setMaxResults(wants)
+				.setFetchSize(wants)
+				.list();
+
+				Key firstScrapeMatch = startKey;
+				if(results.size() > 0)
+					firstScrapeMatch = new Key(results.get(0).info_hash);
+				if(firstScrapeMatch.compareTo(firstMatch) < 1)
+					firstMatch = firstScrapeMatch;
+				toLookup.addAll(results);
+			}
+
+			lookupPivotPoints.remove(startKey);
+			lookupPivotPoints.add(firstMatch);
+			Collections.sort(lookupPivotPoints);
+
+
+			// update in ascending order to avoid deadlocks
+			long now = System.currentTimeMillis()/1000;
+			for(TorrentDBEntry e : toLookup)
+			{
+				e.lastLookupTime = now;
+				if(e.status == 0)
+					e.status = 1;
+				session.update(e);
+			}
+				
+
+			tx.commit();
+		} catch(Exception e)
+		{
+			tx.rollback();
+			DHT.log(e, LogLevel.Info);
+			// restore on failure
+			lookupPivotPoints = pivotBackup;
+			// rolled back, don't start lookups
+			return Collections.EMPTY_SET;
+		} finally {
+			session.close();
+		}
+		
+		return toLookup;
 	}
 	
 	
@@ -456,6 +473,8 @@ public class MetaDataGatherer {
 			FetchTask task = fetchTasks.poll();
 			if(task == null)
 				break;
+			if(task.attempts > MAX_ATTEMPTS_PER_INFOHASH)
+				continue;
 			fetchMetadata(task);
 		}
 	}
@@ -499,6 +518,7 @@ public class MetaDataGatherer {
 
 	private void fetchMetadata(final FetchTask task) {
 		PeerAddressDBItem item = task.addresses.get(0);
+		task.attempts++;
 		task.addresses.remove(item);
 
 		InetSocketAddress addr = new InetSocketAddress(item.getInetAddress(),item.getPort());
@@ -518,7 +538,7 @@ public class MetaDataGatherer {
 						fetchMetadata(task);
 					} else {
 						log("failed metadata connection and finished for "+task.hash);
-						fetchTaskTerminated(task.entry, 0);
+						fetchTaskTerminated(task, 0);
 						digestTaskQueue();
 					}
 				} else
@@ -526,12 +546,12 @@ public class MetaDataGatherer {
 					try
 					{
 						writeTorrentFile(conn, task);
-						fetchTaskTerminated(task.entry, 2);
+						fetchTaskTerminated(task, 2);
 					} catch (IOException e)
 					{
 						e.printStackTrace();
 						log("successful metadata connection but failed to store for "+task.hash);
-						fetchTaskTerminated(task.entry, 0);
+						fetchTaskTerminated(task, 0);
 					}
 				}
 
@@ -549,19 +569,14 @@ public class MetaDataGatherer {
 	}
 	
 	
-	private void fetchTaskTerminated(final TorrentDBEntry e, final int newStatus) {
+	private void fetchTaskTerminated(final FetchTask t, final int newStatus) {
 		
 		toFinish.add(new SessionRunnable() {
 			
 			{ // initializer
-				key = new Key(e.info_hash);
-				entry = e;
+				entry = t.entry;
+				key = new Key(entry.info_hash);
 			}
-			
-			public int compareTo(SessionRunnable o) {
-				return key.compareTo(o.key);
-			}
-			
 			
 			public void run() {
 				try {
@@ -576,45 +591,41 @@ public class MetaDataGatherer {
 				} */
 				
 				
+				long now = System.currentTimeMillis()/1000;
+				entry.lastLookupTime = now;
 				
-				// we already finished this one and another lookup was done in parallel. ignore.
-				if(entry.status > 1)
+				// attempted to fetch, update status accordingly
+				if(entry.status == TorrentDBEntry.STATE_CURRENTLY_ATTEMPTING_TO_FETCH)
+				{
+					entry.status = newStatus;
+					entry.fetchAttemptCount++;
+					entry.hitCount /= 2;
+				}
+				
+				// looked this up for scrapes, just update the hit count
+				if(entry.status >= TorrentDBEntry.STATE_METADATA_RETRIEVED_PENDING_UPLOAD)
 				{
 					info.incomingCanidates.remove(key);
-					return;
+					entry.hitCount = 0;					
 				}
-					
 				
-				
+				if(newStatus == TorrentDBEntry.STATE_METADATA_NEVER_OBTAINED)
+					info.incomingCanidates.add(key);
 
-				entry.status = newStatus;
-				long now = System.currentTimeMillis()/1000;
-				entry.lastFetchAttempt = now;
-				entry.fetchAttemptCount++;
-
-
-				if(newStatus == 0)
-				{
-					entry.hitCount /= 2;
-					info.incomingCanidates.add(key);						
-				} else
-				{
-					info.incomingCanidates.remove(key);						
-				}
-					
-
-				/*
-					// remove entries that failed too often (hit count gets reduced on failure)
-					if(entry.hitCount <= 0)
-						session.delete(entry);
-					else
-						session.update(entry);
-				 */
 				session.update(entry);
-
+				
+				if(t.scrapes != null && t.scrapes.getScrapedPeers() > 0 || t.scrapes.getScrapedSeeds() > 0 || t.addresses.size() > 0)
+				{
+					ScrapeDBEntry scrape = new ScrapeDBEntry();
+					scrape.created = now;
+					scrape.leechers = t.scrapes.getScrapedPeers();
+					scrape.seeds = t.scrapes.getScrapedSeeds();
+					scrape.overall = t.addresses.size();
+					scrape.torrent = entry;
+					session.save(scrape);
+				}
 
 				log("torrent done for "+key.toString(false)+" | new status "+newStatus);
-
 			}
 		});
 	}
@@ -687,9 +698,11 @@ public class MetaDataGatherer {
 
 
 	class FetchTask {
+		int attempts = 0;
 		TorrentDBEntry entry;
 		String hash;
 		List<PeerAddressDBItem> addresses;
+		ScrapeResponseHandler scrapes;
 		PullMetaDataConnection previousConnection;
 	}
 
@@ -699,8 +712,9 @@ public class MetaDataGatherer {
 		Session session;
 		Key key;
 		TorrentDBEntry entry;
+		
+		public int compareTo(SessionRunnable o) {
+			return key.compareTo(o.key);
+		}
 	}
-	
-	
-	
 }

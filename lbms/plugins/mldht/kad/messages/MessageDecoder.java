@@ -91,7 +91,7 @@ public class MessageDecoder {
 		
 		Object rawMtid = map.get(MessageBase.TRANSACTION_KEY);
 		
-		if (errorMsg == null || rawMtid == null || !(rawMtid instanceof byte[]))
+		if (errorMsg == null && (rawMtid == null || !(rawMtid instanceof byte[])))
 			return null;
 
 		byte[] mtid = (byte[]) rawMtid;

@@ -103,7 +103,7 @@ public class Main {
 		for (DHT dht : dhts.values()) {
 			dht.start(config);
 			dht.bootstrap();
-			dht.addIndexingLinstener(dumper);
+			dht.addIndexingListener(dumper);
 		}
 
 		

@@ -333,6 +333,9 @@ public class RPCServer {
 			return;
 		}
 		
+		if(msg == null)
+			return;
+		
 		if(DHT.isLogLevelEnabled(LogLevel.Debug))
 			DHT.logDebug("RPC received message ["+source.getAddress().getHostAddress()+"] "+msg.toString());
 		stats.addReceivedMessageToCount(msg);

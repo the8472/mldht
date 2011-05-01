@@ -911,7 +911,7 @@ public class DHT implements DHTBase {
 		statsListeners.remove(listener);
 	}
 
-	public void addIndexingLinstener(DHTIndexingListener listener) {
+	public void addIndexingListener(DHTIndexingListener listener) {
 		indexingListeners.add(listener);
 	}
 

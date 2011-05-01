@@ -27,6 +27,14 @@ import org.hibernate.annotations.OptimisticLockType;
 @org.hibernate.annotations.Entity(optimisticLock=OptimisticLockType.DIRTY,dynamicUpdate=true)
 public class TorrentDBEntry implements Comparable<TorrentDBEntry> {
 	
+	public static final int STATE_METADATA_NEVER_OBTAINED = 0;
+	public static final int STATE_CURRENTLY_ATTEMPTING_TO_FETCH = 1;
+	public static final int	STATE_METADATA_RETRIEVED_PENDING_UPLOAD = 2;
+	public static final int STATE_PRIVATE_TORRENT = 3;
+	public static final int STATE_TORRENT_UPLOADED_TO_EXTERNAL_STORAGE = 4;
+	public static final int STATE_WAS_RETRIEVED_BUT_MISSING_ON_UPLOAD = 5;
+	public static final int STATE_UPLOAD_FAILED_DUE_TO_SERVER_ERROR = 6;
+	
 	@GeneratedValue(strategy=GenerationType.AUTO)
 	@Id
 	@Column(insertable=false)
@@ -65,7 +73,7 @@ public class TorrentDBEntry implements Comparable<TorrentDBEntry> {
 	 * unix_timestamp()  of event resulting in status update to 0, 1 or 2
 	 */
 	@Column(length=10)
-	long lastFetchAttempt;
+	long lastLookupTime;
 	
 	/**
 	 * number of times we've tried to get the hash

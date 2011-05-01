@@ -16,6 +16,8 @@
  */
 package lbms.plugins.mldht.indexer;
 
+import java.io.Serializable;
+
 import javax.persistence.*;
 
 import org.hibernate.annotations.ForeignKey;
@@ -25,7 +27,9 @@ import org.hibernate.annotations.OptimisticLockType;
 
 
 @Entity(name="scrapes")
-public class ScrapeDBEntry {
+public class ScrapeDBEntry implements Serializable {
+
+	private static final long	serialVersionUID	= 7545132870970090363L;
 
 	@Id
 	@ManyToOne
@@ -49,5 +53,10 @@ public class ScrapeDBEntry {
 			return other.torrent.equals(torrent) && created == other.created;
 		}
 		return false;
+	}
+	
+	@Override
+	public int hashCode() {
+		return (int) (created) + torrent.id;
 	}
 }

@@ -19,7 +19,6 @@ package lbms.plugins.mldht.indexer;
 import lbms.plugins.mldht.indexer.db.IndexHintInterceptor;
 
 import org.hibernate.SessionFactory;
-import org.hibernate.cfg.AnnotationConfiguration;
 import org.hibernate.cfg.Configuration;
 
 public class HibernateUtil {

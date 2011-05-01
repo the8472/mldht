@@ -39,4 +39,15 @@ public class ScrapeDBEntry {
 	int seeds;
 	int leechers;
 	int overall;
+	
+	
+	@Override
+	public boolean equals(Object obj) {
+		if(obj instanceof ScrapeDBEntry)
+		{
+			ScrapeDBEntry other = (ScrapeDBEntry) obj;
+			return other.torrent.equals(torrent) && created == other.created;
+		}
+		return false;
+	}
 }

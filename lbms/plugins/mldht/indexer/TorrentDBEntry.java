@@ -83,6 +83,15 @@ public class TorrentDBEntry implements Comparable<TorrentDBEntry> {
 	@Column(length=10)
 	long lastSeen;
 	
+	public boolean equals(Object obj) {
+		if(obj instanceof TorrentDBEntry)
+		{
+			TorrentDBEntry other = (TorrentDBEntry) obj;
+			if(id == other.id)
+				return true;
+		}
+		return false;
+	}
 	
 	public int compareTo(TorrentDBEntry o) {
 		for (int i = 0,n=info_hash.length; i < n; i++) {

@@ -294,6 +294,7 @@ public class MetaDataGatherer {
 					{
 						log("all DHT lookups done for"+task.hash);
 						activeLookups.decrementAndGet();
+						scrapeHandler.process();
 						
 						if(task.entry.status == TorrentDBEntry.STATE_CURRENTLY_ATTEMPTING_TO_FETCH)
 						{

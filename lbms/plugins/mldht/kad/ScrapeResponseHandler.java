@@ -16,8 +16,12 @@
  */
 package lbms.plugins.mldht.kad;
 
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import lbms.plugins.mldht.kad.messages.GetPeersResponse;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
@@ -26,6 +30,7 @@ public class ScrapeResponseHandler {
 	private List<GetPeersResponse>			scrapeResponses = new ArrayList<GetPeersResponse>(20);
 	private int								scrapeSeeds;
 	private int								scrapePeers;
+	private int								direct;
 	
 	
 	public void addGetPeersRespone(GetPeersResponse gpr)
@@ -41,9 +46,14 @@ public class ScrapeResponseHandler {
 		return scrapeSeeds;
 	}
 	
+	public int getDirectResultCount() {
+		return direct;		
+	}
+	
 	public void process() {
 		List<BloomFilterBEP33> seedFilters = new ArrayList<BloomFilterBEP33>();
 		List<BloomFilterBEP33> peerFilters = new ArrayList<BloomFilterBEP33>();
+		Set<InetAddress> directPeers = new HashSet<InetAddress>();
 		
 		// process seeds first, we need them for some checks later (not yet implemented)
 		for(GetPeersResponse response : scrapeResponses)
@@ -58,25 +68,34 @@ public class ScrapeResponseHandler {
 		for(GetPeersResponse response : scrapeResponses)
 		{
 			BloomFilterBEP33 f = response.getScrapePeers();
+
+			Set<InetAddress> addrs = new HashSet<InetAddress>();
+			
+			for(DBItem item : response.getPeerItems())
+			{
+				if (item instanceof PeerAddressDBItem)
+				{
+					PeerAddressDBItem peer = (PeerAddressDBItem) item;
+					if(!AddressUtils.isBogon(peer))
+						addrs.add(peer.getInetAddress());
+				}
+			}
+
+			
 			if(f == null)
 			{
 				// TODO cross-check with seed filters
 				f = new BloomFilterBEP33();
-				for(DBItem item : response.getPeerItems())
-				{
-					if (item instanceof PeerAddressDBItem)
-					{
-						PeerAddressDBItem peer = (PeerAddressDBItem) item;
-						if(!AddressUtils.isBogon(peer))
-							f.insert(peer.getInetAddress());
-					}
-				}
+				for(InetAddress addr : addrs)
+					f.insert(addr);
 			}
 			
 			peerFilters.add(f);
 		}
 		
 		scrapePeers = BloomFilterBEP33.unionSize(peerFilters);
+		
+		direct = directPeers.size();
 	}
 	
 	

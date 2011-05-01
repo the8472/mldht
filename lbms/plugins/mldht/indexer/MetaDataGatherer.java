@@ -300,6 +300,9 @@ public class MetaDataGatherer {
 						{
 							task.addresses.removeAll(Collections.singleton(null));
 							if(task.addresses.size() > 0) {
+								// trim to a limited amount of addresses to avoid 1 task being stuck for ages
+								if(task.addresses.size() > MAX_ATTEMPTS_PER_INFOHASH)
+									task.addresses.subList(MAX_ATTEMPTS_PER_INFOHASH, task.addresses.size()).clear();
 								fetchTasks.add(task);
 								log("added metadata task based on DHT for "+task.hash);
 							} else {
@@ -476,8 +479,6 @@ public class MetaDataGatherer {
 			FetchTask task = fetchTasks.poll();
 			if(task == null)
 				break;
-			if(task.attempts > MAX_ATTEMPTS_PER_INFOHASH)
-				continue;
 			fetchMetadata(task);
 		}
 	}
@@ -521,7 +522,6 @@ public class MetaDataGatherer {
 
 	private void fetchMetadata(final FetchTask task) {
 		PeerAddressDBItem item = task.addresses.get(0);
-		task.attempts++;
 		task.addresses.remove(item);
 
 		InetSocketAddress addr = new InetSocketAddress(item.getInetAddress(),item.getPort());
@@ -623,7 +623,7 @@ public class MetaDataGatherer {
 					scrape.created = now;
 					scrape.leechers = t.scrapes.getScrapedPeers();
 					scrape.seeds = t.scrapes.getScrapedSeeds();
-					scrape.overall = t.addresses.size();
+					scrape.direct = t.scrapes.getDirectResultCount();
 					scrape.torrent = entry;
 					session.save(scrape);
 				}
@@ -701,7 +701,6 @@ public class MetaDataGatherer {
 
 
 	class FetchTask {
-		int attempts = 0;
 		TorrentDBEntry entry;
 		String hash;
 		List<PeerAddressDBItem> addresses;

@@ -42,7 +42,7 @@ public class ScrapeDBEntry implements Serializable {
 
 	int seeds;
 	int leechers;
-	int overall;
+	int direct;
 	
 	
 	@Override

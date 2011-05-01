@@ -97,9 +97,9 @@ Setup for mysql
 		`created` INT(10) UNSIGNED NOT NULL,
 		`seeds` INT(10) UNSIGNED NOT NULL,
 		`leechers` INT(10) UNSIGNED NOT NULL,
-		`overall` INT(10) UNSIGNED NOT NULL,
+		`direct` INT(10) UNSIGNED NOT NULL,
 		PRIMARY KEY (`infoId`, `created`),
-		CONSTRAINT `FK__ihdata` FOREIGN KEY (`infoId`) REFERENCES `ihdata` (`id`) ON UPDATE RESTRICT ON DELETE RESTRICT
+		CONSTRAINT `FK__ihdata` FOREIGN KEY (`infoId`) REFERENCES `ihdata` (`id`)
 	)
 	ENGINE=InnoDB
 

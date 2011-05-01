@@ -35,6 +35,7 @@ public class HibernateUtil {
 			//By default it will look for hibernate.cfg.xml in the class path
 			Configuration config = new Configuration().configure();
 			config.addAnnotatedClass(TorrentDBEntry.class);
+			config.addAnnotatedClass(ScrapeDBEntry.class);
 			config.setInterceptor(new IndexHintInterceptor());
 			if(config.getProperty("hibernate.dialect").contains("MySQL"))
 				isMySQL = true;

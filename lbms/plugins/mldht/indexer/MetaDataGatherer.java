@@ -271,7 +271,9 @@ public class MetaDataGatherer {
 
 			final int[] pendingLookups = new int[1];
 
-			final ScrapeResponseHandler scrapeHandler = new ScrapeResponseHandler(); 
+			final ScrapeResponseHandler scrapeHandler = new ScrapeResponseHandler();
+			
+			task.scrapes = scrapeHandler;
 			
 			TaskListener lookupListener = new TaskListener() {
 				public synchronized void finished(Task t) {
@@ -326,7 +328,10 @@ public class MetaDataGatherer {
 					lookupTask.setLowPriority(false);
 					lookupTask.addListener(lookupListener);
 					lookupTask.setScrapeHandler(scrapeHandler);
-					lookupTask.setInfo("Grabbing .torrent for "+task.hash);
+					if(entry.status == TorrentDBEntry.STATE_CURRENTLY_ATTEMPTING_TO_FETCH)
+						lookupTask.setInfo("Grabbing .torrent for "+task.hash);
+					else
+						lookupTask.setInfo("Scraping "+task.hash);
 					lookupTask.setNoSeeds(false);
 					dht.getTaskManager().addTask(lookupTask);
 				}
@@ -359,10 +364,7 @@ public class MetaDataGatherer {
 		else if(queuedConnections < maxConnections)
 		{ // we have enough connections, but lets do some more lookups to fill the queue
 			// as the buffer fills up we scale down the number of lookups we will do
-			maxLookups = (int) (maxLookups * (1.0- queuedConnections*1.0/maxConnections));
-			
-			// may become negative
-			maxMetaGetLookups = maxLookups - currentLookups;
+			maxMetaGetLookups = Math.min(maxConnections, maxLookups - currentLookups);
 		}
 			
 		
@@ -377,8 +379,8 @@ public class MetaDataGatherer {
 			Key startKey = lookupPivotPoints.get(pivotIdx);
 			Key endKey = lookupPivotPoints.get((pivotIdx+1) % lookupPivotPoints.size());
 
-			// spread lookups over the pivot ranges
-			int wants = Math.min(maxMetaGetLookups, maxLookups);
+			
+			int wants = maxMetaGetLookups;
 
 			List<TorrentDBEntry> results = Collections.EMPTY_LIST;
 			Key firstMatch = startKey;
@@ -389,12 +391,12 @@ public class MetaDataGatherer {
 			// get canidates for combined scrape+retrieve
 			if(wants > 0)
 			{
-				String query = "from ihdata e where useindex(e, infohashIdx) is true and "+range+" and e.status = ? and e.hitCount > 0 and e.lastFetchAttempt < ? order by e.info_hash";
+				String query = "from ihdata e where useindex(e, infohashIdx) is true and "+range+" and e.status = ? and e.hitCount > 0 and e.lastLookupTime < ? order by e.info_hash";
 
 				results = session.createQuery(query)
-				.setInteger(0, TorrentDBEntry.STATE_METADATA_NEVER_OBTAINED)
-				.setBinary(1, startKey.getHash())
-				.setBinary(2, endKey.getHash())
+				.setBinary(0, startKey.getHash())
+				.setBinary(1, endKey.getHash())
+				.setInteger(2, TorrentDBEntry.STATE_METADATA_NEVER_OBTAINED)
 				.setLong(3, System.currentTimeMillis()/1000 - 3600)
 				.setFirstResult(0)
 				//.setComment("useIndex(e,primary)")
@@ -407,18 +409,18 @@ public class MetaDataGatherer {
 				toLookup.addAll(results);
 			}
 
-			wants = maxLookups - results.size();
+			wants = maxLookups - currentLookups - results.size();
 
 
 			// get canidates for scrape
 			if(wants > 0)
 			{
-				String query = "from ihdata e where useindex(e, infohashIdx) is true and "+range+" and e.status = ? and e.hitCount > 0 and e.lastFetchAttempt < ? order by e.info_hash";
+				String query = "from ihdata e where useindex(e, infohashIdx) is true and "+range+" and e.status = ? and e.hitCount > 0 and e.lastLookupTime < ? order by e.info_hash";
 
 				results = session.createQuery(query)
-				.setInteger(0, TorrentDBEntry.STATE_TORRENT_UPLOADED_TO_EXTERNAL_STORAGE)
-				.setBinary(1, startKey.getHash())
-				.setBinary(2, endKey.getHash())
+				.setBinary(0, startKey.getHash())
+				.setBinary(1, endKey.getHash())
+				.setInteger(2, TorrentDBEntry.STATE_TORRENT_UPLOADED_TO_EXTERNAL_STORAGE)
 				.setLong(3, System.currentTimeMillis()/1000 - 3600)
 				.setFirstResult(0)
 				//.setComment("useIndex(e,primary)")
@@ -614,7 +616,7 @@ public class MetaDataGatherer {
 
 				session.update(entry);
 				
-				if(t.scrapes != null && t.scrapes.getScrapedPeers() > 0 || t.scrapes.getScrapedSeeds() > 0 || t.addresses.size() > 0)
+				if(t.scrapes != null && (t.scrapes.getScrapedPeers() > 0 || t.scrapes.getScrapedSeeds() > 0 || t.addresses.size() > 0))
 				{
 					ScrapeDBEntry scrape = new ScrapeDBEntry();
 					scrape.created = now;

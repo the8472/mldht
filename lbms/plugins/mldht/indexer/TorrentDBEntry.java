@@ -61,6 +61,7 @@ public class TorrentDBEntry implements Comparable<TorrentDBEntry> {
 	/**
 	 * hits, as seen by the DHT
 	 */
+	@Index(name="hitCountIdx")
 	int hitCount;
 	
 	/**

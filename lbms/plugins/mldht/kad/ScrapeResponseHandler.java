@@ -80,7 +80,8 @@ public class ScrapeResponseHandler {
 						addrs.add(peer.getInetAddress());
 				}
 			}
-
+			
+			directPeers.addAll(addrs);
 			
 			if(f == null)
 			{

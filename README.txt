@@ -77,7 +77,7 @@ Setup for mysql
 
 * create the table in your database (the table structure may change in the future, consult this readme if you update from SVN):
 
-	CREATE TABLE `ihdata` (
+	 CREATE TABLE `ihdata` (
 	  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
 	  `info_hash` binary(20) NOT NULL,
 	  `hitCount` int(10) unsigned NOT NULL DEFAULT '0',
@@ -89,8 +89,9 @@ Setup for mysql
 	  `lastSeen` int(10) unsigned NOT NULL DEFAULT '0',
 	  PRIMARY KEY (`id`),
 	  UNIQUE KEY `infohashIdx` (`info_hash`),
-	  KEY `statusIdx` (`status`)
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1
+	  KEY `statusIdx` (`status`),
+	  KEY `hitCountIdx` (`hitCount`)
+	) ENGINE=InnoDB AUTO_INCREMENT=122426841 DEFAULT CHARSET=latin1
 
 	CREATE TABLE `scrapes` (
 		`infoId` INT(10) UNSIGNED NOT NULL,

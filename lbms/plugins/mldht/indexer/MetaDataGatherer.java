@@ -359,18 +359,20 @@ public class MetaDataGatherer {
 		int activeAndQueuedConnections = activeOutgoingConnections.get() + queuedConnections;
 		int maxConnections = numVirtualNodes * MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE;
 		int currentLookups = activeLookups.get();
-		int maxLookups = numVirtualNodes * LOOKUPS_PER_VIRTUAL_NODE;
+		int maxLookups = numVirtualNodes * LOOKUPS_PER_VIRTUAL_NODE - currentLookups;
 		
 		int maxMetaGetLookups = 0;
 		// too few connections, let's do as many lookups as we can
 		if(activeAndQueuedConnections <= maxConnections)
-			maxMetaGetLookups = maxLookups - currentLookups;
+			maxMetaGetLookups = maxLookups;
 		else if(queuedConnections < maxConnections)
 		{ // we have enough connections, but lets do some more lookups to fill the queue
 			// as the buffer fills up we scale down the number of lookups we will do
-			maxMetaGetLookups = Math.min(maxConnections, maxLookups - currentLookups);
+			maxMetaGetLookups = Math.min(maxConnections, maxLookups);
 		}
 			
+		if(maxLookups < 1)
+			return Collections.EMPTY_SET;
 		
 		Session session = HibernateUtil.getSessionFactory().openSession();
 		Transaction tx = session.beginTransaction();
@@ -387,7 +389,6 @@ public class MetaDataGatherer {
 			int wants = maxMetaGetLookups;
 
 			List<TorrentDBEntry> results = Collections.EMPTY_LIST;
-			Key firstMatch = startKey;
 
 			// handle wrap-around
 			String range = startKey.compareTo(endKey) < 1 ? "(e.info_hash > ? and e.info_hash < ?)" : "(e.info_hash > ? or e.info_hash < ?)"; 
@@ -401,49 +402,44 @@ public class MetaDataGatherer {
 				.setBinary(0, startKey.getHash())
 				.setBinary(1, endKey.getHash())
 				.setInteger(2, TorrentDBEntry.STATE_METADATA_NEVER_OBTAINED)
-				.setLong(3, System.currentTimeMillis()/1000 - 3600)
+				.setLong(3, System.currentTimeMillis()/1000 - 3600) // don't fetch more than once an hour
 				.setFirstResult(0)
 				//.setComment("useIndex(e,primary)")
 				.setMaxResults(wants)
 				.setFetchSize(wants)
 				.list();
 
+
+				lookupPivotPoints.remove(startKey);
 				if(results.size() > 0)
-					firstMatch = new Key(results.get(0).info_hash);
+					lookupPivotPoints.add(new Key(results.get(0).info_hash));
+				Collections.sort(lookupPivotPoints);				
+				
+
 				toLookup.addAll(results);
 			}
 
-			wants = maxLookups - currentLookups - results.size();
+			wants = maxLookups - toLookup.size();
 
 
 			// get canidates for scrape
 			if(wants > 0)
 			{
-				String query = "from ihdata e where useindex(e, infohashIdx) is true and "+range+" and e.status = ? and e.hitCount > 0 and e.lastLookupTime < ? order by e.info_hash";
+				String query = "from ihdata e where "+range+" and e.status >= ? and e.hitCount > 0 and e.lastLookupTime < ? order by e.hitCount desc, e.info_hash asc";
 
 				results = session.createQuery(query)
 				.setBinary(0, startKey.getHash())
 				.setBinary(1, endKey.getHash())
-				.setInteger(2, TorrentDBEntry.STATE_TORRENT_UPLOADED_TO_EXTERNAL_STORAGE)
-				.setLong(3, System.currentTimeMillis()/1000 - 3600)
+				.setInteger(2, TorrentDBEntry.STATE_METADATA_RETRIEVED_PENDING_UPLOAD)
+				.setLong(3, System.currentTimeMillis()/1000 - 3600*12) // don't fetch more than once every 12 hours
 				.setFirstResult(0)
 				//.setComment("useIndex(e,primary)")
 				.setMaxResults(wants)
 				.setFetchSize(wants)
 				.list();
 
-				Key firstScrapeMatch = startKey;
-				if(results.size() > 0)
-					firstScrapeMatch = new Key(results.get(0).info_hash);
-				if(firstScrapeMatch.compareTo(firstMatch) < 1)
-					firstMatch = firstScrapeMatch;
 				toLookup.addAll(results);
 			}
-
-			lookupPivotPoints.remove(startKey);
-			lookupPivotPoints.add(firstMatch);
-			Collections.sort(lookupPivotPoints);
-
 
 			// update in ascending order to avoid deadlocks
 			long now = System.currentTimeMillis()/1000;

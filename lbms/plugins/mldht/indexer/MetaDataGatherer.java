@@ -53,6 +53,7 @@ public class MetaDataGatherer {
 	public static final int MIN_PIVOTS = 32;
 	public static final int MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE = 3;
 	public static final int MAX_FINISHED_UPDATE_CHARGE = 100;
+	public static final int MAX_LOOKUPS_PER_PIVOT = 9;
 
 	ArrayList<Key> lookupPivotPoints = new ArrayList<Key>();
 	AtomicInteger activeLookups = new AtomicInteger();
@@ -121,7 +122,7 @@ public class MetaDataGatherer {
 					if(new File("./torrents/").getUsableSpace() < 512*1024*1024)
 						return;
 					
-					dhtLookups();
+					while(dhtLookups() > 0);
 				} catch (Exception e)
 				{
 					DHT.log(e, LogLevel.Error);
@@ -256,9 +257,11 @@ public class MetaDataGatherer {
 		Collections.sort(lookupPivotPoints);
 	}
 	
-	private void dhtLookups() {
+	private int dhtLookups() {
 		updatePivots();
 		Set<TorrentDBEntry> entries = getLookupCandidates();
+		
+		int started = 0;
 		
 		for(final TorrentDBEntry entry : entries)
 		{
@@ -342,11 +345,15 @@ public class MetaDataGatherer {
 			}
 			
 			if(pendingLookups[0] > 0)
+			{
 				activeLookups.incrementAndGet();
-			else // this usually shouldn't happen but sometimes no RPC server may be availble despite numVirtualNodes > 0
+				started++;
+			} else // this usually shouldn't happen but sometimes no RPC server may be availble despite numVirtualNodes > 0
 				fetchTaskTerminated(task, 0);
 
 		}
+		
+		return started;
 	}
 
 	
@@ -359,7 +366,7 @@ public class MetaDataGatherer {
 		int activeAndQueuedConnections = activeOutgoingConnections.get() + queuedConnections;
 		int maxConnections = numVirtualNodes * MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE;
 		int currentLookups = activeLookups.get();
-		int maxLookups = numVirtualNodes * LOOKUPS_PER_VIRTUAL_NODE - currentLookups;
+		int maxLookups = Math.min(MAX_LOOKUPS_PER_PIVOT, numVirtualNodes * LOOKUPS_PER_VIRTUAL_NODE - currentLookups);
 		
 		int maxMetaGetLookups = 0;
 		// too few connections, let's do as many lookups as we can

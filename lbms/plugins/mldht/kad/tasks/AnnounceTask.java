@@ -72,7 +72,8 @@ public class AnnounceTask extends Task {
 						visited.add(e);
 					}
 					
-				}
+				} else
+					todo.remove(e);
 			}
 		}
 	}

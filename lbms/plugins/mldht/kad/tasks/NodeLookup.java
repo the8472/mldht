@@ -78,7 +78,8 @@ public class NodeLookup extends Task {
 						visited.add(e);
 						todo.remove(e);
 					}
-				}
+				} else
+					todo.remove(e);
 				// remove the entry from the todo list
 			}
 		}

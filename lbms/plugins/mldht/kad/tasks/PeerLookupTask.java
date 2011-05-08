@@ -227,7 +227,8 @@ public class PeerLookupTask extends Task {
 					todo.remove(e);
 					visited.add(e);					
 				}
-			}
+			} else
+				todo.remove(e);
 		}
 
 	}

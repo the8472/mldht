@@ -425,7 +425,7 @@ public class MetaDataGatherer {
 			// get canidates for scrape
 			if(wants > 0)
 			{
-				String query = "from ihdata e where "+range+" and e.status >= ? and e.hitCount > 0 and e.lastLookupTime < ? order by e.hitCount desc, e.info_hash asc";
+				String query = "from ihdata e where useindex(e, infohashIdx) is true and "+range+" and e.status >= ? and e.hitCount > 0 and e.lastLookupTime < ? order by e.hitCount desc, e.info_hash asc";
 
 				results = session.createQuery(query)
 				.setBinary(0, startKey.getHash())

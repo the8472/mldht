@@ -199,6 +199,14 @@ public class PeerLookupTask extends Task {
 	}
 	
 	@Override
+	void callStalled(RPCCall c) {
+		// this is a fast lookup, so we'll never see the timeouts (10s) because the task finishes beforehand.
+		// -> be more aggressive about cache cleaning
+		if(fastTerminate)
+			cache.removeEntry(c.getExpectedID());
+	}
+	
+	@Override
 	boolean canDoRequest() {
 		if(lowPriority)
 			return getNumOutstandingRequestsExcludingStalled() < DHTConstants.MAX_CONCURRENT_REQUESTS_LOWPRIO;

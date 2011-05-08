@@ -61,19 +61,19 @@ public class AnnounceTask extends Task {
 		synchronized (todo) {
 			while (!todo.isEmpty() && canDoRequest()) {
 				KBucketEntryAndToken e = (KBucketEntryAndToken) todo.first();
+				todo.remove(e);
+				
 				if (!visited.contains(e)) {
 					AnnounceRequest anr = new AnnounceRequest(targetKey, port, e.getToken());
 					//System.out.println("sending announce to ID:"+e.getID()+" addr:"+e.getAddress());
 					anr.setDestination(e.getAddress());
 					anr.setSeed(isSeed);
 					if(rpcCall(anr,e.getID(),null))
-					{
-						todo.remove(e);
 						visited.add(e);
-					}
+					else
+						todo.add(e);
 					
-				} else
-					todo.remove(e);
+				}
 			}
 		}
 	}

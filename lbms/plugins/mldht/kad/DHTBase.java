@@ -105,8 +105,6 @@ public interface DHTBase {
 
 	public TaskManager getTaskManager ();
 
-	boolean canStartTask (Task toCheck);
-
 	NodeLookup findNode (Key id);
 
 	PingRefreshTask refreshBucket (KBucket bucket);

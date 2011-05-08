@@ -17,10 +17,14 @@
 package lbms.plugins.mldht.kad.tasks;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.DHTConstants;
+import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.RPCServer;
 
 /**
  * Manages all dht tasks.
@@ -29,22 +33,22 @@ import lbms.plugins.mldht.kad.DHT;
  */
 public class TaskManager {
 
+	private ConcurrentHashMap<Key, Deque<Task>> queued;
 	private ConcurrentSkipListSet<Task>	tasks;
-	private Deque<Task>			queued;
 	private DHT					dht;
 	private AtomicInteger		next_id = new AtomicInteger();
 	private TaskListener		finishListener 	= new TaskListener() {
 		public void finished(Task t) {
 			tasks.remove(t);				
 			dht.getStats().taskFinished(t);
-			dequeue();
+			dequeue(t.getRPC().getDerivedID());
 		}
 	};
 
 	public TaskManager (DHT dht) {
 		this.dht = dht;
 		tasks = new ConcurrentSkipListSet<Task>();
-		queued = new LinkedList<Task>();
+		queued = new ConcurrentHashMap<Key, Deque<Task>>();
 		next_id.set(1);
 	}
 	
@@ -53,16 +57,24 @@ public class TaskManager {
 		addTask(task, false);
 	}
 	
-	
-	public void dequeue() {
-		synchronized (queued) {
-			Task t = null;
-			while ((t = queued.peekFirst()) != null && dht.canStartTask(t)) {
-				queued.removeFirst();
+	// dequeue tasks for a specific server
+	public void dequeue(Key k)
+	{
+		Task t = null;
+		Deque<Task> q = queued.get(k);
+		synchronized (q) {
+			while ((t = q.peekFirst()) != null && canStartTask(t)) {
+				q.removeFirst();
 				tasks.add(t);
 				t.start();
 			}
 		}
+	}
+	
+	
+	public void dequeue() {
+		for(Key k : queued.keySet())
+			dequeue(k);
 	}
 
 	/**
@@ -73,15 +85,28 @@ public class TaskManager {
 		int id = next_id.incrementAndGet();
 		task.addListener(finishListener);
 		task.setTaskID(id);
-		if (task.isQueued()) {
-			synchronized (queued) {
-				if(isPriority)
-					queued.addFirst(task);
-				else
-					queued.addLast(task);
-			}
-		} else {
-				tasks.add(task);
+		if (!task.isQueued())
+		{
+			tasks.add(task);
+			return;
+		}
+		
+		Key rpcId = task.getRPC().getDerivedID();
+		Deque<Task> q = queued.get(rpcId);
+		if (q == null)
+		{
+			Deque<Task> t = new LinkedList<Task>();
+			q = queued.putIfAbsent(rpcId, t);
+			if(q == null)
+				q = t;
+		}
+			
+		synchronized (q)
+		{
+			if (isPriority)
+				q.addFirst(task);
+			else
+				q.addLast(task);
 		}
 	}
 
@@ -102,9 +127,19 @@ public class TaskManager {
 	}
 
 	public Task[] getQueuedTasks () {
-		synchronized (queued) {
-			return queued.toArray(new Task[queued.size()]);
-		}
+		List<Task> temp = new ArrayList<Task>();
+		for(Deque<Task> q : queued.values())
+			synchronized (q)
+			{
+				temp.addAll(q);				
+			}
+		return temp.toArray(new Task[temp.size()]);
+	}
+	
+	public boolean canStartTask (Task toCheck) {
+		// we can start a task if we have less then  7 runnning per server and
+		// there are at least 16 RPC slots available
+		return getNumTasks() < DHTConstants.MAX_ACTIVE_TASKS * Math.max(1, dht.getServerManager().getActiveServerCount()) && toCheck.getRPC().getNumActiveRPCCalls() + 16 < DHTConstants.MAX_ACTIVE_CALLS;
 	}
 	
 	public String toString() {
@@ -117,11 +152,9 @@ public class TaskManager {
 		
 		b.append("#### queued: \n");
 		
-		synchronized (queued)
-		{
-			for(Task t : queued)
-				b.append(t.toString());
-		}
+		for(Task t : getQueuedTasks())
+			b.append(t.toString());
+
 		
 		return b.toString();
 	}

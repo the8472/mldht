@@ -62,6 +62,7 @@ public class NodeLookup extends Task {
 
 			while (todo.size() > 0 && canDoRequest() && validReponsesSinceLastClosestSetModification < DHTConstants.MAX_CONCURRENT_REQUESTS) {
 				KBucketEntry e = todo.first();
+				todo.remove(e);
 				
 				// only send a findNode if we haven't allready visited the node
 				if (!visited.contains(e)) {
@@ -74,12 +75,11 @@ public class NodeLookup extends Task {
 						lookupMap.put(fnr, e.getID());
 					}
 					if(rpcCall(fnr,e.getID(),null))
-					{
 						visited.add(e);
-						todo.remove(e);
-					}
-				} else
-					todo.remove(e);
+					else
+						todo.add(e);
+				}
+					
 				// remove the entry from the todo list
 			}
 		}

@@ -857,12 +857,6 @@ public class DHT implements DHTBase {
 		srv.sendMessage(errMsg);
 	}
 
-	public boolean canStartTask (Task toCheck) {
-		// we can start a task if we have less then  7 runnning and
-		// there are at least 16 RPC slots available
-		return tman.getNumTasks() < DHTConstants.MAX_ACTIVE_TASKS * Math.max(1, serverManager.getActiveServerCount()) && toCheck.getRPC().getNumActiveRPCCalls() + 16 < DHTConstants.MAX_ACTIVE_CALLS;
-	}
-
 	public Key getOurID () {
 		if (running) {
 			return node.getRootID();

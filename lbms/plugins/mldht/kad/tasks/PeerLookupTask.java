@@ -212,6 +212,7 @@ public class PeerLookupTask extends Task {
 		// until we have nothing left
 		while (!todo.isEmpty() && canDoRequest() && !isClosestSetStable()) {
 			KBucketEntry e = todo.first();
+			todo.remove(e);
 			
 			// only send a findNode if we haven't already visited the node
 			if (!visited.contains(e)) {
@@ -223,12 +224,11 @@ public class PeerLookupTask extends Task {
 				gpr.setScrape(true);
 				gpr.setNoSeeds(noSeeds);
 				if(rpcCall(gpr,e.getID(),cache.getRPCListner()))
-				{
+					visited.add(e);
+				else
 					todo.remove(e);
-					visited.add(e);					
-				}
-			} else
-				todo.remove(e);
+			}
+				
 		}
 
 	}

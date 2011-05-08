@@ -204,12 +204,12 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 * @param req THe request to send
 	 * @return true if call was made, false if not
 	 */
-	boolean rpcCall (MessageBase req, Key expectedID) {
+	boolean rpcCall (MessageBase req, Key expectedID, RPCCallListener listener) {
 		if (!canDoRequest()) {
 			return false;
 		}
 
-		new RPCCall(rpc,req).setExpectedID(expectedID).addListener(this).start();
+		new RPCCall(rpc,req).setExpectedID(expectedID).addListener(this).addListener(listener).start();
 		outstandingRequestsExcludingStalled.incrementAndGet();
 		outstandingRequests.incrementAndGet();
 		

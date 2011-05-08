@@ -136,7 +136,7 @@ public class PingRefreshTask extends Task {
 						lookupMap.put(pr, e);
 					}
 				}
-				rpcCall(pr,e.getID());
+				rpcCall(pr,e.getID(),null);
 			}
 		}
 	}

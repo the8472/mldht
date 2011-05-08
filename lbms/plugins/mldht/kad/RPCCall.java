@@ -93,7 +93,8 @@ public class RPCCall {
 	public RPCCall addListener (RPCCallListener cl) {
 		if(awaitingResponse)
 			throw new IllegalStateException("can only attach listeners while call is not started yet");
-		listeners.add(cl);
+		if(cl != null)
+			listeners.add(cl);
 		return this;
 	}
 
@@ -203,6 +204,11 @@ public class RPCCall {
 		if(sentTime == -1 || responseTime == -1)
 			return -1;
 		return responseTime - sentTime;
+	}
+	
+	public long getSentTime()
+	{
+		return sentTime;
 	}
 	
 	public boolean wasStalled() {

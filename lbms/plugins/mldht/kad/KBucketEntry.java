@@ -148,7 +148,7 @@ public class KBucketEntry implements Serializable {
 	 */
 	public KBucketEntry (InetSocketAddress addr, Key id, long timestamp) {
 		lastSeen = timestamp;
-		timeCreated = timestamp;
+		timeCreated = System.currentTimeMillis();
 		this.addr = addr;
 		this.nodeID = id;
 	}

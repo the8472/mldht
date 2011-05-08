@@ -160,9 +160,6 @@ public class PeerLookupTask extends Task {
 			firstResultTime = System.currentTimeMillis();
 		
 		KBucketEntry entry = new KBucketEntry(rsp.getOrigin(), rsp.getID());
-		
-		cache.add(entry);
-		
 		KBucketEntryAndToken toAdd = new KBucketEntryAndToken(entry, gpr.getToken());
 
 		synchronized (this)
@@ -195,15 +192,6 @@ public class PeerLookupTask extends Task {
 	 */
 	@Override
 	void callTimeout (RPCCall c) {
-		cache.removeEntry(c.getExpectedID());
-	}
-	
-	@Override
-	void callStalled(RPCCall c) {
-		// this is a fast lookup, so we'll never see the timeouts (10s) because the task finishes beforehand.
-		// -> be more aggressive about cache cleaning
-		if(fastTerminate)
-			cache.removeEntry(c.getExpectedID());
 	}
 	
 	@Override
@@ -224,7 +212,7 @@ public class PeerLookupTask extends Task {
 		// until we have nothing left
 		while (!todo.isEmpty() && canDoRequest() && !isClosestSetStable()) {
 			KBucketEntry e = todo.first();
-			todo.remove(e);
+			
 			// only send a findNode if we haven't already visited the node
 			if (!visited.contains(e)) {
 				// send a findNode to the node
@@ -234,8 +222,11 @@ public class PeerLookupTask extends Task {
 				gpr.setDestination(e.getAddress());
 				gpr.setScrape(true);
 				gpr.setNoSeeds(noSeeds);
-				rpcCall(gpr,e.getID());
-				visited.add(e);
+				if(rpcCall(gpr,e.getID(),cache.getRPCListner()))
+				{
+					todo.remove(e);
+					visited.add(e);					
+				}
 			}
 		}
 

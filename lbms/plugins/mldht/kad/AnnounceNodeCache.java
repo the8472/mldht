@@ -21,6 +21,10 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 
+import lbms.plugins.mldht.kad.messages.MessageBase;
+import lbms.plugins.mldht.kad.tasks.Task;
+import lbms.plugins.mldht.kad.tasks.TaskListener;
+
 public class AnnounceNodeCache {
 	
 	private static class CacheAnchorPoint extends Key {
@@ -59,27 +63,47 @@ public class AnnounceNodeCache {
 		anchors.put(target,anchor);
 	}
 	
-	public void removeEntry(Key nodeId)
-	{
-		if(nodeId != null)
-		{
+	private final RPCCallListener cl = new RPCCallListener() {
+		public void onTimeout(RPCCall c) {
+			Key nodeId = c.getExpectedID();
+			if(nodeId == null)
+				return;
+			
 			Entry<Key, CacheBucket> targetEntry = cache.floorEntry(nodeId);
 			
 			if(targetEntry == null || !targetEntry.getValue().prefix.isPrefixOf(nodeId))
 				return;
 			
 			for(Iterator<KBucketEntry> it = targetEntry.getValue().entries.iterator();it.hasNext();)
-				if(it.next().getID().equals(nodeId))
+			{
+				KBucketEntry e = it.next();
+				// remove an entry if the id matches
+				// ignore the removal if we have heard from the node after the request has been issued, it might be a spurious failure
+				if(e.getID().equals(nodeId) && (e.getLastSeen() < c.getSentTime() || c.getSentTime() == -1))
 					it.remove();
-		}
+			}
+
 			
+		}
+		
+		public void onStall(RPCCall c) {
+			// TODO Auto-generated method stub
+		}
+		
+		public void onResponse(RPCCall c, MessageBase rsp) {
+			add(new KBucketEntry(rsp.getOrigin(), rsp.getID()));
+		}
+	};
+	
+	public RPCCallListener getRPCListner() {
+		return cl;
 	}
 	
 	public void add(KBucketEntry entryToInsert)
 	{
 		Key target = entryToInsert.getID();
 		
-		while(true)
+		outer: while(true)
 		{
 			Entry<Key, CacheBucket> targetEntry = cache.floorEntry(target);
 			
@@ -91,8 +115,15 @@ public class AnnounceNodeCache {
 			
 			CacheBucket targetBucket = targetEntry.getValue();
 			
-			if(targetBucket.entries.contains(entryToInsert))
-				break;
+			for(Iterator<KBucketEntry> it = targetBucket.entries.iterator();it.hasNext();)
+			{
+				KBucketEntry e = it.next();
+				if(e.getID().equals(entryToInsert.getID()))
+				{ // refresh timestamp, this is checked for removals
+					e.signalResponse();	
+					break outer;
+				}
+			}
 			
 			if(targetBucket.entries.size() >= DHTConstants.MAX_CONCURRENT_REQUESTS)
 			{

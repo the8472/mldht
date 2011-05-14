@@ -366,7 +366,7 @@ public class MetaDataGatherer {
 		int activeAndQueuedConnections = activeOutgoingConnections.get() + queuedConnections;
 		int maxConnections = numVirtualNodes * MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE;
 		int currentLookups = activeLookups.get();
-		int maxLookups = Math.min(MAX_LOOKUPS_PER_PIVOT, numVirtualNodes * LOOKUPS_PER_VIRTUAL_NODE - currentLookups);
+		int maxLookups = Math.min(MAX_LOOKUPS_PER_PIVOT, numVirtualNodes * DHTConstants.MAX_ACTIVE_TASKS - currentLookups);
 		
 		int maxMetaGetLookups = 0;
 		// too few connections, let's do as many lookups as we can
@@ -377,7 +377,7 @@ public class MetaDataGatherer {
 			// as the buffer fills up we scale down the number of lookups we will do
 			maxMetaGetLookups = Math.min(maxConnections, maxLookups);
 		}
-			
+		
 		if(maxLookups < 1)
 			return Collections.EMPTY_SET;
 		
@@ -390,20 +390,17 @@ public class MetaDataGatherer {
 
 			int pivotIdx = ThreadLocalUtils.getThreadLocalRandom().nextInt(lookupPivotPoints.size());
 			Key startKey = lookupPivotPoints.get(pivotIdx);
-			Key endKey = lookupPivotPoints.get((pivotIdx+1) % lookupPivotPoints.size());
+			Key endKey = pivotIdx+1 == lookupPivotPoints.size() ? Key.MAX_KEY : lookupPivotPoints.get(pivotIdx+1);
 
 			
 			int wants = maxMetaGetLookups;
 
 			List<TorrentDBEntry> results = Collections.EMPTY_LIST;
 
-			// handle wrap-around
-			String range = startKey.compareTo(endKey) < 1 ? "(e.info_hash > ? and e.info_hash < ?)" : "(e.info_hash > ? or e.info_hash < ?)"; 
-
 			// get canidates for combined scrape+retrieve
 			if(wants > 0)
 			{
-				String query = "from ihdata e where useindex(e, infohashIdx) is true and "+range+" and e.status = ? and e.hitCount > 0 and e.lastLookupTime < ? order by e.info_hash";
+				String query = "from ihdata e where useindex(e, infohashIdx) is true and (e.info_hash > ? and e.info_hash < ?) and e.status = ? and e.hitCount > 0 and e.lastLookupTime < ? order by e.info_hash";
 
 				results = session.createQuery(query)
 				.setBinary(0, startKey.getHash())
@@ -419,7 +416,18 @@ public class MetaDataGatherer {
 
 				lookupPivotPoints.remove(startKey);
 				if(results.size() > 0)
-					lookupPivotPoints.add(new Key(results.get(0).info_hash));
+				{
+					System.out.println(startKey+" -> "+new Key(results.get(results.size()-1).info_hash));
+					lookupPivotPoints.add(new Key(results.get(results.size()-1).info_hash));
+				} else if(endKey == Key.MAX_KEY)
+				{
+					System.out.println(startKey+" -> "+Key.MIN_KEY);
+					lookupPivotPoints.add(Key.MIN_KEY);
+				} else
+					System.out.println(startKey+" -> -");
+					
+
+					
 				Collections.sort(lookupPivotPoints);				
 				
 
@@ -432,7 +440,7 @@ public class MetaDataGatherer {
 			// get canidates for scrape
 			if(wants > 0)
 			{
-				String query = "from ihdata e where useindex(e, infohashIdx) is true and "+range+" and e.status >= ? and e.hitCount > 0 and e.lastLookupTime < ? order by e.hitCount desc, e.info_hash asc";
+				String query = "from ihdata e where useindex(e, infohashIdx) is true and (e.info_hash > ? and e.info_hash < ?) and e.status >= ? and e.hitCount > 0 and e.lastLookupTime < ? order by e.hitCount desc, e.info_hash asc";
 
 				results = session.createQuery(query)
 				.setBinary(0, startKey.getHash())

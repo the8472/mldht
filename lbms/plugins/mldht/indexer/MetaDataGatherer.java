@@ -104,7 +104,7 @@ public class MetaDataGatherer {
 		ScheduledExecutorService pool = DHTIndexer.indexerScheduler;
 		
 		new AssemblyRunner(new FetchCandidateGenerator(this)).submitToPool(pool, 500);
-		new AssemblyRunner(new ScrapeCandidateGenerator(fetchDHTlink)).submitToPool(pool, 500);
+		new AssemblyRunner(new ScrapeCandidateGenerator(scrapeDHTlink)).submitToPool(pool, 500);
 		new AssemblyRunner(new CandidateLookups(this,fetchDHTlink, scrapeDHTlink,toFetchLink,terminatedTasks)).submitToPool(pool, 1000);
 		new AssemblyRunner(new TorrentFetcher(this)).submitToPool(pool, 1000);
 		new AssemblyRunner(new OrderedBatchQueryRunner(terminatedTasks)).submitToPool(pool, 1000);
@@ -273,7 +273,8 @@ public class MetaDataGatherer {
 		}
 		
 		public void run() {
-			session.createQuery("update ihdata e set e.status = 0, e.hitCount = e.hitCount/2, e.lastLookupTime = current_timestamp() where e.info_hash  = :hash and e.status = 1")
+			session.createQuery("update ihdata e set e.status = 0, e.hitCount = e.hitCount/2, e.lastLookupTime = :time where e.info_hash  = :hash and e.status = 1")
+			.setParameter("time",System.currentTimeMillis()/1000)
 			.setParameter("hash", key.getHash())
 			.executeUpdate();
 			info.incomingCanidates.remove(key);
@@ -288,7 +289,8 @@ public class MetaDataGatherer {
 		}
 		
 		public void run() {
-			session.createQuery("update ihdata e set e.status = 0, e.hitCount = e.hitCount/2, e.lastLookupTime = current_timestamp() where e.info_hash  = :hash and e.status = 1")
+			session.createQuery("update ihdata e set e.status = 0, e.hitCount = e.hitCount/2, e.lastLookupTime = :time where e.info_hash  = :hash and e.status = 1")
+			.setParameter("time",System.currentTimeMillis()/1000)
 			.setParameter("hash", key.getHash())
 			.executeUpdate();
 			info.incomingCanidates.add(key);

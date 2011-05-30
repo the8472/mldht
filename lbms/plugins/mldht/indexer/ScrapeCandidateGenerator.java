@@ -36,7 +36,7 @@ public class ScrapeCandidateGenerator implements AssemblyTask {
 			List<TorrentDBEntry> results = Collections.EMPTY_LIST;
 
 			// get canidates for scrape
-			String query = "from ihdata e where useindex(e, infohashIdx) is true and e.status >= 1 and e.hitCount > 0 and e.lastLookupTime < ? order by e.hitCount desc, e.info_hash asc";
+			String query = "from ihdata e where useindex(e, hitCountIdx) is true and e.status >= 1 and e.hitCount > 0 and e.lastLookupTime < ? order by e.hitCount desc";
 
 			results = session.createQuery(query)
 				.setLong(0, System.currentTimeMillis()/1000 - 3600*12) // don't fetch more than once every 12 hours

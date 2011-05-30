@@ -99,7 +99,8 @@ public class CandidateLookups implements AssemblyTask {
 						} else {
 							queries.add(new BatchQuery(task.hash) {
 								public void run() {
-									session.createQuery("update ihdata e set e.hitCount = 0, e.lastLookupTime = current_timestamp() where e.info_hash  = :hash and e.status > 1")
+									session.createQuery("update ihdata e set e.hitCount = 0, e.lastLookupTime = :time where e.info_hash  = :hash and e.status > 1")
+									.setParameter("time", System.currentTimeMillis()/1000)
 									.setParameter("hash", task.entry.info_hash)
 									.executeUpdate();
 									container.saveScrapes(session, task);

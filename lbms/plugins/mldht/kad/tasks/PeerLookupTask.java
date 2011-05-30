@@ -213,6 +213,8 @@ public class PeerLookupTask extends Task {
 		while (!todo.isEmpty() && canDoRequest() && !isClosestSetStable()) {
 			KBucketEntry e = todo.first();
 			todo.remove(e);
+			if(rpc.getDHT().getNode().allLocalIDs().contains(e.getID()) || rpc.getDHT().getServerManager().isAddressValid(e.getAddress().getAddress()))
+				continue;
 			
 			// only send a findNode if we haven't already visited the node
 			if (!visited.contains(e)) {

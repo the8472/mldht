@@ -1,7 +1,6 @@
 package lbms.plugins.mldht.indexer;
 
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -26,6 +25,8 @@ public class CandidateLookups implements AssemblyTask {
 	LinkedBlockingQueue<FetchTask> fetchTasks;
 	ConcurrentLinkedQueue<BatchQuery> queries;
 	
+	Queue<FetchTask> overflow = new ConcurrentLinkedQueue<FetchTask>();
+	
 	MetaDataGatherer container;
 	
 	public CandidateLookups(MetaDataGatherer container, LinkedBlockingQueue<TorrentDBEntry> toFetch, LinkedBlockingQueue<TorrentDBEntry> toScrape, LinkedBlockingQueue<FetchTask> fetch, ConcurrentLinkedQueue<BatchQuery> queries) {
@@ -41,6 +42,11 @@ public class CandidateLookups implements AssemblyTask {
 		
 		while(true)
 		{
+			while(!overflow.isEmpty() && fetchTasks.offer(overflow.poll()))
+				;
+
+			
+			
 			TorrentDBEntry entry = null;
 			if(fetchTasks.remainingCapacity() > 0)
 				entry = fetchCandidates.poll();
@@ -89,7 +95,8 @@ public class CandidateLookups implements AssemblyTask {
 								// trim to a limited amount of addresses to avoid 1 task being stuck for ages
 								if(task.addresses.size() > MetaDataGatherer.MAX_ATTEMPTS_PER_INFOHASH);
 									task.addresses.subList(MetaDataGatherer.MAX_ATTEMPTS_PER_INFOHASH, task.addresses.size()).clear();
-								fetchTasks.add(task);
+								if(!fetchTasks.offer(task))
+									overflow.add(task);
 								MetaDataGatherer.log("added metadata task based on DHT for "+task.hash);
 							} else {
 								MetaDataGatherer.log("found no DHT entires for "+task.hash);

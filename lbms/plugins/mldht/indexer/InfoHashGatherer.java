@@ -104,7 +104,7 @@ public class InfoHashGatherer implements DHTIndexingListener {
 		if(inc <= 0)
 			incomingLimiter.update(BlueState.QUEUE_EMPTY);
 		int toRemove = 0;
-		if(inc >= meta.numVirtualNodes * MetaDataGatherer.MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE)
+		if(inc >= meta.getNumVirtualNodes() * MetaDataGatherer.MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE)
 		{
 			incomingLimiter.update(BlueState.QUEUE_FULL);
 			toRemove = MAX_CHARGE;

@@ -36,7 +36,6 @@ public class FetchCandidateGenerator implements AssemblyTask {
 		Set<TorrentDBEntry> toLookup = new TreeSet<TorrentDBEntry>();
 		//TorrentDBEntry result = null;
 		
-		
 		int maxLookups = Math.min(MAX_LOOKUPS_PER_PIVOT, output.remainingCapacity());
 		
 		if(maxLookups < 1)

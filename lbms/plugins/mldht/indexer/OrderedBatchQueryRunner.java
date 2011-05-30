@@ -27,7 +27,6 @@ public class OrderedBatchQueryRunner implements AssemblyTask {
 	
 	
 	public boolean performTask() {
-		
 		TreeSet<BatchQuery> toProcess = new TreeSet<BatchQuery>();
 		BatchQuery toDrain = null;
 		while((toDrain = queries.poll()) != null)
@@ -41,6 +40,9 @@ public class OrderedBatchQueryRunner implements AssemblyTask {
 			if(toProcess.size() == MAX_QUERY_CHARGE)
 				break;
 		}
+		
+		if(toProcess.isEmpty())
+			return false;
 		
 		Session s = null;
 		Transaction tx = null;

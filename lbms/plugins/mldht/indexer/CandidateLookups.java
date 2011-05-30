@@ -91,8 +91,8 @@ public class CandidateLookups implements AssemblyTask {
 						task.addresses.removeAll(Collections.singleton(null));
 						if(task.addresses.size() > 0) {
 							// trim to a limited amount of addresses to avoid 1 task being stuck for ages
-							if(task.addresses.size() > MetaDataGatherer.MAX_ATTEMPTS_PER_INFOHASH);
-							task.addresses.subList(MetaDataGatherer.MAX_ATTEMPTS_PER_INFOHASH, task.addresses.size()).clear();
+							if(task.addresses.size() > MetaDataGatherer.MAX_ATTEMPTS_PER_INFOHASH)
+								task.addresses.subList(MetaDataGatherer.MAX_ATTEMPTS_PER_INFOHASH, task.addresses.size()).clear();
 							if(!fetchTasks.offer(task))
 								overflow.add(task);
 							MetaDataGatherer.log("added metadata task based on DHT for "+task.hash);

@@ -54,7 +54,7 @@ public class MetaDataGatherer {
 
 	PrintWriter hashWriter;
 	static PrintWriter traceWriter;
-	private static final boolean LOGGING = false;
+	private static final boolean LOGGING = true;
 	
 
 	InfoHashGatherer info;
@@ -273,7 +273,7 @@ public class MetaDataGatherer {
 		}
 		
 		public void run() {
-			session.createQuery("update ihdata e set e.status = 0, e.hitCount = e.hitCount/2, e.lastLookupTime = :time where e.info_hash  = :hash and e.status <= 1")
+			session.createQuery("update ihdata e set e.status = 2, e.hitCount = e.hitCount/2, e.lastLookupTime = :time where e.info_hash  = :hash and e.status <= 1")
 			.setParameter("time",System.currentTimeMillis()/1000)
 			.setParameter("hash", key.getHash())
 			.executeUpdate();
@@ -289,7 +289,7 @@ public class MetaDataGatherer {
 		}
 		
 		public void run() {
-			session.createQuery("update ihdata e set e.status = 0, e.hitCount = e.hitCount/2, e.lastLookupTime = :time where e.info_hash  = :hash and e.status = 1")
+			session.createQuery("update ihdata e set e.status = 0, e.hitCount = e.hitCount/2, e.lastLookupTime = :time where e.info_hash  = :hash and e.status <= 1")
 			.setParameter("time",System.currentTimeMillis()/1000)
 			.setParameter("hash", key.getHash())
 			.executeUpdate();

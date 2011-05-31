@@ -58,13 +58,13 @@ public class FetchCandidateGenerator implements AssemblyTask {
 			List<TorrentDBEntry> results = Collections.EMPTY_LIST;
 
 			// get canidates for combined scrape+retrieve
-			String query = "from ihdata e where useindex(e, infohashIdx) is true and (e.info_hash > ? and e.info_hash < ?) and e.status = ? and e.hitCount > 0 and e.lastLookupTime < ? order by e.info_hash";
+			String query = "from ihdata e where useindex(e, infohashIdx) is true and :startHash < e.info_hash and e.info_hash < :endHash and e.status = :status and e.hitCount > 0 and e.lastLookupTime < :time order by e.info_hash";
 
 			results = session.createQuery(query)
-			.setBinary(0, startKey.getHash())
-			.setBinary(1, endKey.getHash())
-			.setInteger(2, TorrentDBEntry.STATE_METADATA_NEVER_OBTAINED)
-			.setLong(3, System.currentTimeMillis()/1000 - 3600) // don't fetch more than once an hour
+			.setBinary("startHash", startKey.getHash())
+			.setBinary("endHash", endKey.getHash())
+			.setInteger("status", TorrentDBEntry.STATE_METADATA_NEVER_OBTAINED)
+			.setLong("time", System.currentTimeMillis()/1000 - 3600) // don't fetch more than once an hour
 			.setFirstResult(0)
 			//.setComment("useIndex(e,primary)")
 			.setMaxResults(maxLookups)

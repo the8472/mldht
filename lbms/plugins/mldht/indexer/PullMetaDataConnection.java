@@ -125,6 +125,7 @@ public class PullMetaDataConnection implements Selectable {
 	
 	boolean isState(int mask) {return (state & mask) != 0;}
 	
+	// incoming
 	public PullMetaDataConnection(SocketChannel chan)
 	{
 		channel = chan;
@@ -138,11 +139,14 @@ public class PullMetaDataConnection implements Selectable {
 			DHT.log(e, LogLevel.Error);
 		}
 		
+		destination = (InetSocketAddress) chan.socket().getRemoteSocketAddress();
 		setState(STATE_BASIC_HANDSHAKING,true);
 		// await handshake
 		inputBuffer.limit(20+8+20+20);
 	}
 	
+	
+	// outgoing
 	public PullMetaDataConnection(byte[] infoHash, InetSocketAddress dest) {
 		this.infoHash = infoHash;
 		this.destination = dest;

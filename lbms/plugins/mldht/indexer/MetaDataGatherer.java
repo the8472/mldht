@@ -54,7 +54,7 @@ public class MetaDataGatherer {
 
 	PrintWriter hashWriter;
 	static PrintWriter traceWriter;
-	private static final boolean LOGGING = true;
+	private static final boolean LOGGING = false;
 	
 
 	InfoHashGatherer info;
@@ -103,9 +103,9 @@ public class MetaDataGatherer {
 		
 		ScheduledExecutorService pool = DHTIndexer.indexerScheduler;
 		
-		new AssemblyRunner(new FetchCandidateGenerator(this)).submitToPool(pool, 500);
-		new AssemblyRunner(new ScrapeCandidateGenerator(scrapeDHTlink)).submitToPool(pool, 500);
-		new AssemblyRunner(new CandidateLookups(this,fetchDHTlink, scrapeDHTlink,toFetchLink,terminatedTasks)).submitToPool(pool, 1000);
+		new AssemblyRunner(new FetchCandidateGenerator(this)).submitToPool(pool, 200);
+		new AssemblyRunner(new ScrapeCandidateGenerator(scrapeDHTlink)).submitToPool(pool, 200);
+		new AssemblyRunner(new CandidateLookups(this,fetchDHTlink, scrapeDHTlink,toFetchLink,terminatedTasks)).submitToPool(pool, 100);
 		new AssemblyRunner(new TorrentFetcher(this)).submitToPool(pool, 1000);
 		new AssemblyRunner(new OrderedBatchQueryRunner(terminatedTasks)).submitToPool(pool, 1000);
 		

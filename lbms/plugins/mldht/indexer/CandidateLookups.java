@@ -40,7 +40,7 @@ public class CandidateLookups implements AssemblyTask {
 	public boolean performTask() {
 		while(!overflow.isEmpty() && fetchTasks.offer(overflow.poll()))
 			;
-
+		
 
 		if(activeLookups.get() >= container.getNumVirtualNodes() * MetaDataGatherer.LOOKUPS_PER_VIRTUAL_NODE)
 			return false;

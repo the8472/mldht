@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <jardesc>
-    <jar path="C:/Program Files (x86)/Vuze/plugins/mlDHT/mldht_1.3.5.2-src.jar"/>
+    <jar path="C:/Program Files (x86)/Vuze/plugins/mlDHT/mldht_1.3.5.3.jar"/>
     <options buildIfNeeded="true" compress="true" descriptionLocation="/mldht/dht-plugin.jardesc" exportErrors="true" exportWarnings="true" includeDirectoryEntries="true" overwrite="true" saveDescription="true" storeRefactorings="false" useSourceFolders="false"/>
     <storedRefactorings deprecationInfo="true" structuralOnly="false"/>
     <selectedProjects/>
-    <selectedElements exportClassFiles="false" exportJavaFiles="true" exportOutputFolder="false">
+    <manifest generateManifest="true" manifestLocation="" manifestVersion="1.0" reuseManifest="false" saveManifest="false" usesManifest="true">
+        <sealing sealJar="false">
+            <packagesToSeal/>
+            <packagesToUnSeal/>
+        </sealing>
+    </manifest>
+    <selectedElements exportClassFiles="true" exportJavaFiles="false" exportOutputFolder="false">
         <file path="/mldht/plugin.properties"/>
+        <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.utils"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht"/>
         <javaElement handleIdentifier="=mldht/&lt;lbms.plugins.mldht.kad.messages"/>

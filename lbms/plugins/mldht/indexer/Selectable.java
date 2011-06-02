@@ -20,7 +20,7 @@ import java.io.IOException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 
-import lbms.plugins.mldht.utlis.NIOConnectionManager;
+import lbms.plugins.mldht.utils.NIOConnectionManager;
 
 public interface Selectable {
 	public SelectableChannel getChannel();

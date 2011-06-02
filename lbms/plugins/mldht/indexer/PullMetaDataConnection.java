@@ -35,7 +35,7 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
-import lbms.plugins.mldht.utlis.NIOConnectionManager;
+import lbms.plugins.mldht.utils.NIOConnectionManager;
 
 public class PullMetaDataConnection implements Selectable {
 	

@@ -31,7 +31,7 @@ import lbms.plugins.mldht.kad.tasks.*;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.ByteWrapper;
 import lbms.plugins.mldht.kad.utils.PopulationEstimator;
-import lbms.plugins.mldht.utlis.NIOConnectionManager;
+import lbms.plugins.mldht.utils.NIOConnectionManager;
 
 /**
  * @author Damokles

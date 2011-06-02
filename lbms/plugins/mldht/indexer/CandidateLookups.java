@@ -38,10 +38,6 @@ public class CandidateLookups implements AssemblyTask {
 	}
 	
 	public boolean performTask() {
-		while(!overflow.isEmpty() && fetchTasks.offer(overflow.poll()))
-			;
-		
-
 		if(activeLookups.get() >= container.getNumVirtualNodes() * MetaDataGatherer.LOOKUPS_PER_VIRTUAL_NODE)
 			return false;
 
@@ -93,8 +89,7 @@ public class CandidateLookups implements AssemblyTask {
 							// trim to a limited amount of addresses to avoid 1 task being stuck for ages
 							if(task.addresses.size() > MetaDataGatherer.MAX_ATTEMPTS_PER_INFOHASH)
 								task.addresses.subList(MetaDataGatherer.MAX_ATTEMPTS_PER_INFOHASH, task.addresses.size()).clear();
-							if(!fetchTasks.offer(task))
-								overflow.add(task);
+							fetchTasks.add(task);
 							MetaDataGatherer.log("added metadata task based on DHT for "+task.hash);
 						} else {
 							MetaDataGatherer.log("found no DHT entires for "+task.hash);

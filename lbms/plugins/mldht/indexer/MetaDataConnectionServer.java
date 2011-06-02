@@ -11,7 +11,7 @@ import java.nio.channels.SocketChannel;
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
-import lbms.plugins.mldht.utlis.NIOConnectionManager;
+import lbms.plugins.mldht.utils.NIOConnectionManager;
 
 public class MetaDataConnectionServer implements Selectable {
 	

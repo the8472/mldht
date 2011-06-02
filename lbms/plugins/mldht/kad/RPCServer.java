@@ -36,7 +36,7 @@ import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.ByteWrapper;
 import lbms.plugins.mldht.kad.utils.ResponseTimeoutFilter;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
-import lbms.plugins.mldht.utlis.NIOConnectionManager;
+import lbms.plugins.mldht.utils.NIOConnectionManager;
 
 /**
  * @author The_8472, Damokles

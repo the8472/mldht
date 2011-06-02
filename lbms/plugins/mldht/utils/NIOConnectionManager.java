@@ -14,7 +14,7 @@
  *    You should have received a copy of the GNU General Public License 
  *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
  */
-package lbms.plugins.mldht.utlis;
+package lbms.plugins.mldht.utils;
 
 import java.io.IOException;
 import java.nio.channels.ClosedChannelException;

@@ -36,6 +36,7 @@ import lbms.plugins.mldht.indexer.MetaDataConnectionServer.IncomingConnectionHan
 import lbms.plugins.mldht.indexer.PullMetaDataConnection.InfohashChecker;
 import lbms.plugins.mldht.indexer.PullMetaDataConnection.MetaConnectionHandler;
 import lbms.plugins.mldht.indexer.assemblyline.AssemblyRunner;
+import lbms.plugins.mldht.indexer.assemblyline.SoftCapacityQueue;
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -43,7 +44,7 @@ import lbms.plugins.mldht.kad.tasks.PeerLookupTask;
 import lbms.plugins.mldht.kad.tasks.Task;
 import lbms.plugins.mldht.kad.tasks.TaskListener;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
-import lbms.plugins.mldht.utlis.NIOConnectionManager;
+import lbms.plugins.mldht.utils.NIOConnectionManager;
 
 public class MetaDataGatherer {
 	
@@ -82,16 +83,16 @@ public class MetaDataGatherer {
 	static void log(String s)
 	{
 		if(!LOGGING)
-			return;
+			;//return;
 		traceWriter.println(s);
 		traceWriter.flush();
 		
 	}
 	
 	AtomicInteger activeOutgoingConnections = new AtomicInteger();
-	LinkedBlockingQueue<TorrentDBEntry> fetchDHTlink = new LinkedBlockingQueue<TorrentDBEntry>(100);
-	LinkedBlockingQueue<TorrentDBEntry> scrapeDHTlink = new LinkedBlockingQueue<TorrentDBEntry>(100);
-	LinkedBlockingQueue<FetchTask> toFetchLink = new LinkedBlockingQueue<MetaDataGatherer.FetchTask>(100);
+	LinkedBlockingQueue<TorrentDBEntry> fetchDHTlink = new SoftCapacityQueue<TorrentDBEntry>(100);
+	LinkedBlockingQueue<TorrentDBEntry> scrapeDHTlink = new SoftCapacityQueue<TorrentDBEntry>(100);
+	LinkedBlockingQueue<FetchTask> toFetchLink = new SoftCapacityQueue<MetaDataGatherer.FetchTask>(100);
 	ConcurrentLinkedQueue<BatchQuery> terminatedTasks = new ConcurrentLinkedQueue<BatchQuery>();
 	
 	public MetaDataGatherer(InfoHashGatherer info) {

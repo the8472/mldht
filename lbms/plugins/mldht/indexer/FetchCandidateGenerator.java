@@ -75,14 +75,14 @@ public class FetchCandidateGenerator implements AssemblyTask {
 			lookupPivotPoints.remove(startKey);
 			if(results.size() > 0)
 			{
-				System.out.println(startKey+" -> "+new Key(results.get(results.size()-1).info_hash));
+				//System.out.println(startKey+" -> "+new Key(results.get(results.size()-1).info_hash));
 				lookupPivotPoints.add(new Key(results.get(results.size()-1).info_hash));
 			} else if(endKey == Key.MAX_KEY)
 			{
-				System.out.println(startKey+" -> "+Key.MIN_KEY);
+				//System.out.println(startKey+" -> "+Key.MIN_KEY);
 				lookupPivotPoints.add(Key.MIN_KEY);
 			} else
-				System.out.println(startKey+" -> -");
+				;//System.out.println(startKey+" -> -");
 					
 
 					

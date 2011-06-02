@@ -71,8 +71,7 @@ public class MetaDataGatherer {
 		
 		try
 		{
-			if(LOGGING)
-				traceWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream("./trace.log",true))),true);
+			traceWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream("./trace.log",true))),true);
 		} catch (FileNotFoundException e)
 		{
 			// TODO Auto-generated catch block
@@ -83,7 +82,7 @@ public class MetaDataGatherer {
 	static void log(String s)
 	{
 		if(!LOGGING)
-			;//return;
+			return;
 		traceWriter.println(s);
 		traceWriter.flush();
 		

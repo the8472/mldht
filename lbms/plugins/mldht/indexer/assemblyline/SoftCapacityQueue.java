@@ -20,6 +20,12 @@ public class SoftCapacityQueue<E> extends LinkedBlockingQueue<E> {
 			return false;
 		return super.offer(e);
 	};
+	
+	public boolean add(E e) {
+		if(!super.offer(e))
+			throw new RuntimeException("this really shouldn't happen");
+		return true;
+	}
 
 
 }

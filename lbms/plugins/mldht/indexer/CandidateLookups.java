@@ -1,6 +1,7 @@
 package lbms.plugins.mldht.indexer;
 
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -20,16 +21,16 @@ import lbms.plugins.mldht.kad.tasks.TaskListener;
 public class CandidateLookups implements AssemblyTask {
 	
 	AtomicInteger activeLookups = new AtomicInteger();
-	LinkedBlockingQueue<TorrentDBEntry> fetchCandidates;
-	LinkedBlockingQueue<TorrentDBEntry> scrapeCandidates;
-	LinkedBlockingQueue<FetchTask> fetchTasks;
+	BlockingQueue<TorrentDBEntry> fetchCandidates;
+	BlockingQueue<TorrentDBEntry> scrapeCandidates;
+	BlockingQueue<FetchTask> fetchTasks;
 	ConcurrentLinkedQueue<BatchQuery> queries;
 	
 	Queue<FetchTask> overflow = new ConcurrentLinkedQueue<FetchTask>();
 	
 	MetaDataGatherer container;
 	
-	public CandidateLookups(MetaDataGatherer container, LinkedBlockingQueue<TorrentDBEntry> toFetch, LinkedBlockingQueue<TorrentDBEntry> toScrape, LinkedBlockingQueue<FetchTask> fetch, ConcurrentLinkedQueue<BatchQuery> queries) {
+	public CandidateLookups(MetaDataGatherer container, BlockingQueue<TorrentDBEntry> toFetch, BlockingQueue<TorrentDBEntry> toScrape, BlockingQueue<FetchTask> fetch, ConcurrentLinkedQueue<BatchQuery> queries) {
 		this.container = container;
 		this.fetchCandidates = toFetch;
 		this.scrapeCandidates = toScrape;

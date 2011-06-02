@@ -1,6 +1,7 @@
 package lbms.plugins.mldht.indexer;
 
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import org.hibernate.Session;
@@ -14,9 +15,9 @@ import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 
 public class ScrapeCandidateGenerator implements AssemblyTask {
 	
-	LinkedBlockingQueue<TorrentDBEntry> output;
+	BlockingQueue<TorrentDBEntry> output;
 	
-	public ScrapeCandidateGenerator(LinkedBlockingQueue<TorrentDBEntry> outputPin) {
+	public ScrapeCandidateGenerator(BlockingQueue<TorrentDBEntry> outputPin) {
 		this.output = outputPin;
 	}
 	

@@ -2,6 +2,7 @@ package lbms.plugins.mldht.indexer;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import org.hibernate.Session;
@@ -20,7 +21,7 @@ public class FetchCandidateGenerator implements AssemblyTask {
 	public static final int MAX_LOOKUPS_PER_PIVOT = 9;
 	
 	MetaDataGatherer container;
-	LinkedBlockingQueue<TorrentDBEntry> output;
+	BlockingQueue<TorrentDBEntry> output;
 	ArrayList<Key> lookupPivotPoints = new ArrayList<Key>();
 	
 	

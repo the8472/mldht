@@ -259,7 +259,7 @@ public class PeerLookupTask extends Task {
 				SortedSet<Key> toEstimate = new TreeSet<Key>();
 				for(KBucketEntryAndToken e : closestSet)
 					toEstimate.add(e.getID());
-				rpc.getDHT().getEstimator().update(toEstimate);
+				rpc.getDHT().getEstimator().update(toEstimate,targetKey);
 			}
 			
 		}

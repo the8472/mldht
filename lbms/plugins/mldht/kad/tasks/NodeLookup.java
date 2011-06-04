@@ -188,6 +188,6 @@ public class NodeLookup extends Task {
 	}
 
 	private void done () {
-		rpc.getDHT().getEstimator().update(new TreeSet<Key>(closestSet));
+		rpc.getDHT().getEstimator().update(closestSet,targetKey);
 	}
 }

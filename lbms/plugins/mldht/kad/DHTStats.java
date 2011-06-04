@@ -170,6 +170,7 @@ public class DHTStats {
 	@Override
 	public String toString() {
 		StringBuilder b = new StringBuilder();
+		b.append("uptime: ").append(System.currentTimeMillis()-startedTimestamp).append("s\n");
 		b.append("DB Keys: ").append(dbStats.getKeyCount()).append('\n');
 		b.append("DB Items: ").append(dbStats.getItemCount()).append('\n');
 		b.append("TX sum: ").append(numSentPackets).append(" RX sum: ").append(numReceivedPackets).append('\n');

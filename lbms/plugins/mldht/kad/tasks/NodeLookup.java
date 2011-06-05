@@ -39,14 +39,12 @@ import lbms.plugins.mldht.kad.utils.PackUtil;
 public class NodeLookup extends Task {
 	private int						validReponsesSinceLastClosestSetModification;
 	SortedSet<Key>			closestSet;
-	private Map<MessageBase, Key>	lookupMap;
 	private boolean forBootstrap = false;
 	
 	public NodeLookup (Key node_id, RPCServer rpc, Node node, boolean isBootstrap) {
 		super(node_id, rpc, node);
 		forBootstrap = isBootstrap;
 		this.closestSet = new TreeSet<Key>(new Key.DistanceOrder(targetKey));
-		this.lookupMap = new HashMap<MessageBase, Key>();
 		addListener(new TaskListener() {
 			public void finished(Task t) {
 				done();
@@ -71,9 +69,6 @@ public class NodeLookup extends Task {
 					fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode() != null && DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode() != null && DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setDestination(e.getAddress());
-					synchronized (lookupMap) {
-						lookupMap.put(fnr, e.getID());
-					}
 					if(rpcCall(fnr,e.getID(),null))
 						visited.add(e);
 					else
@@ -99,29 +94,21 @@ public class NodeLookup extends Task {
 
 	@Override
 	void callFinished (RPCCall c, MessageBase rsp) {
-		if (isFinished()) {
-			return;
-		}
 
 		// check the response and see if it is a good one
 		if (rsp.getMethod() == Method.FIND_NODE
 				&& rsp.getType() == Type.RSP_MSG) {
 
-			MessageBase b = c.getRequest();
-			synchronized (lookupMap) {
-				if (lookupMap.containsKey(b)) {
-					synchronized (closestSet) {
-						Key toAdd = lookupMap.remove(b);
-						closestSet.add(toAdd);
-						if (closestSet.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET) {
-							Key last = closestSet.last();
-							closestSet.remove(last);
-							if (toAdd == last) {
-								validReponsesSinceLastClosestSetModification++;
-							} else {
-								validReponsesSinceLastClosestSetModification = 0;
-							}
-						}
+			synchronized (closestSet) {
+				Key toAdd = rsp.getID();
+				closestSet.add(toAdd);
+				if (closestSet.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET) {
+					Key last = closestSet.last();
+					closestSet.remove(last);
+					if (toAdd == last) {
+						validReponsesSinceLastClosestSetModification++;
+					} else {
+						validReponsesSinceLastClosestSetModification = 0;
 					}
 				}
 			}
@@ -173,10 +160,9 @@ public class NodeLookup extends Task {
 	@Override
 	public
 	void start () {
-		int added = 0;
 
 		// if we're bootstrapping start from the bucket that has the greatest possible distance from ourselves so we discover new things along the (longer) path
-		Key knsTargetKey = forBootstrap ? targetKey.getDerivedKey(0xFFFFFFFF) : targetKey;
+		Key knsTargetKey = forBootstrap ? targetKey.distance(Key.MAX_KEY) : targetKey;
 		
 		// delay the filling of the todo list until we actually start the task
 		KClosestNodesSearch kns = new KClosestNodesSearch(knsTargetKey, 3 * DHTConstants.MAX_ENTRIES_PER_BUCKET, rpc.getDHT());

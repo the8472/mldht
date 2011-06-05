@@ -106,6 +106,10 @@ public class PopulationEstimator {
 	}
 	
 	public void update (Set<Key> neighbors, Key target) {
+		// need at least 2 elements to calculate distances
+		if(neighbors.size() < 2)
+			return;
+		
 		DHT.log("Estimator: new node group of "+neighbors.size(), LogLevel.Debug);
 		Prefix prefix = Prefix.getCommonPrefix(neighbors);
 		

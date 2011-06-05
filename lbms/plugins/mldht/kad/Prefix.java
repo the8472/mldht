@@ -31,6 +31,8 @@ public class Prefix extends Key {
 	 */
 	int depth = -1;
 	
+	static final Prefix WHOLE_KEYSPACE = new Prefix();
+	
 	public Prefix() {
 		super();
 	}
@@ -173,6 +175,9 @@ public class Prefix extends Key {
 	
 	public static Prefix getCommonPrefix(Collection<Key> keys)
 	{
+		if(keys.isEmpty())
+			throw new IllegalArgumentException("keys cannot be empty");
+		
 		Key first = Collections.min(keys);
 		Key last = Collections.max(keys);
 

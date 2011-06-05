@@ -170,11 +170,11 @@ public class DHTStats {
 	@Override
 	public String toString() {
 		StringBuilder b = new StringBuilder();
-		b.append("uptime: ").append(System.currentTimeMillis()-startedTimestamp).append("s\n");
 		b.append("DB Keys: ").append(dbStats.getKeyCount()).append('\n');
 		b.append("DB Items: ").append(dbStats.getItemCount()).append('\n');
 		b.append("TX sum: ").append(numSentPackets).append(" RX sum: ").append(numReceivedPackets).append('\n');
 		b.append("avg task time/avg 1st result time (ms): ").append((int)avgFinishTime).append('/').append((int)avgFirstResultTime).append('\n');
+		b.append("Uptime: ").append((System.currentTimeMillis()-startedTimestamp)/1000).append("s\n");
 		b.append("RPC stats\n");
 		b.append(rpcStats.toString());
 		return b.toString();

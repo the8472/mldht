@@ -929,7 +929,7 @@ public class DHT implements DHTBase {
 		
 		b.append("-----------------------\n");
 		b.append("Stats\n");
-		b.append("Population Estimate (reachable nodes only): "+ estimator.getEstimate()+'\n');
+		b.append("Reachable node estimate: "+ estimator.getEstimate()+'\n');
 		b.append(stats.toString());
 		b.append("-----------------------\n");
 		b.append("Routing table\n");

@@ -108,14 +108,9 @@ public class Key implements Comparable<Key>, Serializable {
 		for (int i = 0,n=hash.length; i < n; i++) {
 			//needs & 0xFF since bytes are signed in Java
 			//so we must convert to int to compare it unsigned
-			int byte1 = hash[i] & 0xFF;
-			int byte2 = o.hash[i] & 0xFF; 
-
-			if (byte1 == byte2)
-				continue;
-			if (byte1 < byte2)
-				return -1;
-			return 1;
+			int t = (hash[i] & 0xFF) - (o.hash[i] & 0xFF);
+			if(t != 0)
+				return t;
 		}
 		return 0;
 	}
@@ -449,13 +444,29 @@ public class Key implements Comparable<Key>, Serializable {
 		*/
 		
 		// checking some bigint arithmetic
-		
+		/*
 		Key k1 = new Key(MIN_KEY);
 		k1.hash[19] = (byte) 0x80;
 		Key k2 = new Key(MIN_KEY);
 		
 		System.out.println(Math.log(k1.naturalDistance(k2))/Math.log(2));
+		*/
 		
+		Key[] values = new Key[5000000];
+		for(int i=0;i<values.length;i++)
+			values[i] = Key.createRandomKey();
+		
+		Comparator<Key> k = new Key.DistanceOrder(Key.createRandomKey());
+		
+		for(int j=0;j<10;j++)
+		{
+			Key[] toSort = values.clone();
+			long start = System.currentTimeMillis();
+			Arrays.sort(toSort);
+			System.out.println(System.currentTimeMillis()-start);
+			System.out.println(toSort[0]);
+			int i = 0;
+		}
 		
 		
 	}

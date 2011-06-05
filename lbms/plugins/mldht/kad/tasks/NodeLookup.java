@@ -188,6 +188,9 @@ public class NodeLookup extends Task {
 	}
 
 	private void done () {
-		rpc.getDHT().getEstimator().update(closestSet,targetKey);
+		synchronized (closestSet)
+		{
+			rpc.getDHT().getEstimator().update(closestSet,targetKey);
+		}
 	}
 }

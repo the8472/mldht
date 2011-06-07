@@ -151,7 +151,11 @@ public class NIOConnectionManager {
 	{
 		connection.getChannel().keyFor(selector).interestOps(mask);
 		if(isSelecting)
+		{
+			isSelecting = false;
 			selector.wakeup();
+		}
+			
 	}
 
 	/**

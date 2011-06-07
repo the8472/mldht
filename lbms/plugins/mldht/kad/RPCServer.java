@@ -172,7 +172,15 @@ public class RPCServer {
 	}
 	
 	public void stop() {
-		
+		try
+		{
+			sel.getChannel().close();
+		} catch (IOException e)
+		{
+			DHT.log(e, LogLevel.Error);
+		}
+		dh_table.getNode().removeServer(this);
+		manager.serverRemoved(this);
 	}
 
 	/* (non-Javadoc)
@@ -471,26 +479,39 @@ public class RPCServer {
 		
 		private void readEvent() throws IOException {
 			
+			final ArrayList<EnqueedRead> toProcess = new ArrayList<EnqueedRead>();
+			
 			while(true)
 			{
-				final ByteBuffer buf =  ByteBuffer.allocate(DHTConstants.RECEIVE_BUFFER_SIZE);
-				final SocketAddress soa = channel.receive(buf);
-				if(soa == null)
+				EnqueedRead read = new EnqueedRead();
+				read.buf = ByteBuffer.allocate(DHTConstants.RECEIVE_BUFFER_SIZE);
+				read.soa = channel.receive(read.buf);
+				if(read.soa == null)
 					break;
-				buf.flip();
+				read.buf.flip();
+				toProcess.add(read);
 				numReceived++;
-				stats.addReceivedBytes(buf.limit() + dh_table.getType().HEADER_LENGTH);
+				stats.addReceivedBytes(read.buf.limit() + dh_table.getType().HEADER_LENGTH);
+			}
+
+			if(toProcess.size() > 0)
+			{
 				DHT.getScheduler().execute(new Runnable() {
 					public void run() {
-						try {
-							handlePacket(buf, soa);							
-						} catch (Exception e) {
-							DHT.log(e, LogLevel.Error);
+						for(int i=0;i<toProcess.size();i++)
+						{
+							try {
+								EnqueedRead r = toProcess.get(i);
+								handlePacket(r.buf, r.soa);							
+							} catch (Exception e) {
+								DHT.log(e, LogLevel.Error);
+							}
+							
 						}
-						
 					}
 				});
 			}
+
 		}
 		
 		private void writeEvent(DatagramChannel chan)
@@ -548,7 +569,7 @@ public class RPCServer {
 		
 		@Override
 		public void doStateChecks(long now) throws IOException {
-			if(!channel.isOpen() || !manager.isAddressValid(addr))
+			if(!channel.isOpen() || channel.socket().isClosed() || !manager.isAddressValid(addr))
 			{
 				channel.close();
 				connectionManager.deRegister(this);
@@ -586,6 +607,11 @@ public class RPCServer {
 				return buf;
 			return buf = ByteBuffer.wrap(toSend.encode());
 		}
+	}
+	
+	private static class EnqueedRead {
+		SocketAddress soa;
+		ByteBuffer buf;
 	}
 
 }

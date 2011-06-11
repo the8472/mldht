@@ -18,7 +18,7 @@ public class RPCServerManager {
 	}
 	
 	DHT dht;
-	private Map<InetAddress,RPCServer> interfacesInUse = new ConcurrentHashMap<InetAddress, RPCServer>();
+	private ConcurrentHashMap<InetAddress,RPCServer> interfacesInUse = new ConcurrentHashMap<InetAddress, RPCServer>();
 	private volatile RPCServer[] activeServers = new RPCServer[0];
 	private Set<InetAddress> validAddresses;
 	
@@ -53,7 +53,7 @@ public class RPCServerManager {
 	}
 	
 	void serverRemoved(RPCServer srv) {
-		interfacesInUse.remove(srv.getBindAddress());
+		interfacesInUse.remove(srv.getBindAddress(),srv);
 		refresh(System.currentTimeMillis());
 	}
 	

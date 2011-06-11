@@ -26,6 +26,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import lbms.plugins.mldht.indexer.Selectable;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -479,7 +481,23 @@ public class RPCServer {
 		
 		private void readEvent() throws IOException {
 			
-			final ArrayList<EnqueedRead> toProcess = new ArrayList<EnqueedRead>();
+			final ConcurrentLinkedQueue<EnqueedRead> toProcess = new ConcurrentLinkedQueue<RPCServer.EnqueedRead>();
+			final AtomicBoolean processorRunning = new AtomicBoolean(false);
+			
+			Runnable readProcessor = new Runnable() {
+				public void run() {
+					EnqueedRead r;
+					while((r = toProcess.poll()) != null)
+					{
+						try {
+							handlePacket(r.buf, r.soa);							
+						} catch (Exception e) {
+							DHT.log(e, LogLevel.Error);
+						}
+					}
+					processorRunning.set(false);
+				}
+			};
 			
 			while(true)
 			{
@@ -490,28 +508,14 @@ public class RPCServer {
 					break;
 				read.buf.flip();
 				toProcess.add(read);
+				if(processorRunning.get() == false)
+				{
+					processorRunning.set(true);
+					DHT.getScheduler().execute(readProcessor);
+				}
 				numReceived++;
 				stats.addReceivedBytes(read.buf.limit() + dh_table.getType().HEADER_LENGTH);
 			}
-
-			if(toProcess.size() > 0)
-			{
-				DHT.getScheduler().execute(new Runnable() {
-					public void run() {
-						for(int i=0;i<toProcess.size();i++)
-						{
-							try {
-								EnqueedRead r = toProcess.get(i);
-								handlePacket(r.buf, r.soa);							
-							} catch (Exception e) {
-								DHT.log(e, LogLevel.Error);
-							}
-							
-						}
-					}
-				});
-			}
-
 		}
 		
 		private void writeEvent(DatagramChannel chan)

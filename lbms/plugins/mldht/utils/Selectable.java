@@ -14,18 +14,17 @@
  *    You should have received a copy of the GNU General Public License 
  *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
  */
-package lbms.plugins.mldht.indexer;
+package lbms.plugins.mldht.utils;
 
 import java.io.IOException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 
-import lbms.plugins.mldht.utils.NIOConnectionManager;
 
 public interface Selectable {
 	public SelectableChannel getChannel();
 
-	public void registrationEvent(NIOConnectionManager manager) throws IOException;
+	public void registrationEvent(NIOConnectionManager manager, SelectionKey key) throws IOException;
 	
 	public void selectionEvent(SelectionKey key) throws IOException;
 

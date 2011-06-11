@@ -26,10 +26,10 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import lbms.plugins.mldht.indexer.Selectable;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.messages.*;
 import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
@@ -39,6 +39,7 @@ import lbms.plugins.mldht.kad.utils.ByteWrapper;
 import lbms.plugins.mldht.kad.utils.ResponseTimeoutFilter;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
+import lbms.plugins.mldht.utils.Selectable;
 
 /**
  * @author The_8472, Damokles
@@ -373,7 +374,7 @@ public class RPCServer {
 	
 	private void fillPipe(EnqueuedSend es) {
 		pipeline.add(es);
-		sel.updateSelection();
+		sel.writeEvent(false);
 	}
 		
 
@@ -448,6 +449,7 @@ public class RPCServer {
 	
 	private class SocketHandler implements Selectable {
 		DatagramChannel channel;
+		SelectionKey key;
 
 		
 		{
@@ -475,18 +477,18 @@ public class RPCServer {
 			if(key.isValid() && key.isReadable())
 				readEvent();
 			if(key.isValid() && key.isWritable())
-				writeEvent(channel);
+				writeEvent(true);
 				
 		}
 		
 		private void readEvent() throws IOException {
 			
-			final ConcurrentLinkedQueue<EnqueedRead> toProcess = new ConcurrentLinkedQueue<RPCServer.EnqueedRead>();
+			final ConcurrentLinkedQueue<EnqueuedRead> toProcess = new ConcurrentLinkedQueue<RPCServer.EnqueuedRead>();
 			final AtomicBoolean processorRunning = new AtomicBoolean(false);
 			
 			Runnable readProcessor = new Runnable() {
 				public void run() {
-					EnqueedRead r;
+					EnqueuedRead r;
 					while((r = toProcess.poll()) != null)
 					{
 						try {
@@ -501,7 +503,7 @@ public class RPCServer {
 			
 			while(true)
 			{
-				EnqueedRead read = new EnqueedRead();
+				EnqueuedRead read = new EnqueuedRead();
 				read.buf = ByteBuffer.allocate(DHTConstants.RECEIVE_BUFFER_SIZE);
 				read.soa = channel.receive(read.buf);
 				if(read.soa == null)
@@ -516,53 +518,90 @@ public class RPCServer {
 				numReceived++;
 				stats.addReceivedBytes(read.buf.limit() + dh_table.getType().HEADER_LENGTH);
 			}
+			
+			// make sure to cleanup everything
+			if(toProcess.peek() != null)
+				DHT.getScheduler().execute(readProcessor);
 		}
 		
-		private void writeEvent(DatagramChannel chan)
+		private static final int WRITE_STATE_IDLE = 0;
+		private static final int WRITE_STATE_WRITING = 2;
+		private static final int WRITE_STATE_AWAITING_NIO_NOTIFICATION = 3;
+		
+		private AtomicInteger writeState = new AtomicInteger();
+		
+		public void writeEvent(boolean onSelectorThread)
 		{
-			EnqueuedSend es;
-			while(true)
+			// simply assume nobody else is writing when we're on a non-selector thread and attempt to do it
+			int currentState = WRITE_STATE_IDLE;
+
+			if(onSelectorThread)
+			{ // get the real state on the selector thread and act accordingly
+				currentState = writeState.get();
+				// someone else is doing the work for us, yay
+				if(currentState == WRITE_STATE_WRITING)
+					return;
+			}
+			
+			if(writeState.compareAndSet(currentState, WRITE_STATE_WRITING))
 			{
-				es = pipeline.poll();
-				if(es == null)
-					break;
-				try
+				// we are now the exclusive writer for this socket
+				
+				while(true)
 				{
-					ByteBuffer buf = es.getBuffer();
-					
-					if(chan.send(buf, es.toSend.getDestination()) == 0)
-					{
-						pipeline.add(es);
+					EnqueuedSend es = pipeline.poll();
+					if(es == null)
 						break;
-					}
+					try
+					{
+						ByteBuffer buf = es.getBuffer();
+						
+						if(channel.send(buf, es.toSend.getDestination()) == 0)
+						{
+							pipeline.add(es);
+							// socket is full
+							updateSelection();
+							
+							writeState.set(WRITE_STATE_AWAITING_NIO_NOTIFICATION);
+							return;
+						}							
+						
+						if(es.associatedCall != null)
+							es.associatedCall.sent();
+						
+						stats.addSentMessageToCount(es.toSend);
+						stats.addSentBytes(buf.limit() + dh_table.getType().HEADER_LENGTH);
+						if(DHT.isLogLevelEnabled(LogLevel.Debug))
+							DHT.logDebug("RPC send Message: [" + es.toSend.getDestination().getAddress().getHostAddress() + "] "+ es.toSend.toString());
+					} catch (IOException e)
+					{
+						DHT.log(new IOException(addr+" -> "+es.toSend.getDestination(), e), LogLevel.Error);
+						if(es.associatedCall != null)
+						{ // need to notify listeners
+							es.associatedCall.sendFailed();
+						}
+						break;
+					}					
 					
-					if(es.associatedCall != null)
-						es.associatedCall.sent();
-					
-					stats.addSentMessageToCount(es.toSend);
-					stats.addSentBytes(buf.limit() + dh_table.getType().HEADER_LENGTH);
-					if(DHT.isLogLevelEnabled(LogLevel.Debug))
-						DHT.logDebug("RPC send Message: [" + es.toSend.getDestination().getAddress().getHostAddress() + "] "+ es.toSend.toString());
-				} catch (IOException e)
-				{
-					DHT.log(new IOException(addr+" -> "+es.toSend.getDestination(), e), LogLevel.Error);
-					if(es.associatedCall != null)
-					{ // need to notify listeners
-						es.associatedCall.sendFailed();
-					}
-					//pipeline.add(es);
-					break;
+					numSent++;
 				}
 				
+				// release claim on the socket
+				writeState.set(WRITE_STATE_IDLE);
 				
-				numSent++;
-			}
+				// check if we might have to pick it up again due to races
+				if(pipeline.peek() != null)
+					writeEvent(onSelectorThread);
+			
+			} 
+			
 	
 		}
 		
 		@Override
-		public void registrationEvent(NIOConnectionManager manager) throws IOException {
+		public void registrationEvent(NIOConnectionManager manager, SelectionKey key) throws IOException {
 			connectionManager = manager;
+			this.key = key;
 			updateSelection();
 		}
 		
@@ -591,7 +630,7 @@ public class RPCServer {
 			int newSel = SelectionKey.OP_READ;
 			if(pipeline.peek() != null)
 				newSel |= SelectionKey.OP_WRITE;
-			connectionManager.asyncSetSelection(this, newSel);
+			connectionManager.asyncSetSelection(key, newSel);
 		}
 	}
 
@@ -613,7 +652,7 @@ public class RPCServer {
 		}
 	}
 	
-	private static class EnqueedRead {
+	private static class EnqueuedRead {
 		SocketAddress soa;
 		ByteBuffer buf;
 	}

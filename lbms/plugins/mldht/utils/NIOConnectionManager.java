@@ -28,7 +28,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import sun.net.www.content.audio.wav;
 
-import lbms.plugins.mldht.indexer.Selectable;
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 
@@ -86,8 +85,7 @@ public class NIOConnectionManager {
 					while((toRegister = registrations.poll()) != null)
 					{
 						connections.add(toRegister);
-						toRegister.getChannel().register(selector, 0,toRegister);
-						toRegister.registrationEvent(NIOConnectionManager.this);
+						toRegister.registrationEvent(NIOConnectionManager.this,toRegister.getChannel().register(selector, 0,toRegister));
 					}
 						
 				} catch (Exception e)
@@ -147,15 +145,19 @@ public class NIOConnectionManager {
 		selector.wakeup();
 	}
 	
-	public void asyncSetSelection(Selectable connection, int mask)
+	public void asyncSetSelection(SelectionKey key, int mask)
 	{
-		connection.getChannel().keyFor(selector).interestOps(mask);
+		key.interestOps(mask);
 		if(isSelecting)
 		{
 			isSelecting = false;
 			selector.wakeup();
 		}
 			
+	}
+	
+	public Selector getSelector() {
+		return selector;
 	}
 
 	/**

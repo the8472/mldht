@@ -36,6 +36,7 @@ import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
+import lbms.plugins.mldht.utils.Selectable;
 
 public class PullMetaDataConnection implements Selectable {
 	
@@ -191,7 +192,7 @@ public class PullMetaDataConnection implements Selectable {
 		return channel;
 	}
 	
-	public void registrationEvent(NIOConnectionManager manager) throws IOException {
+	public void registrationEvent(NIOConnectionManager manager, SelectionKey key) throws IOException {
 		connManager = manager;
 		lastReceivedTime = System.currentTimeMillis();
 

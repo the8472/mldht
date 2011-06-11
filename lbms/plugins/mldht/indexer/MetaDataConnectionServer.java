@@ -12,6 +12,7 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
+import lbms.plugins.mldht.utils.Selectable;
 
 public class MetaDataConnectionServer implements Selectable {
 	
@@ -42,7 +43,7 @@ public class MetaDataConnectionServer implements Selectable {
 		return channel;
 	}
 	
-	public void registrationEvent(NIOConnectionManager manager) throws IOException {
+	public void registrationEvent(NIOConnectionManager manager, SelectionKey key) throws IOException {
 		conHandler = manager;
 		channel.socket().bind(new InetSocketAddress(addr, port), 100);
 		conHandler.setSelection(this, SelectionKey.OP_ACCEPT, true);

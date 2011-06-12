@@ -81,7 +81,6 @@ public class DHT implements DHTBase {
 		scheduler.setKeepAliveTime(20, TimeUnit.SECONDS);
 		scheduler.allowCoreThreadTimeOut(true);
 
-
 		logger = new DHTLogger() {
 			public void log (String message) {
 				System.out.println(message);

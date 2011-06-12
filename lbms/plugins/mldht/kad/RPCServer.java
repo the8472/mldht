@@ -47,7 +47,7 @@ import lbms.plugins.mldht.utils.Selectable;
  */
 public class RPCServer {
 	
-	private InetAddress						addr;
+	private InetAddress								addr;
 	private DHT										dh_table;
 	private RPCServerManager						manager;
 	private ConcurrentMap<ByteWrapper, RPCCall>		calls;
@@ -108,58 +108,6 @@ public class RPCServer {
 	}
 
 	
-	/*
-	public void run() {
-		
-		int delay = 1;
-		
-		
-		
-		while (running)
-		{
-			DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-			
-			try
-			{
-				if(sock.isClosed())
-				{ // don't try to receive on a closed socket, attempt to create a new one instead.
-					Thread.sleep(delay * 100);
-					if(delay < 256)
-						delay <<= 1;
-					if(createSocket())
-						continue;
-					else
-						break;
-				}
-				
-				sock.receive(packet);
-			} catch (Exception e)
-			{
-				if (running)
-				{
-					DHT.log(e, LogLevel.Error);
-					sock.close();
-				}
-				continue;
-			}
-			
-			try
-			{
-				handlePacket(packet);
-				if(delay > 1)
-					delay--;
-			} catch (Exception e)
-			{
-				if (running)
-					DHT.log(e, LogLevel.Error);
-			}
-			
-		}
-		// we fell out of the loop, make sure everything is cleaned up
-		destroy();
-		DHT.logInfo("Stopped RPC Server");
-	}
-	*/
 	public Key getDerivedID() {
 		return derivedId;
 	}
@@ -186,19 +134,6 @@ public class RPCServer {
 		manager.serverRemoved(this);
 	}
 
-	/* (non-Javadoc)
-	 * @see lbms.plugins.mldht.kad.RPCServerBase#stop()
-	 
-	public void destroy () {
-		if(running)
-			DHT.logInfo("Stopping RPC Server");
-		running = false;
-		dh_table.getNode().removeServer(this);
-		if(sock != null)
-			sock.close();
-		thread = null;
-		
-	}*/
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#doCall(lbms.plugins.mldht.kad.messages.MessageBase)

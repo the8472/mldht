@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
+import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 
 /**
  * @author Damokles
@@ -117,6 +118,8 @@ public class RPCCall {
 	void sent() {
 		awaitingResponse = true;
 		sentTime = System.currentTimeMillis();
+		
+		
 		timeoutTimer = DHT.getScheduler().schedule(new Runnable() {
 			public void run () {
 				
@@ -140,7 +143,10 @@ public class RPCCall {
 										
 				}
 			}
-		}, rpc.getTimeoutFilter().getStallTimeout(), TimeUnit.MILLISECONDS);
+		},
+		// spread out the stalls by +- 1ms to reduce locking issues
+		rpc.getTimeoutFilter().getStallTimeout()*1000+ThreadLocalUtils.getThreadLocalRandom().nextInt(2000)-1000,
+		TimeUnit.MICROSECONDS);
 	}
 
 	void sendFailed() {

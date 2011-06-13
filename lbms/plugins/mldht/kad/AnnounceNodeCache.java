@@ -95,7 +95,7 @@ public class AnnounceNodeCache {
 		}
 	};
 	
-	public RPCCallListener getRPCListner() {
+	public RPCCallListener getRPCListener() {
 		return cl;
 	}
 	
@@ -166,38 +166,27 @@ public class AnnounceNodeCache {
 	}
 
 	
-	public List<KBucketEntry> get(Key target, int count, Set<KBucketEntry> toExclude)
+	public List<KBucketEntry> get(Key target, int targetSize)
 	{
-		ArrayList<KBucketEntry> closestSet = new ArrayList<KBucketEntry>(2 * count);
+		ArrayList<KBucketEntry> closestSet = new ArrayList<KBucketEntry>(2 * targetSize);
 		
 		Map.Entry<Key, CacheBucket> ceil = cache.ceilingEntry(target);
 		Map.Entry<Key, CacheBucket> floor = cache.floorEntry(target);
-		if(ceil != null)
-			closestSet.addAll(ceil.getValue().entries);
-		if(floor != null && (ceil == null || floor.getValue() != ceil.getValue()))
-			closestSet.addAll(floor.getValue().entries);
 		
-		// note that an expanding binary search only yields an _approximate_ closest set since we're not using buckets
-		while(closestSet.size() / 2 < count && (floor != null || ceil != null))
+		do
 		{
 			if(floor != null)
-				floor = cache.lowerEntry(floor.getKey());
-			if(ceil != null)
-				ceil = cache.higherEntry(ceil.getKey());
-
-			if(ceil != null)
-				closestSet.addAll(ceil.getValue().entries);
-				
-			if(floor != null)
+			{
 				closestSet.addAll(floor.getValue().entries);
-		}
-		
-		closestSet.removeAll(toExclude);
-		
-		Collections.sort(closestSet, new KBucketEntry.DistanceOrder(target));
-		
-		for(int i=closestSet.size()-1;i>=count;i--)
-			closestSet.remove(i);
+				floor = cache.lowerEntry(floor.getKey());
+			}
+				
+			if(ceil != null)
+			{
+				closestSet.addAll(ceil.getValue().entries);
+				ceil = cache.higherEntry(ceil.getKey());
+			}
+		} while (closestSet.size() / 2 < targetSize && (floor != null || ceil != null));
 		
 		return closestSet;
 	}

@@ -16,16 +16,12 @@
  */
 package lbms.plugins.mldht.kad.tasks;
 
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Map;
+
 import java.util.SortedSet;
 import java.util.TreeSet;
 
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
-import lbms.plugins.mldht.kad.Key.DistanceOrder;
-import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.messages.*;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
@@ -58,22 +54,24 @@ public class NodeLookup extends Task {
 		// until we have nothing left
 		synchronized (todo) {
 
-			while (todo.size() > 0 && canDoRequest() && validReponsesSinceLastClosestSetModification < DHTConstants.MAX_CONCURRENT_REQUESTS) {
-				KBucketEntry e = todo.first();
-				todo.remove(e);
+			while (canDoRequest() && validReponsesSinceLastClosestSetModification < DHTConstants.MAX_CONCURRENT_REQUESTS) {
+				KBucketEntry e = todo.pollFirst();
 				
 				// only send a findNode if we haven't allready visited the node
-				if (!visited.contains(e)) {
-					// send a findNode to the node
-					FindNodeRequest fnr = new FindNodeRequest(targetKey);
-					fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode() != null && DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
-					fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode() != null && DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
-					fnr.setDestination(e.getAddress());
-					if(rpcCall(fnr,e.getID(),null))
-						visited.add(e);
-					else
-						todo.add(e);
-				}
+				if (hasVisited(e))
+					continue;
+				
+					
+				// send a findNode to the node
+				FindNodeRequest fnr = new FindNodeRequest(targetKey);
+				fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode() != null && DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
+				fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode() != null && DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
+				fnr.setDestination(e.getAddress());
+				if(rpcCall(fnr,e.getID(),null))
+					visited(e);
+				else
+					todo.add(e);
+				
 					
 				// remove the entry from the todo list
 			}
@@ -129,7 +127,7 @@ public class NodeLookup extends Task {
 						{
 							// add node to todo list
 							KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-							if (!AddressUtils.isBogon(e.getAddress()) && !node.allLocalIDs().contains(e.getID()) && !todo.contains(e) && !visited.contains(e))
+							if (!AddressUtils.isBogon(e.getAddress()) && !node.allLocalIDs().contains(e.getID()) && !todo.contains(e) && !hasVisited(e))
 							{
 								todo.add(e);
 							}
@@ -144,7 +142,6 @@ public class NodeLookup extends Task {
 					}
 				}
 			}
-
 
 		}
 	}

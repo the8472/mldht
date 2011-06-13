@@ -18,11 +18,9 @@ package lbms.plugins.mldht.kad.tasks;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import lbms.plugins.mldht.kad.*;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
-import lbms.plugins.mldht.kad.KBucketEntry.DistanceOrder;
 import lbms.plugins.mldht.kad.messages.*;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
@@ -128,7 +126,7 @@ public class PeerLookupTask extends Task {
 					{
 						// add node to todo list
 						KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-						if(!AddressUtils.isBogon(e.getAddress()) && !node.allLocalIDs().contains(e.getID()) && !visited.contains(e))
+						if(!AddressUtils.isBogon(e.getAddress()) && !node.allLocalIDs().contains(e.getID()) && !hasVisited(e))
 							todo.add(e);
 					}
 				}
@@ -204,32 +202,46 @@ public class PeerLookupTask extends Task {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.Task#update()
 	 */
-	synchronized void update () {
+	void update () {
 		// check if the cache has any closer nodes after the initial query
-		todo.addAll(cache.get(targetKey, 3, visited));
+		Collection<KBucketEntry> cacheResults = cache.get(targetKey, lowPriority ? DHTConstants.MAX_CONCURRENT_REQUESTS_LOWPRIO : DHTConstants.MAX_CONCURRENT_REQUESTS);
+		
+		synchronized (this)
+		{
+			todo.addAll(cacheResults);
+		}
 
 		// go over the todo list and send get_peers requests
 		// until we have nothing left
-		while (!todo.isEmpty() && canDoRequest() && !isClosestSetStable()) {
-			KBucketEntry e = todo.first();
-			todo.remove(e);
-			
-			// only send a findNode if we haven't already visited the node
-			if (!visited.contains(e)) {
-				// send a findNode to the node
-				GetPeersRequest gpr = new GetPeersRequest(targetKey);
-				gpr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
-				gpr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
-				gpr.setDestination(e.getAddress());
-				gpr.setScrape(true);
-				gpr.setNoSeeds(noSeeds);
-				if(rpcCall(gpr,e.getID(),cache.getRPCListner()))
-					visited.add(e);
-				else
-					todo.remove(e);
+		while (canDoRequest() && !isClosestSetStable()) {
+			KBucketEntry e;
+			synchronized (this)
+			{
+				e = todo.pollFirst();
 			}
-				
+
+			// only send a getPeers if we haven't already visited the node
+			if (hasVisited(e))
+				continue;
+			
+			// send a findNode to the node
+			GetPeersRequest gpr = new GetPeersRequest(targetKey);
+			gpr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
+			gpr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
+			gpr.setDestination(e.getAddress());
+			gpr.setScrape(true);
+			gpr.setNoSeeds(noSeeds);
+			if(rpcCall(gpr,e.getID(),cache.getRPCListener()))
+				visited(e);
+			else
+			{
+				synchronized (this)
+				{
+					todo.add(e);
+				}
+			}
 		}
+		
 
 	}
 	
@@ -303,7 +315,7 @@ public class PeerLookupTask extends Task {
 		
 		// re-register once we actually started
 		cache.register(targetKey,fastTerminate);
-		todo.addAll(cache.get(targetKey,DHTConstants.MAX_CONCURRENT_REQUESTS * 2,Collections.EMPTY_SET));
+		todo.addAll(cache.get(targetKey,DHTConstants.MAX_CONCURRENT_REQUESTS * 2));
 
 		super.start();
 	}

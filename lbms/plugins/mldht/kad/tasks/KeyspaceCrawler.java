@@ -54,35 +54,38 @@ public class KeyspaceCrawler extends Task {
 		// until we have nothing left
 		synchronized (todo) {
 
-			while (todo.size() > 0 && canDoRequest()) {
-				KBucketEntry e = todo.first();
-				todo.remove(e);
+			while (canDoRequest()) {
+				KBucketEntry e;
+				synchronized (todo)
+				{
+					e = todo.pollFirst();
+				}
+				
 				// only send a findNode if we haven't allready visited the node
-				if (!visited.contains(e)) {
-					// send a findNode to the node
-					FindNodeRequest fnr;
+				if (hasVisited(e))
+					continue;
+				
+				// send a findNode to the node
+				FindNodeRequest fnr;
 
-					fnr = new FindNodeRequest(Key.createRandomKey());
+				fnr = new FindNodeRequest(Key.createRandomKey());
+				fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
+				fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
+				fnr.setDestination(e.getAddress());
+				rpcCall(fnr,e.getID(),null);
+
+
+				if(canDoRequest())
+				{
+					fnr = new FindNodeRequest(e.getID());
 					fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setDestination(e.getAddress());
-					rpcCall(fnr,e.getID(),null);
-
-
-					if(canDoRequest())
-					{
-						fnr = new FindNodeRequest(e.getID());
-						fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
-						fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
-						fnr.setDestination(e.getAddress());
-						rpcCall(fnr,e.getID(),null);						
-					}
-					
-					synchronized (visited) {
-						visited.add(e);
-					}
+					rpcCall(fnr,e.getID(),null);						
 				}
-				// remove the entry from the todo list
+
+				visited(e);
+				
 			}
 		}
 	}
@@ -115,7 +118,7 @@ public class KeyspaceCrawler extends Task {
 						{
 							// add node to todo list
 							KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-							if (!node.allLocalIDs().contains(e.getID()) && !todo.contains(e) && !visited.contains(e))
+							if (!node.allLocalIDs().contains(e.getID()) && !todo.contains(e) && !hasVisited(e))
 							{
 								todo.add(e);
 							}
@@ -181,6 +184,6 @@ public class KeyspaceCrawler extends Task {
 
 	
 	private void done () {
-		System.out.println("crawled "+visited.size()+" nodes, seen "+responded.size());
+		System.out.println("crawler done, seen "+responded.size());
 	}
 }

@@ -37,7 +37,6 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
  */
 public abstract class Task implements RPCCallListener, Comparable<Task> {
 
-	protected Set<KBucketEntry>			visited;		// nodes visited, can't use a HashSet here since we can't compute a good hashcode for KBucketEntries
 	protected NavigableSet<KBucketEntry>	todo;			// nodes todo
 	protected Node						node;
 
@@ -46,6 +45,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	protected String					info;
 	protected RPCServer					rpc;
 	
+	private HashSet						visited = new HashSet();
 	private AtomicInteger				outstandingRequestsExcludingStalled = new AtomicInteger();
 	private AtomicInteger				outstandingRequests = new AtomicInteger();
 	private int							sentReqs;
@@ -73,7 +73,6 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		this.node = node;
 		queued = true;
 		todo = new TreeSet<KBucketEntry>(new KBucketEntry.DistanceOrder(targetKey));
-		visited = new KBucketEntry.BucketSet();
 		taskFinished = false;
 	}
 
@@ -85,6 +84,24 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	Task (Key target, RPCServer rpc, Node node, String info) {
 		this(target, rpc, node);
 		this.info = info;
+	}
+	
+	protected void visited(KBucketEntry e)
+	{
+		synchronized (visited)
+		{
+			visited.add(e.getAddress().getAddress());
+			visited.add(e.getID());
+			
+		}
+	}
+	
+	protected boolean hasVisited(KBucketEntry e)
+	{
+		synchronized (visited)
+		{
+			return visited.contains(e.getAddress().getAddress()) || visited.contains(e.getID());
+		}
 	}
 	
 	

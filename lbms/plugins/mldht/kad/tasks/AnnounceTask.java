@@ -57,25 +57,34 @@ public class AnnounceTask extends Task {
 	 * @see lbms.plugins.mldht.kad.Task#update()
 	 */
 	@Override
-	synchronized void update () {
-		synchronized (todo) {
-			while (!todo.isEmpty() && canDoRequest()) {
-				KBucketEntryAndToken e = (KBucketEntryAndToken) todo.first();
-				todo.remove(e);
-				
-				if (!visited.contains(e)) {
-					AnnounceRequest anr = new AnnounceRequest(targetKey, port, e.getToken());
-					//System.out.println("sending announce to ID:"+e.getID()+" addr:"+e.getAddress());
-					anr.setDestination(e.getAddress());
-					anr.setSeed(isSeed);
-					if(rpcCall(anr,e.getID(),null))
-						visited.add(e);
-					else
-						todo.add(e);
-					
+	void update () {
+
+		while (canDoRequest()) {
+			KBucketEntryAndToken e;
+			synchronized (todo) {
+				e = (KBucketEntryAndToken) todo.pollFirst();
+			}
+
+			if(e == null || hasVisited(e))
+				continue;
+
+			AnnounceRequest anr = new AnnounceRequest(targetKey, port, e.getToken());
+			//System.out.println("sending announce to ID:"+e.getID()+" addr:"+e.getAddress());
+			anr.setDestination(e.getAddress());
+			anr.setSeed(isSeed);
+			if(rpcCall(anr,e.getID(),null))
+				visited(e);
+			else
+			{
+				synchronized (todo)
+				{
+					todo.add(e);
 				}
 			}
+				
+
 		}
+
 	}
 	
 	@Override

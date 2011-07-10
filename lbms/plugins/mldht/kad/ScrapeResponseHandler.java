@@ -16,7 +16,6 @@
  */
 package lbms.plugins.mldht.kad;
 
-import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -56,8 +55,9 @@ public class ScrapeResponseHandler {
 		Set<InetAddress> directPeers = new HashSet<InetAddress>();
 		
 		// process seeds first, we need them for some checks later (not yet implemented)
-		for(GetPeersResponse response : scrapeResponses)
+		for(int i=0;i<scrapeResponses.size();i++)
 		{
+			GetPeersResponse response = scrapeResponses.get(i);
 			BloomFilterBEP33 f = response.getScrapeSeeds();
 			if(f != null)
 				seedFilters.add(f);
@@ -65,8 +65,9 @@ public class ScrapeResponseHandler {
 		
 		scrapeSeeds = BloomFilterBEP33.unionSize(seedFilters);
 		
-		for(GetPeersResponse response : scrapeResponses)
+		for(int i=0;i<scrapeResponses.size();i++)
 		{
+			GetPeersResponse response = scrapeResponses.get(i);
 			BloomFilterBEP33 f = response.getScrapePeers();
 
 			Set<InetAddress> addrs = new HashSet<InetAddress>();

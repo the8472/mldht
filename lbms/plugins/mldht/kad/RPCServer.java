@@ -416,6 +416,8 @@ public class RPCServer {
 				
 		}
 		
+		private ByteBuffer readBuffer = ByteBuffer.allocate(DHTConstants.RECEIVE_BUFFER_SIZE);
+		
 		private void readEvent() throws IOException {
 			
 			final ConcurrentLinkedQueue<EnqueuedRead> toProcess = new ConcurrentLinkedQueue<RPCServer.EnqueuedRead>();
@@ -439,11 +441,16 @@ public class RPCServer {
 			while(true)
 			{
 				EnqueuedRead read = new EnqueuedRead();
-				read.buf = ByteBuffer.allocate(DHTConstants.RECEIVE_BUFFER_SIZE);
-				read.soa = channel.receive(read.buf);
+				readBuffer.clear();
+				read.soa = channel.receive(readBuffer);
 				if(read.soa == null)
 					break;
+				
+				// copy from the read buffer since we hand off to another thread
+				readBuffer.flip();
+				read.buf = ByteBuffer.allocate(readBuffer.limit()).put(readBuffer);
 				read.buf.flip();
+				
 				toProcess.add(read);
 				if(processorRunning.get() == false)
 				{

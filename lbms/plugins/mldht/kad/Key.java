@@ -22,12 +22,13 @@ import java.nio.ByteBuffer;
 import java.util.*;
 
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
+import lbms.plugins.mldht.utils.Radixable;
 
 /**
  * @author Damokles
  *
  */
-public class Key implements Comparable<Key>, Serializable {
+public class Key implements Radixable<Key>, Serializable {
 	
 	/**
 	 * sorts the closest entries to the head, the furthest to the tail
@@ -161,11 +162,12 @@ public class Key implements Comparable<Key>, Serializable {
 	
 	public Key getDerivedKey(int idx) {
 		Key k = new Key(this);
+		idx = Integer.reverse(idx);
 		byte[] data = k.hash;
-		for(int i=0;i<32;i++)
-			if(((0x01 << i) & idx) != 0)
-				data[i/8] ^= 0x80 >> (i % 8);
-		
+		data[0] ^= (idx >>> 24) & 0xFF;
+		data[1] ^= (idx >>> 16) & 0xFF;
+		data[2] ^= (idx >>> 8) & 0xFF;
+		data[3] ^= idx & 0xFF;
 		return k;
 	}
 
@@ -290,7 +292,16 @@ public class Key implements Comparable<Key>, Serializable {
 		return x;
 	}
 	
+	
+
+	
+	public int getRadix(int byteIndex) {
+		return hash[byteIndex] & 0xFF;
+	}
+	
 	public static void main(String[] args) {
+		
+		
 		/*
 		Key target = new Key();
 		target.hash[0] = (byte) 0xF0;
@@ -452,21 +463,9 @@ public class Key implements Comparable<Key>, Serializable {
 		System.out.println(Math.log(k1.naturalDistance(k2))/Math.log(2));
 		*/
 		
-		Key[] values = new Key[5000000];
-		for(int i=0;i<values.length;i++)
-			values[i] = Key.createRandomKey();
+		System.out.println(Key.MIN_KEY.getDerivedKey(0xfffffff0));
 		
-		Comparator<Key> k = new Key.DistanceOrder(Key.createRandomKey());
-		
-		for(int j=0;j<10;j++)
-		{
-			Key[] toSort = values.clone();
-			long start = System.currentTimeMillis();
-			Arrays.sort(toSort);
-			System.out.println(System.currentTimeMillis()-start);
-			System.out.println(toSort[0]);
-			int i = 0;
-		}
+
 		
 		
 	}

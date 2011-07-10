@@ -866,7 +866,7 @@ public class DHT implements DHTBase {
 	private void onStatsUpdate () {
 		stats.setNumTasks(tman.getNumTasks() + tman.getNumQueuedTasks());
 		stats.setNumPeers(node.getNumEntriesInRoutingTable());
-		int numSent = 0;int numReceived = 0;int activeCalls = 0;
+		long numSent = 0;long numReceived = 0;int activeCalls = 0;
 		for(RPCServer s : serverManager.getAllServers())
 		{
 			numSent += s.getNumSent();

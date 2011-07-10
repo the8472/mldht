@@ -37,9 +37,9 @@ public class DHTStats {
 	/// Number of running tasks
 	private int				numTasks;
 
-	private int				numReceivedPackets;
+	private long			numReceivedPackets;
 
-	private int				numSentPackets;
+	private long			numSentPackets;
 
 	private int				numRpcCalls;
 	
@@ -63,14 +63,14 @@ public class DHTStats {
 	/**
 	 * @return the num_received_packets
 	 */
-	public int getNumReceivedPackets () {
+	public long getNumReceivedPackets () {
 		return numReceivedPackets;
 	}
 
 	/**
 	 * @return the num_sent_packets
 	 */
-	public int getNumSentPackets () {
+	public long getNumSentPackets () {
 		return numSentPackets;
 	}
 
@@ -131,14 +131,14 @@ public class DHTStats {
 	/**
 	 * @param num_received_packets the num_received_packets to set
 	 */
-	protected void setNumReceivedPackets (int num_received_packets) {
+	protected void setNumReceivedPackets (long num_received_packets) {
 		this.numReceivedPackets = num_received_packets;
 	}
 
 	/**
 	 * @param num_sent_packets the num_sent_packets to set
 	 */
-	protected void setNumSentPackets (int num_sent_packets) {
+	protected void setNumSentPackets (long num_sent_packets) {
 		this.numSentPackets = num_sent_packets;
 	}
 

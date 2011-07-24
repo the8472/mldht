@@ -57,7 +57,10 @@ public class NodeLookup extends Task {
 			while (canDoRequest() && validReponsesSinceLastClosestSetModification < DHTConstants.MAX_CONCURRENT_REQUESTS) {
 				KBucketEntry e = todo.pollFirst();
 				
-				// only send a findNode if we haven't allready visited the node
+				if(e == null)
+					break;
+				
+				// only send a findNode if we haven't already visited the node
 				if (hasVisited(e))
 					continue;
 				

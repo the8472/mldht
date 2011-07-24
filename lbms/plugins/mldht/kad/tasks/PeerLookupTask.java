@@ -221,7 +221,7 @@ public class PeerLookupTask extends Task {
 			}
 
 			// only send a getPeers if we haven't already visited the node
-			if (hasVisited(e))
+			if (e == null || hasVisited(e))
 				continue;
 			
 			// send a findNode to the node

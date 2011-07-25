@@ -127,10 +127,6 @@ public abstract class MessageBase {
 		mtid = m;
 	}
 
-	public void setMTID (short m) {
-		mtid = new byte[] {(byte)(m>>8),(byte)(m&0xff)};
-	}
-
 	public String getVersion () {
     	return version;
     }

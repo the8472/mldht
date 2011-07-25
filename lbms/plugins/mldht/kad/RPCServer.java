@@ -149,7 +149,8 @@ public class RPCServer {
 				call_queue.add(c);
 				break;
 			}
-			short mtid = (short)ThreadLocalUtils.getThreadLocalRandom().nextInt();
+			byte[] mtid = new byte[4];
+			ThreadLocalUtils.getThreadLocalRandom().nextBytes(mtid);
 			if(calls.putIfAbsent(new ByteWrapper(mtid),c) == null)
 			{
 				dispatchCall(c, mtid);
@@ -313,7 +314,7 @@ public class RPCServer {
 	}
 		
 
-	private void dispatchCall(RPCCall call, short mtid)
+	private void dispatchCall(RPCCall call, byte[] mtid)
 	{
 		MessageBase msg = call.getRequest();
 		msg.setMTID(mtid);
@@ -364,14 +365,8 @@ public class RPCServer {
 
 			if((c = call_queue.poll()) == null)
 				return;
-
-			short mtid = 0;
-			do
-			{
-				mtid = (short)ThreadLocalUtils.getThreadLocalRandom().nextInt();
-			} while (calls.putIfAbsent(new ByteWrapper(mtid), c) != null);
-
-			dispatchCall(c, mtid);
+			
+			doCall(c);
 		}
 	}
 	

@@ -16,6 +16,7 @@
  */
 package lbms.plugins.mldht.kad;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -76,6 +77,7 @@ public class KBucketEntry implements Serializable {
 			return target.threeWayDistance(o1.getID(), o2.getID());
 		}
 	}
+	
 
 	private static final long	serialVersionUID	= 3230342110307814047L;
 
@@ -85,7 +87,20 @@ public class KBucketEntry implements Serializable {
 	private int					failedQueries	= 0;
 	private long				timeCreated;
 	private String				version;
-	private transient ExponentialWeightendMovingAverage avgRTT = new ExponentialWeightendMovingAverage().setWeight(RTT_EMA_WEIGHT);
+	private transient ExponentialWeightendMovingAverage avgRTT;
+
+	{ // delegate transient stuff to be handled the same way as on deserialization
+		fieldInitializers();
+	}
+	
+	private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+		in.defaultReadObject();
+		fieldInitializers();
+	}
+	
+	private void fieldInitializers() {
+		avgRTT = new ExponentialWeightendMovingAverage().setWeight(RTT_EMA_WEIGHT).setValue(DHTConstants.RPC_CALL_TIMEOUT_MAX);
+	}
 
 	/**
 	 * Constructor, sets everything to 0.

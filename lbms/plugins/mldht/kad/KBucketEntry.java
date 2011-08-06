@@ -99,7 +99,7 @@ public class KBucketEntry implements Serializable {
 	}
 	
 	private void fieldInitializers() {
-		avgRTT = new ExponentialWeightendMovingAverage().setWeight(RTT_EMA_WEIGHT).setValue(DHTConstants.RPC_CALL_TIMEOUT_MAX);
+		avgRTT = new ExponentialWeightendMovingAverage().setWeight(RTT_EMA_WEIGHT);
 	}
 
 	/**
@@ -282,7 +282,7 @@ public class KBucketEntry implements Serializable {
 	}
 	
 	public int getRTT() {
-		return (int) avgRTT.getAverage();
+		return (int) avgRTT.getAverage(DHTConstants.RPC_CALL_TIMEOUT_MAX);
 	}
 
 	/**

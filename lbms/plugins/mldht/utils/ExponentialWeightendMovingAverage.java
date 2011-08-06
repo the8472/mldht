@@ -21,6 +21,11 @@ public class ExponentialWeightendMovingAverage {
 		return average;
 	}
 	
+	public double getAverage(double defaultValue)
+	{
+		return Double.isNaN(average) ? defaultValue : average; 
+	}
+	
 	public ExponentialWeightendMovingAverage setValue(double average) {
 		this.average = average;
 		return this;

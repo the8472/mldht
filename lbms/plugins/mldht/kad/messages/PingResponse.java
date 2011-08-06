@@ -16,14 +16,11 @@
  */
 package lbms.plugins.mldht.kad.messages;
 
-import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
 import lbms.plugins.mldht.kad.DHT;
-import lbms.plugins.mldht.kad.DHTConstants;
-import lbms.plugins.mldht.kad.Key;
+
 
 /**
  * @author Damokles

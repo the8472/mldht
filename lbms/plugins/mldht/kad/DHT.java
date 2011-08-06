@@ -169,10 +169,10 @@ public class DHT implements DHTBase {
 		PingResponse rsp = new PingResponse(r.getMTID());
 		rsp.setDestination(r.getOrigin());
 		r.getServer().sendMessage(rsp);
-		node.recieved(this, r);
+		node.recieved(r);
 	}
 
-	public void findNode (FindNodeRequest r) {
+	public void findNode (AbstractLookupRequest r) {
 		if (!isRunning()) {
 			return;
 		}
@@ -182,7 +182,7 @@ public class DHT implements DHTBase {
 			return;
 		}
 
-		node.recieved(this, r);
+		node.recieved(r);
 		// find the K closest nodes and pack them
 
 		KClosestNodesSearch kns4 = null; 
@@ -197,11 +197,14 @@ public class DHT implements DHTBase {
 			kns6 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV6_DHT));
 			kns6.fill(DHTtype.IPV6_DHT != type);
 		}
-
-
-		FindNodeResponse fnr = new FindNodeResponse(r.getMTID(), kns4 != null ? kns4.pack() : null,kns6 != null ? kns6.pack() : null);
-		fnr.setOrigin(r.getOrigin());
-		r.getServer().sendMessage(fnr);
+		
+		FindNodeResponse response;
+		if(r instanceof FindNodeRequest)
+			response = new FindNodeResponse(r.getMTID(), kns4 != null ? kns4.pack() : null,kns6 != null ? kns6.pack() : null);
+		else
+			response = new UnknownTypeResponse(r.getMTID(), kns4 != null ? kns4.pack() : null,kns6 != null ? kns6.pack() : null);
+		response.setOrigin(r.getOrigin());
+		r.getServer().sendMessage(response);
 	}
 
 	public void response (MessageBase r) {
@@ -209,7 +212,7 @@ public class DHT implements DHTBase {
 			return;
 		}
 
-		node.recieved(this, r);
+		node.recieved(r);
 	}
 
 	public void getPeers (GetPeersRequest r) {
@@ -222,7 +225,7 @@ public class DHT implements DHTBase {
 			return;
 		}
 
-		node.recieved(this, r);
+		node.recieved(r);
 		
 		List<DBItem> dbl = db.sample(r.getInfoHash(), 50,type, r.isNoSeeds());
 
@@ -283,7 +286,7 @@ public class DHT implements DHTBase {
 			return;
 		}
 
-		node.recieved(this, r);
+		node.recieved(r);
 		// first check if the token is OK
 		ByteWrapper token = new ByteWrapper(r.getToken());
 		if (!db.checkToken(token, r.getOrigin().getAddress(), r

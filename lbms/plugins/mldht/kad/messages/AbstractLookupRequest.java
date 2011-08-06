@@ -35,7 +35,7 @@ public abstract class AbstractLookupRequest extends MessageBase {
 	 * @param info_hash
 	 */
 	public AbstractLookupRequest (Key target, Method m) {
-		super(new byte[] {(byte) 0xFF}, m, Type.REQ_MSG);
+		super(null, m, Type.REQ_MSG);
 		this.target = target;
 	}
 	

@@ -22,6 +22,8 @@ import java.net.InetSocketAddress;
 import java.text.DateFormat;
 import java.util.*;
 
+import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
+
 import org.apache.commons.collections.Unmodifiable;
 import org.gudy.azureus2.core3.util.TimeFormatter;
 
@@ -33,42 +35,8 @@ import org.gudy.azureus2.core3.util.TimeFormatter;
  */
 public class KBucketEntry implements Serializable {
 	
+	private static final double RTT_EMA_WEIGHT = 0.3;
 	
-	/**
-	 * does not support removal operations
-	 */
-	public static final class BucketSet extends AbstractSet<KBucketEntry> {
-		
-		HashMap<Object, KBucketEntry> entries = new HashMap<Object, KBucketEntry>();
-
-		public boolean add(KBucketEntry e) {
-			if(entries.containsKey(e.getID()) || entries.containsKey(e.getAddress().getAddress()))
-				return false;
-			
-			entries.put(e.getID(), e);
-			entries.put(e.getAddress().getAddress(), e);
-			return true;
-		}
-		
-		public boolean contains(Object o) {
-			if(o instanceof KBucketEntry)
-				return this.contains((KBucketEntry)o);
-			return false;
-		}
-		
-		public boolean contains(KBucketEntry e) {
-			return entries.containsKey(e.getID()) || entries.containsKey(e.getAddress().getAddress());
-		}
-		
-		public Iterator<KBucketEntry> iterator() {
-			throw new UnsupportedOperationException("no iteration allowed");
-		}
-
-		public int size() {
-			return entries.size()/2;
-		}
-	}
-
 	/**
 	 * ascending order for last seen, i.e. the last value will be the least recently seen one
 	 */
@@ -105,7 +73,6 @@ public class KBucketEntry implements Serializable {
 		}
 	
 		public int compare(KBucketEntry o1, KBucketEntry o2) {
-			//return target.distance(o1.getID()).compareTo(target.distance(o2.getID()));
 			return target.threeWayDistance(o1.getID(), o2.getID());
 		}
 	}
@@ -118,6 +85,7 @@ public class KBucketEntry implements Serializable {
 	private int					failedQueries	= 0;
 	private long				timeCreated;
 	private String				version;
+	private transient ExponentialWeightendMovingAverage avgRTT = new ExponentialWeightendMovingAverage().setWeight(RTT_EMA_WEIGHT);
 
 	/**
 	 * Constructor, sets everything to 0.
@@ -290,19 +258,34 @@ public class KBucketEntry implements Serializable {
 		lastSeen = System.currentTimeMillis();
 	}
 	
-	public void mergeTimestamps (KBucketEntry entry) {
+	public void mergeInTimestamps (KBucketEntry entry) {
 		if(!this.equals(entry))
 			return;
 		lastSeen = Math.max(lastSeen, entry.getLastSeen());
 		timeCreated = Math.min(timeCreated, entry.getCreationTime());
+		avgRTT.updateAverage(entry.getRTT());
+	}
+	
+	public int getRTT() {
+		return (int) avgRTT.getAverage();
 	}
 
 	/**
-	 * Should be called to signal that the peer has responded
+	 * 
+	 * @param rtt > 0 in ms. -1 if unknown
 	 */
-	public void signalResponse() {
+	public void signalResponse(long rtt) {
 		lastSeen = System.currentTimeMillis();
 		failedQueries = 0;		
+		if(rtt > 0)
+			avgRTT.updateAverage(rtt);
+	}
+
+	/**
+	 * Should be called to signal that the peer has responded to an outgoing request
+	 */
+	public void signalResponse() {
+		signalResponse(-1);
 	}
 
 	/**

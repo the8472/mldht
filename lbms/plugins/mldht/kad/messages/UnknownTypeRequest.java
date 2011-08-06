@@ -14,7 +14,7 @@ public class UnknownTypeRequest extends AbstractLookupRequest {
 	}
 	
 	public void apply(DHT dh_table) {
-		// do nothing
+		dh_table.findNode(this);
 	}
 	
 }

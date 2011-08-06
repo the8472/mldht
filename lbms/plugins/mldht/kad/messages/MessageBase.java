@@ -22,10 +22,7 @@ import java.util.*;
 
 import org.gudy.azureus2.core3.util.BEncoder;
 
-import lbms.plugins.mldht.kad.DHT;
-import lbms.plugins.mldht.kad.DHTConstants;
-import lbms.plugins.mldht.kad.Key;
-import lbms.plugins.mldht.kad.RPCServer;
+import lbms.plugins.mldht.kad.*;
 
 /**
  * Base class for all RPC messages.
@@ -44,6 +41,7 @@ public abstract class MessageBase {
 	protected InetSocketAddress	origin;
 	protected String			version;
 	protected RPCServer			srv;
+	protected RPCCall			associatedCall;
 
 	public MessageBase (byte[] mtid, Method m, Type type) {
 		this.mtid = mtid;
@@ -152,6 +150,14 @@ public abstract class MessageBase {
 	public Key getID () {
 		return id;
 	}
+	
+	public void setAssociatedCall(RPCCall associatedCall) {
+		this.associatedCall = associatedCall;
+	}
+	
+	public RPCCall getAssociatedCall() {
+		return associatedCall;
+	}
 
 	/// Get the type of the message
 	public Type getType () {
@@ -165,7 +171,7 @@ public abstract class MessageBase {
 	
 	@Override
 	public String toString() {
-		return " Method:" + method + " Type:" + type + " MessageID:" + new String(mtid)+(version != null ? " version:"+version : "")+"  ";
+		return " Method:" + method + " Type:" + type + " MessageID:" + (mtid != null ? new String(mtid) : null) + (version != null ? " version:"+version : "")+"  ";
 	}
 
 	public static enum Type {

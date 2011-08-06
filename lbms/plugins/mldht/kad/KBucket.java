@@ -108,7 +108,7 @@ public class KBucket implements Externalizable {
 			}
 			
 			// only refresh the last seen time if it already exists
-			oldEntry.mergeTimestamps(newEntry);
+			oldEntry.mergeInTimestamps(newEntry);
 			adjustTimerOnInsert(oldEntry);
 			return;
 		}
@@ -462,14 +462,17 @@ public class KBucket implements Externalizable {
 				removeEntry(entry, true); //remove and replace from replacement bucket
 				DHT.log("Node " + entry.getAddress() + " changed ID from " + entry.getID() + " to " + msg.getID(), LogLevel.Info);
 				KBucketEntry newEntry = new KBucketEntry(entry.getAddress(), msg.getID(), entry.getCreationTime());
-				newEntry.mergeTimestamps(entry);
+				newEntry.mergeInTimestamps(entry);
 				// insert into appropriate bucket for the new ID
 				node.insertEntry(newEntry, false);
 				return true;
 			}
 			// no node ID change detected, update last responded. insert will be invoked soon, thus we don't have to do the move-to-end stuff				
-			if (msg.getType() == Type.RSP_MSG && entry.getID().equals(msg.getID()))
-				entry.signalResponse();
+			if (msg.getType() == Type.RSP_MSG && msg.getAssociatedCall() != null && entry.getID().equals(msg.getID()))
+			{
+				entry.signalResponse(msg.getAssociatedCall().getRTT());
+			}
+				
 		}
 		
 		return false;
@@ -477,7 +480,7 @@ public class KBucket implements Externalizable {
 	
 	public void notifyOfResponse(MessageBase msg)
 	{
-		if(msg.getType() != Type.RSP_MSG)
+		if(msg.getType() != Type.RSP_MSG || msg.getAssociatedCall() == null)
 			return;
 		List<KBucketEntry> entriesRef = entries;
 		for (int i=0, n = entriesRef.size();i<n;i++)
@@ -487,7 +490,7 @@ public class KBucket implements Externalizable {
 			// update last responded. insert will be invoked soon, thus we don't have to do the move-to-end stuff				
 			if(entry.getID().equals(msg.getID()))
 			{
-				entry.signalResponse();
+				entry.signalResponse(msg.getAssociatedCall().getRTT());
 				return;
 			}
 		}

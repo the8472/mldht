@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
@@ -163,7 +164,11 @@ public class RPCCall {
 		
 		if (listeners != null) {
 			for (int i = 0; i < listeners.size(); i++) {
-				listeners.get(i).onResponse(this, rsp);
+				try	{
+					listeners.get(i).onResponse(this, rsp);
+				} catch (Exception e) {
+					DHT.log(e, LogLevel.Error);
+				}
 			}
 		}
 	}
@@ -179,7 +184,7 @@ public class RPCCall {
 			try {
 				listeners.get(i).onTimeout(this);
 			} catch (Exception e) {
-				e.printStackTrace();
+				DHT.log(e, LogLevel.Error);
 			}
 		}
 	}
@@ -197,7 +202,7 @@ public class RPCCall {
 				try {
 					listeners.get(i).onStall(this);
 				} catch (Exception e) {
-					e.printStackTrace();
+					DHT.log(e, LogLevel.Error);
 				}
 			}
 		}		

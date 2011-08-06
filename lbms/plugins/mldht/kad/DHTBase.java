@@ -23,12 +23,7 @@ import java.util.Map;
 
 import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
-import lbms.plugins.mldht.kad.messages.AnnounceRequest;
-import lbms.plugins.mldht.kad.messages.ErrorMessage;
-import lbms.plugins.mldht.kad.messages.FindNodeRequest;
-import lbms.plugins.mldht.kad.messages.GetPeersRequest;
-import lbms.plugins.mldht.kad.messages.MessageBase;
-import lbms.plugins.mldht.kad.messages.PingRequest;
+import lbms.plugins.mldht.kad.messages.*;
 import lbms.plugins.mldht.kad.tasks.*;
 
 /**
@@ -85,7 +80,7 @@ public interface DHTBase {
 
 	public void ping (PingRequest r);
 
-	public void findNode (FindNodeRequest r);
+	public void findNode (AbstractLookupRequest r);
 
 	public void response (MessageBase r);
 

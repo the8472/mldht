@@ -89,10 +89,9 @@ public class Node {
 	/**
 	 * An RPC message was received, the node must now update
 	 * the right bucket.
-	 * @param dh_table The DHT
 	 * @param msg The message
 	 */
-	void recieved (DHTBase dh_table, MessageBase msg) {
+	void recieved(MessageBase msg) {
 		
 		KBucketEntry newEntry = new KBucketEntry(msg.getOrigin(), msg.getID());
 		newEntry.setVersion(msg.getVersion());
@@ -571,6 +570,9 @@ public class Node {
 					+ "min old. Reusing old id = " + oldID.equals(getRootID()));
 
 			return;
+		} catch (Exception e) {
+			// loading the cache can fail for various reasons... just log and bootstrap if we have to
+			DHT.log(e,LogLevel.Error);
 		} finally {
 			if (!runDeferred && runWhenLoaded != null) {
 				runWhenLoaded.run();

@@ -288,7 +288,7 @@ public class RPCServer {
 		stats.addReceivedMessageToCount(msg);
 		msg.setOrigin(source);
 		msg.setServer(this);
-		msg.apply(dh_table);
+		
 		
 		// check if this is a response to an outstanding request
 		RPCCall c = calls.get(new ByteWrapper(msg.getMTID()));
@@ -297,15 +297,19 @@ public class RPCServer {
 			if(c.getRequest().getDestination().equals(msg.getOrigin()))
 			{
 				// remove call first in case of exception
-				calls.remove(new ByteWrapper(msg.getMTID()));
+				calls.remove(new ByteWrapper(msg.getMTID()),c);
+				msg.setAssociatedCall(c);
 				c.response(msg);
 				doQueuedCalls();						
 			} else {
 				DHT.logInfo("Response source ("+msg.getOrigin()+") mismatches request destination ("+c.getRequest().getDestination()+"); ignoring response");
+				return;
 			}
 				
 		}
-
+		
+		// apply after checking for a proper response
+		msg.apply(dh_table);
 	}
 	
 	private void fillPipe(EnqueuedSend es) {

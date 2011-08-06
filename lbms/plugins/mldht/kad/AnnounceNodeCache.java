@@ -22,8 +22,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import lbms.plugins.mldht.kad.messages.MessageBase;
-import lbms.plugins.mldht.kad.tasks.Task;
-import lbms.plugins.mldht.kad.tasks.TaskListener;
 
 public class AnnounceNodeCache {
 	
@@ -81,6 +79,7 @@ public class AnnounceNodeCache {
 				// ignore the removal if we have heard from the node after the request has been issued, it might be a spurious failure
 				if(e.getID().equals(nodeId) && (e.getLastSeen() < c.getSentTime() || c.getSentTime() == -1))
 					it.remove();
+					
 			}
 
 			
@@ -91,7 +90,9 @@ public class AnnounceNodeCache {
 		}
 		
 		public void onResponse(RPCCall c, MessageBase rsp) {
-			add(new KBucketEntry(rsp.getOrigin(), rsp.getID()));
+			KBucketEntry kbe = new KBucketEntry(rsp.getOrigin(), rsp.getID());
+			kbe.signalResponse(c.getRTT());
+			add(kbe);
 		}
 	};
 	
@@ -115,23 +116,40 @@ public class AnnounceNodeCache {
 			
 			CacheBucket targetBucket = targetEntry.getValue();
 			
+			int size = 0;
+			
 			for(Iterator<KBucketEntry> it = targetBucket.entries.iterator();it.hasNext();)
 			{
 				KBucketEntry e = it.next();
+				size++;
 				if(e.getID().equals(entryToInsert.getID()))
 				{ // refresh timestamp, this is checked for removals
-					e.signalResponse();	
+					e.mergeInTimestamps(entryToInsert);	
 					break outer;
 				}
 			}
 			
-			if(targetBucket.entries.size() >= DHTConstants.MAX_CONCURRENT_REQUESTS)
+			if(size >= DHTConstants.MAX_CONCURRENT_REQUESTS)
 			{
 				// cache entry full, see if we this bucket prefix covers any anchor
 				Map.Entry<Key, CacheAnchorPoint> anchorEntry = anchors.ceilingEntry(targetBucket.prefix);
 											
 				if(anchorEntry == null || !targetBucket.prefix.isPrefixOf(anchorEntry.getValue()))
+				{
+					for(Iterator<KBucketEntry> it=targetBucket.entries.iterator();it.hasNext();)
+					{
+						KBucketEntry kbe = it.next();
+						if(kbe.getRTT() < entryToInsert.getRTT())
+						{
+							// this insert might cause minor inconsistencies (duplicate entries, too-large lists)
+							targetBucket.entries.add(entryToInsert);
+							it.remove();
+							break outer;
+						}
+					}
 					break;
+				}
+					
 				
 				synchronized (targetBucket)
 				{

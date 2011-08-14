@@ -16,6 +16,8 @@
  */
 package lbms.plugins.mldht.kad;
 
+import java.net.Inet4Address;
+import java.net.UnknownHostException;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -79,7 +81,6 @@ public class AnnounceNodeCache {
 				// ignore the removal if we have heard from the node after the request has been issued, it might be a spurious failure
 				if(e.getID().equals(nodeId) && (e.getLastSeen() < c.getSentTime() || c.getSentTime() == -1))
 					it.remove();
-					
 			}
 
 			
@@ -99,7 +100,11 @@ public class AnnounceNodeCache {
 	public RPCCallListener getRPCListener() {
 		return cl;
 	}
-	
+
+	/*
+	 * this insert procedure might cause minor inconsistencies (duplicate entries, too-large lists)
+	 * but those are self-healing under merge/split operations
+	 */
 	public void add(KBucketEntry entryToInsert)
 	{
 		Key target = entryToInsert.getID();
@@ -139,9 +144,8 @@ public class AnnounceNodeCache {
 					for(Iterator<KBucketEntry> it=targetBucket.entries.iterator();it.hasNext();)
 					{
 						KBucketEntry kbe = it.next();
-						if(kbe.getRTT() < entryToInsert.getRTT())
+						if(entryToInsert.getRTT() < kbe.getRTT())
 						{
-							// this insert might cause minor inconsistencies (duplicate entries, too-large lists)
 							targetBucket.entries.add(entryToInsert);
 							it.remove();
 							break outer;
@@ -163,16 +167,14 @@ public class AnnounceNodeCache {
 					// remove old entry. this leads to a temporary gap in the cache-keyspace!
 					if(!cache.remove(targetEntry.getKey(),targetBucket))
 						continue;
-					
-					
+
 					cache.put(upperBucket.prefix, upperBucket);
 					cache.put(lowerBucket.prefix, lowerBucket);
-					
-					// refill asap
+
 					for(KBucketEntry e : targetBucket.entries)
 						add(e);
 				}
-				
+
 				continue;
 			}
 			
@@ -216,13 +218,22 @@ public class AnnounceNodeCache {
 			if(now - it.next().expirationTime > 0)
 				it.remove();
 		
-		// 2nd pass, eject old entries
+		Set seenEntries = new HashSet();
+		
+		// 2nd pass, eject old and/or duplicate entries
 		for(Iterator<CacheBucket> it = cache.values().iterator();it.hasNext();)
 		{
 			CacheBucket b = it.next();
+			
 			for(Iterator<KBucketEntry> it2 = b.entries.iterator();it2.hasNext();)
-				if(now - it2.next().getLastSeen() > DHTConstants.ANNOUNCE_CACHE_MAX_AGE)
+			{
+				KBucketEntry kbe = it2.next();
+				if(seenEntries.contains(kbe.getID()) || seenEntries.contains(kbe.getAddress().getAddress()) || now - kbe.getLastSeen() > DHTConstants.ANNOUNCE_CACHE_MAX_AGE)
 					it2.remove();
+				seenEntries.add(kbe.getID());
+				seenEntries.add(kbe.getAddress().getAddress());
+			}
+
 		}
 
 		

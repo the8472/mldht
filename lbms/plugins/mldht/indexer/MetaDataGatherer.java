@@ -127,6 +127,8 @@ public class MetaDataGatherer {
 		for(DHTtype type : DHTtype.values())
 		{
 			int dhtMax = DHT.getDHT(type).getServerManager().getActiveServerCount();
+			if(dhtMax == 0)
+				continue;
 			if(dhtServers == 0)
 				dhtServers = dhtMax;
 			else

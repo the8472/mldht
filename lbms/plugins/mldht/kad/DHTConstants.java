@@ -41,7 +41,7 @@ public class DHTConstants {
 	public static final int		TOKEN_TIMEOUT							= 3 * 60 * 1000;
 	
 	public static final int		RPC_CALL_TIMEOUT_MAX					= 10 * 1000;
-	public static final int		RPC_CALL_TIMEOUT_MIN					= 500; // ms
+	public static final int		RPC_CALL_TIMEOUT_BASELINE_MIN			= 100; // ms
 	public static final int		TASK_TIMEOUT							= 2 * 60 * 1000;
 	
 	public static final int		MAX_DB_ENTRIES_PER_KEY					= 6000;

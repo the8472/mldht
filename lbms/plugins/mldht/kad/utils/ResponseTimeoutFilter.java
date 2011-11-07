@@ -26,12 +26,14 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
 public class ResponseTimeoutFilter {
 	
 	public static final int		NUM_SAMPLES			= 256;
-	public static final int		QUANTILE_INDEX		= (int) (NUM_SAMPLES * 0.9f);
+	public static final int		HIGH_QUANTILE_INDEX		= (int) (NUM_SAMPLES * 0.9f);
+	public static final int		LOW_QUANTILE_INDEX		= (int) (NUM_SAMPLES * 0.1f);
 	
 	
 	final long[] rttRingbuffer = new long[NUM_SAMPLES];
 	volatile int bufferIndex;
-	long targetTimeoutMillis;
+	long timeoutCeiling;
+	long timeoutBaseline;
 	
 	
 	public ResponseTimeoutFilter() {
@@ -39,7 +41,7 @@ public class ResponseTimeoutFilter {
 	}
 	
 	public void reset() {
-		targetTimeoutMillis = DHTConstants.RPC_CALL_TIMEOUT_MAX;
+		timeoutBaseline = timeoutCeiling = DHTConstants.RPC_CALL_TIMEOUT_MAX;
 		Arrays.fill(rttRingbuffer, DHTConstants.RPC_CALL_TIMEOUT_MAX);
 	}
 	
@@ -65,13 +67,15 @@ public class ResponseTimeoutFilter {
 		{
 			long[] sortableBuffer = rttRingbuffer.clone();
 			Arrays.sort(sortableBuffer);
-			targetTimeoutMillis = sortableBuffer[QUANTILE_INDEX];			
+			timeoutCeiling = sortableBuffer[HIGH_QUANTILE_INDEX];
+			timeoutBaseline = sortableBuffer[LOW_QUANTILE_INDEX];
 		}
 	}
 	
 	public long getStallTimeout() {
-		long timeout = Math.max(DHTConstants.RPC_CALL_TIMEOUT_MIN, targetTimeoutMillis);
-		//System.out.println(timeout);
+		// either the 90th percentile or the 10th percentile + 100ms baseline, whichever is HIGHER (to prevent descent to zero and missing more than 10% of the packets in the worst case).
+		// but At most RPC_CALL_TIMEOUT_MAX
+		long timeout = Math.min(Math.max(timeoutBaseline + DHTConstants.RPC_CALL_TIMEOUT_BASELINE_MIN, timeoutCeiling), DHTConstants.RPC_CALL_TIMEOUT_MAX);
 		return  timeout;
 	}
 }

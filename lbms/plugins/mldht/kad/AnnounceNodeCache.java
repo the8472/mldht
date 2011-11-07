@@ -141,6 +141,7 @@ public class AnnounceNodeCache {
 											
 				if(anchorEntry == null || !targetBucket.prefix.isPrefixOf(anchorEntry.getValue()))
 				{
+					// if this bucket is full and cannot be split
 					for(Iterator<KBucketEntry> it=targetBucket.entries.iterator();it.hasNext();)
 					{
 						KBucketEntry kbe = it.next();

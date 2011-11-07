@@ -407,7 +407,7 @@ public class KBucket implements Externalizable {
 			int next = (current+1) % replacementBucket.length();
 			
 			KBucketEntry nextEntry = replacementBucket.get(next);
-			if(nextEntry == null || entry.getLastSeen() - nextEntry.getLastSeen() > 1000)
+			if(nextEntry == null || entry.getLastSeen() - nextEntry.getLastSeen() > 1000 || entry.getRTT() < nextEntry.getRTT())
 			{
 				for(int i=0;i<replacementBucket.length();i++)
 				{

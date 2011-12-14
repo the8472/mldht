@@ -120,7 +120,7 @@ public class Main {
 					try {
 						statusWriter = new PrintWriter("./diagnostics.log");
 						for (DHT dht : dhts.values()) {
-							statusWriter.print(dht.getDiagnostics()); 
+							dht.printDiagnostics(statusWriter); 
 						}
 					} finally {
 						statusWriter.close();						

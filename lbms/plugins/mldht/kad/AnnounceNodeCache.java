@@ -16,6 +16,7 @@
  */
 package lbms.plugins.mldht.kad;
 
+import java.io.PrintWriter;
 import java.net.Inet4Address;
 import java.net.UnknownHostException;
 import java.util.*;
@@ -295,28 +296,26 @@ public class AnnounceNodeCache {
 					
 	}
 	
-	@Override
-	public String toString() {
-		StringBuilder b = new StringBuilder();
-		StringBuilder bucketsBuilder = new StringBuilder();
+	
+	public void printDiagnostics(PrintWriter b) {
 		b.append("anchors ("+anchors.size()+"):\n");
-		for(CacheAnchorPoint a : anchors.values())
-			b.append(a).append('\n');
+		// no need to print out all anchors for now
+		//for(CacheAnchorPoint a : anchors.values())
+		//	b.println(a);
 		
 		int bucketCount = 0;
 		int entryCount = 0;
 		for(CacheBucket buck : cache.values())
 		{
-			int numEntries = buck.entries.size();
-			bucketsBuilder.append(buck.prefix).append(" entries: ").append(numEntries).append('\n');
 			bucketCount++;
-			entryCount+= numEntries;
+			entryCount+= buck.entries.size();
 		}
 		
-		b.append("buckets ("+bucketCount+") / entries ("+entryCount+"):\n");
-		b.append(bucketsBuilder);
+		b.println("buckets ("+bucketCount+") / entries ("+entryCount+"):\n");
 		
-		return b.toString();
+		for(CacheBucket buck : cache.values())
+			b.println(buck.prefix+" entries: "+buck.entries.size());
+
 	}
  	
 	

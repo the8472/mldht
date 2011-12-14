@@ -18,6 +18,8 @@ package lbms.plugins.mldht.kad;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.Writer;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -919,39 +921,34 @@ public class DHT implements DHTBase {
 		statusListeners.remove(listener);
 	}
 	
-	public String getDiagnostics() {
-		StringBuilder b = new StringBuilder();
+	public void printDiagnostics(PrintWriter w) {
+		//StringBuilder b = new StringBuilder();
 
-		b.append("==========================\n");
-		b.append("DHT Diagnostics. Type ").append(type).append('\n');
-		b.append("# of active servers / all servers: ").append(serverManager.getActiveServerCount()).append('/').append(serverManager.getServerCount()).append('\n');
+		w.println("==========================");
+		w.println("DHT Diagnostics. Type "+type);
+		w.println("# of active servers / all servers: "+ serverManager.getActiveServerCount()+ '/'+ serverManager.getServerCount());
 		
 		if(!isRunning())
-			return b.toString();
+			return;
 		
-		b.append("-----------------------\n");
-		b.append("Stats\n");
-		b.append("Reachable node estimate: "+ estimator.getEstimate()+'\n');
-		b.append(stats.toString());
-		b.append("-----------------------\n");
-		b.append("Routing table\n");
-		b.append(node.toString());
-		b.append("-----------------------\n");
-		b.append("RPC Servers\n");
+		w.append("-----------------------\n");
+		w.append("Stats\n");
+		w.append("Reachable node estimate: "+ estimator.getEstimate()+'\n');
+		w.append(stats.toString());
+		w.append("-----------------------\n");
+		w.append("Routing table\n");
+		w.append(node.toString());
+		w.append("-----------------------\n");
+		w.append("RPC Servers\n");
 		for(RPCServer srv : serverManager.getAllServers())
-			b.append(srv.toString());
-		b.append("-----------------------\n");
-		b.append("Lookup Cache\n");
-		b.append(cache.toString());
-		b.append("-----------------------\n");
-		b.append("Tasks\n");
-		b.append(tman.toString());
-		b.append("\n\n\n");
-		
-		
-		
-		
-		return b.toString();
+			w.append(srv.toString());
+		w.append("-----------------------\n");
+		w.append("Lookup Cache\n");
+		w.append(cache.toString());
+		w.append("-----------------------\n");
+		w.append("Tasks\n");
+		w.append(tman.toString());
+		w.append("\n\n\n");
 	}
 
 	/**

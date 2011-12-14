@@ -595,7 +595,7 @@ public class Node {
 	
 	@Override
 	public String toString() {
-		StringBuilder b = new StringBuilder();
+		StringBuilder b = new StringBuilder(10000);
 		b.append("# of entries: ").append(num_entries).append('\n');
 		for(RoutingTableEntry e : routingTable)
 			b.append(e.prefix).append("   entries:").append(e.bucket.getNumEntries()).append(" replacements:").append(e.bucket.getNumReplacements()).append('\n');

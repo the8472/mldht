@@ -17,8 +17,7 @@
 package lbms.plugins.mldht.kad;
 
 import java.io.PrintWriter;
-import java.net.Inet4Address;
-import java.net.UnknownHostException;
+import java.net.InetAddress;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -220,7 +219,8 @@ public class AnnounceNodeCache {
 			if(now - it.next().expirationTime > 0)
 				it.remove();
 		
-		Set seenEntries = new HashSet();
+		Set<Key> seenIDs = new HashSet<Key>();
+		Set<InetAddress> seenIPs = new HashSet<InetAddress>();
 		
 		// 2nd pass, eject old and/or duplicate entries
 		for(Iterator<CacheBucket> it = cache.values().iterator();it.hasNext();)
@@ -230,10 +230,10 @@ public class AnnounceNodeCache {
 			for(Iterator<KBucketEntry> it2 = b.entries.iterator();it2.hasNext();)
 			{
 				KBucketEntry kbe = it2.next();
-				if(seenEntries.contains(kbe.getID()) || seenEntries.contains(kbe.getAddress().getAddress()) || now - kbe.getLastSeen() > DHTConstants.ANNOUNCE_CACHE_MAX_AGE)
+				if(seenIDs.contains(kbe.getID()) || seenIPs.contains(kbe.getAddress().getAddress()) || now - kbe.getLastSeen() > DHTConstants.ANNOUNCE_CACHE_MAX_AGE)
 					it2.remove();
-				seenEntries.add(kbe.getID());
-				seenEntries.add(kbe.getAddress().getAddress());
+				seenIDs.add(kbe.getID());
+				seenIPs.add(kbe.getAddress().getAddress());
 			}
 
 		}

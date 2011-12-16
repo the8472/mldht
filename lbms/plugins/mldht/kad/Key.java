@@ -140,12 +140,11 @@ public class Key implements Radixable<Key>, Serializable {
 
 
 	public boolean equals (Object o) {
-		if(this == o)
-			return true;
 		if(o instanceof Key)
 		{
 			Key otherKey = (Key) o;
-			for(int i=0,n=hash.length;i<n;i++)
+			for(int i=hash.length-1;i>=0;i--)
+			//for(int i=0;i<hash.length;i++)
 				if(hash[i] != otherKey.hash[i])
 					return false;
 			return true;
@@ -463,7 +462,26 @@ public class Key implements Radixable<Key>, Serializable {
 		System.out.println(Math.log(k1.naturalDistance(k2))/Math.log(2));
 		*/
 		
-		System.out.println(Key.MIN_KEY.getDerivedKey(0xfffffff0));
+		//System.out.println(Key.MIN_KEY.getDerivedKey(0xfffffff0));
+		
+		Prefix p = Prefix.WHOLE_KEYSPACE;
+		for(int i=0;i<64;i++)
+			p = p.splitPrefixBranch(false);
+		
+		
+		for(int i=0;i<10;i++)
+		{
+			Set<Key> s = new HashSet<Key>();
+			for(int j=0;j<100000;j++)
+				s.add(p.createRandomKeyFromPrefix());
+			long nanoTime = System.nanoTime();
+			for(int j=0;j<100000;j++)
+				s.contains(p.createRandomKeyFromPrefix());
+			System.out.println((System.nanoTime()-nanoTime)/(1000*1000));
+		}
+		
+		
+		
 		
 
 		

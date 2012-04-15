@@ -33,7 +33,7 @@ public class ScrapeDBEntry implements Serializable {
 
 	@Id
 	@ManyToOne
-	@JoinColumn(name="infoId")
+	@JoinColumn(name="infoId", referencedColumnName="id")
 	TorrentDBEntry torrent;
 	
 	@Id

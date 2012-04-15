@@ -36,13 +36,13 @@ public class TorrentDBEntry implements Comparable<TorrentDBEntry> {
 	public static final int STATE_UPLOAD_FAILED_DUE_TO_SERVER_ERROR = 6;
 	
 	@GeneratedValue(strategy=GenerationType.AUTO)
-	@Id
+	@Index(name="refIdx")
+	@NaturalId // not really a natural ID, but we're using the infohash as primary for clustering
 	@Column(insertable=false)
-	int id;
+	int id; // used for foreign keys since it's more compact
 	
-	@NaturalId
+	@Id // primary key for clustering since we do everything in hash order
 	@Column(length=20,unique=true)
-	@Index(name="infohashIdx")
 	byte[] info_hash;
 
 	

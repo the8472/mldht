@@ -31,7 +31,7 @@ public class Prefix extends Key {
 	 */
 	int depth = -1;
 	
-	static final Prefix WHOLE_KEYSPACE = new Prefix();
+	public static final Prefix WHOLE_KEYSPACE = new Prefix();
 	
 	public Prefix() {
 		super();
@@ -55,11 +55,11 @@ public class Prefix extends Key {
 	
 	public Prefix splitPrefixBranch(boolean highBranch) {
 		Prefix branch = new Prefix(this);
-		int branchDepdth = ++branch.depth;
+		int branchDepth = ++branch.depth;
 		if(highBranch)
-			branch.hash[branchDepdth / 8] |=  0x80 >> (branchDepdth % 8);
+			branch.hash[branchDepth / 8] |=  0x80 >> (branchDepth % 8);
 		else
-			branch.hash[branchDepdth / 8] &= ~(0x80 >> (branchDepdth % 8));
+			branch.hash[branchDepth / 8] &= ~(0x80 >> (branchDepth % 8));
 		
 				
 		return branch;

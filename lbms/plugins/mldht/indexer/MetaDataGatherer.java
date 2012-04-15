@@ -89,10 +89,10 @@ public class MetaDataGatherer {
 	}
 	
 	AtomicInteger activeOutgoingConnections = new AtomicInteger();
-	LinkedBlockingQueue<TorrentDBEntry> fetchDHTlink = new SoftCapacityQueue<TorrentDBEntry>(100);
-	LinkedBlockingQueue<TorrentDBEntry> scrapeDHTlink = new SoftCapacityQueue<TorrentDBEntry>(100);
+	LinkedBlockingQueue<TorrentDBEntry> fetchDHTlink = new SoftCapacityQueue<TorrentDBEntry>(500);
+	LinkedBlockingQueue<TorrentDBEntry> scrapeDHTlink = new SoftCapacityQueue<TorrentDBEntry>(500);
 	LinkedBlockingQueue<FetchTask> toFetchLink = new SoftCapacityQueue<MetaDataGatherer.FetchTask>(100);
-	ConcurrentLinkedQueue<BatchQuery> terminatedTasks = new ConcurrentLinkedQueue<BatchQuery>();
+	LinkedBlockingQueue<BatchQuery> terminatedTasks = new SoftCapacityQueue<BatchQuery>(1000);
 	
 	public MetaDataGatherer(InfoHashGatherer info) {
 		this.info = info;
@@ -103,11 +103,11 @@ public class MetaDataGatherer {
 		
 		ScheduledExecutorService pool = DHTIndexer.indexerScheduler;
 		
-		new AssemblyRunner(new FetchCandidateGenerator(this)).submitToPool(pool, 200);
-		new AssemblyRunner(new ScrapeCandidateGenerator(scrapeDHTlink)).submitToPool(pool, 200);
+		new AssemblyRunner(new FetchCandidateGenerator(this)).submitToPool(pool, 2000);
+		new AssemblyRunner(new ScrapeCandidateGenerator(scrapeDHTlink)).submitToPool(pool, 2000);
 		new AssemblyRunner(new CandidateLookups(this,fetchDHTlink, scrapeDHTlink,toFetchLink,terminatedTasks)).submitToPool(pool, 100);
 		new AssemblyRunner(new TorrentFetcher(this)).submitToPool(pool, 1000);
-		new AssemblyRunner(new OrderedBatchQueryRunner(terminatedTasks)).submitToPool(pool, 1000);
+		new AssemblyRunner(new OrderedBatchQueryRunner(terminatedTasks)).submitToPool(pool, 10000);
 		
 		
 		try
@@ -239,6 +239,9 @@ public class MetaDataGatherer {
 		} finally {
 			raf.close();
 		}
+		
+		// clean things for the GC
+		task.previousConnection = null;
 
 		log("successful metadata connection for "+task.hash);							
 	}
@@ -252,16 +255,16 @@ public class MetaDataGatherer {
 		return new FailedTask(k);
 	}
 	
-	void saveScrapes(Session session, FetchTask task)
+	void saveScrapes(Session session, ScrapeResponseHandler scrapes,  TorrentDBEntry entry)
 	{
-		if(task.scrapes != null && (task.scrapes.getScrapedPeers() > 0 || task.scrapes.getScrapedSeeds() > 0 || task.addresses.size() > 0))
+		if(scrapes != null && (scrapes.getScrapedPeers() > 0 || scrapes.getScrapedSeeds() > 0 || scrapes.getDirectResultCount() > 0))
 		{
 			ScrapeDBEntry scrape = new ScrapeDBEntry();
 			scrape.created = System.currentTimeMillis() / 1000;
-			scrape.leechers = task.scrapes.getScrapedPeers();
-			scrape.seeds = task.scrapes.getScrapedSeeds();
-			scrape.direct = task.scrapes.getDirectResultCount();
-			scrape.torrent = task.entry;
+			scrape.leechers = scrapes.getScrapedPeers();
+			scrape.seeds = scrapes.getScrapedSeeds();
+			scrape.direct = scrapes.getDirectResultCount();
+			scrape.torrent = entry;
 			session.save(scrape);
 		}
 	}
@@ -280,7 +283,7 @@ public class MetaDataGatherer {
 			.setParameter("hash", key.getHash())
 			.executeUpdate();
 			info.incomingCanidates.remove(key);
-			saveScrapes(session, t);
+			saveScrapes(session, t.scrapes, t.entry);
 		}
 
 	}

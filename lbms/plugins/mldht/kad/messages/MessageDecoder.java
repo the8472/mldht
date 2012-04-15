@@ -170,7 +170,7 @@ public class MessageDecoder {
 			
 			List<DBItem> dbl = null;
 			Object rawVals = args.get("values");
-			if(args.get("values") != null)
+			if(rawVals != null)
 			{
 				if(!(rawVals instanceof List))
 					throw new MessageException("values field in get_peers response was a string, expected a list of strings", ErrorCode.ProtocolError);
@@ -187,11 +187,19 @@ public class MessageDecoder {
 					}
 				}
 			}
-
+			
+			byte[] peerFilter = (byte[]) args.get("BFpe");
+			byte[] seedFilter = (byte[]) args.get("BFse");
+			
+			if((peerFilter != null && peerFilter.length != BloomFilterBEP33.m/8) || (seedFilter != null && seedFilter.length != BloomFilterBEP33.m/8))
+				throw new MessageException("invalid BEP33 filter length", ErrorCode.ProtocolError);
+			
 			if (dbl != null || nodes != null || nodes6 != null)
 			{
 				GetPeersResponse resp = new GetPeersResponse(mtid, nodes, nodes6, token);
 				resp.setPeerItems(dbl);
+				resp.setScrapePeers(peerFilter);
+				resp.setScrapeSeeds(seedFilter);
 				msg = resp; 
 				break;
 			}

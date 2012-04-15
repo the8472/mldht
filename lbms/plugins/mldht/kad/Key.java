@@ -143,8 +143,8 @@ public class Key implements Radixable<Key>, Serializable {
 		if(o instanceof Key)
 		{
 			Key otherKey = (Key) o;
+			// descending comparison since prefix bytes might be shared in sorted data structures
 			for(int i=hash.length-1;i>=0;i--)
-			//for(int i=0;i<hash.length;i++)
 				if(hash[i] != otherKey.hash[i])
 					return false;
 			return true;

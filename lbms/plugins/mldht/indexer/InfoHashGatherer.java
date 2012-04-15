@@ -39,14 +39,14 @@ import lbms.plugins.mldht.kad.DHT.LogLevel;
 
 public class InfoHashGatherer implements DHTIndexingListener {
 
-	private static final int MAX_CHARGE = 300;
-	private static final int MAX_BUFFER_SIZE = 80000;
+	private static final int MAX_BATCH_SIZE = 300;
+	private static final int MAX_BUFFER_SIZE = 1000000;
 	private static final int MAX_RECENTLY_SEEN = 1000000;
 
 	boolean running = true;
 	ConcurrentLinkedQueue<Key> handoffQueue = new ConcurrentLinkedQueue<Key>();
 	
-	ARCwithBlue<Key, Key> recentlyProcessed = new ARCwithBlue<Key, Key>(MAX_CHARGE,MAX_RECENTLY_SEEN);
+	ARCwithBlue<Key, Key> recentlyProcessed = new ARCwithBlue<Key, Key>(MAX_BATCH_SIZE,MAX_RECENTLY_SEEN);
 	boolean keysOverflow;
 	boolean keysUnderflow;
 	
@@ -107,7 +107,7 @@ public class InfoHashGatherer implements DHTIndexingListener {
 		if(inc >= meta.getNumVirtualNodes() * MetaDataGatherer.MAX_CONCURRENT_METADATA_CONNECTIONS_PER_NODE)
 		{
 			incomingLimiter.update(BlueState.QUEUE_FULL);
-			toRemove = MAX_CHARGE;
+			toRemove = MAX_BATCH_SIZE;
 		}
 				
 		toRemove = Math.max(toRemove,toRemove+incomingCanidates.size()-MAX_RECENTLY_SEEN);
@@ -142,7 +142,7 @@ public class InfoHashGatherer implements DHTIndexingListener {
 					continue;
 				}
 				
-				for(Iterator<Key> it = tailSet.iterator();it.hasNext() && keysToDump.size() < MAX_CHARGE;)
+				for(Iterator<Key> it = tailSet.iterator();it.hasNext() && keysToDump.size() < MAX_BATCH_SIZE;)
 				{
 					keysToDump.add(it.next());
 					it.remove();
@@ -253,9 +253,8 @@ public class InfoHashGatherer implements DHTIndexingListener {
 			}
 		};
 		
-		// run this thing twice for parallelism
-		DHTIndexer.indexerScheduler.scheduleWithFixedDelay(hashesToDB, 1000, 500, TimeUnit.MILLISECONDS);
-		DHTIndexer.indexerScheduler.scheduleWithFixedDelay(hashesToDB, 1000, 500, TimeUnit.MILLISECONDS);
+		// only run this task every 10 seconds. but then it'll loop to batch-insert everything down to the low water mark
+		DHTIndexer.indexerScheduler.scheduleWithFixedDelay(hashesToDB, 1000, 10, TimeUnit.SECONDS);
 		
 
 		DHTIndexer.indexerScheduler.scheduleWithFixedDelay(adaptSize, 1, 1, TimeUnit.SECONDS);

@@ -28,7 +28,7 @@ import static java.lang.Math.*;
 
 public class BloomFilterBEP33 implements Comparable<BloomFilterBEP33>, Cloneable {
 
-	private final static int m = 256 * 8;
+	public final static int m = 256 * 8;
 	private final static int k = 2; 
 
 	

@@ -24,13 +24,11 @@ public class CandidateLookups implements AssemblyTask {
 	BlockingQueue<TorrentDBEntry> fetchCandidates;
 	BlockingQueue<TorrentDBEntry> scrapeCandidates;
 	BlockingQueue<FetchTask> fetchTasks;
-	ConcurrentLinkedQueue<BatchQuery> queries;
-	
-	Queue<FetchTask> overflow = new ConcurrentLinkedQueue<FetchTask>();
+	BlockingQueue<BatchQuery> queries;
 	
 	MetaDataGatherer container;
 	
-	public CandidateLookups(MetaDataGatherer container, BlockingQueue<TorrentDBEntry> toFetch, BlockingQueue<TorrentDBEntry> toScrape, BlockingQueue<FetchTask> fetch, ConcurrentLinkedQueue<BatchQuery> queries) {
+	public CandidateLookups(MetaDataGatherer container, BlockingQueue<TorrentDBEntry> toFetch, BlockingQueue<TorrentDBEntry> toScrape, BlockingQueue<FetchTask> fetch, BlockingQueue<BatchQuery> queries) {
 		this.container = container;
 		this.fetchCandidates = toFetch;
 		this.scrapeCandidates = toScrape;
@@ -39,7 +37,7 @@ public class CandidateLookups implements AssemblyTask {
 	}
 	
 	public boolean performTask() {
-		if(activeLookups.get() >= container.getNumVirtualNodes() * MetaDataGatherer.LOOKUPS_PER_VIRTUAL_NODE)
+		if(activeLookups.get() >= container.getNumVirtualNodes() * MetaDataGatherer.LOOKUPS_PER_VIRTUAL_NODE || queries.remainingCapacity() == 0)
 			return false;
 
 		TorrentDBEntry entry = null;
@@ -104,7 +102,7 @@ public class CandidateLookups implements AssemblyTask {
 								.setParameter("time", System.currentTimeMillis()/1000)
 								.setParameter("hash", task.entry.info_hash)
 								.executeUpdate();
-								container.saveScrapes(session, task);
+								container.saveScrapes(session, task.scrapes, task.entry);
 							}
 						});
 					}

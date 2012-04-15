@@ -1,9 +1,11 @@
 package lbms.plugins.mldht.utils;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 
 import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.Prefix;
 
 public class RadixSort {
 	
@@ -17,31 +19,60 @@ public class RadixSort {
 		final int bins = 256;
 			
 		int[] count = new int[bins];
+		
+		int lowestBin = bins;
+		int highestBin = 0;
+		boolean ascendingRun = true;
+		int prevRadix = -1;
+		
 		for(int i=startIdx;i<endIdx;i++)
-			count[toSort[i].getRadix(depth)]++;
+		{
+			int radix = toSort[i].getRadix(depth);
+			if(lowestBin > radix)
+				lowestBin = radix;
+			if(highestBin < radix)
+				highestBin = radix;
+			if(prevRadix > radix)
+				ascendingRun = false;
+			prevRadix = radix;
+			count[radix]++;
+		}
+		
+		if(ascendingRun)
+		{
+			// shortcut
+			int bucketStart = startIdx;
+			for(int i=lowestBin;i<=highestBin;i++)
+			{
+				int bucketLength = count[i];
+				int bucketEnd = bucketStart + bucketLength; 
+				doRecursion(toSort, bucketStart, bucketEnd, depth);
+				bucketStart = bucketEnd;
+			}
+			return;
+		}
 		
 		int[] startIndices = new int[bins];
 		// we'll overwrite this one on the fly
 		int[] endIndices = count;
 		
-		int startBin = 255;
-		startIndices[0] = startIdx;
-		for(int i=1;i<bins;i++)
+		startIndices[lowestBin] = startIdx;
+		for(int i=lowestBin+1;i<=highestBin;i++)
 		{
 			
-			if(startBin == 255 && count[i-1] != 0)
-				startBin = i-1;
 			startIndices[i] =  count[i-1] + startIndices[i-1];
 			endIndices[i-1] = startIndices[i-1];
 		}
+
 		
-		endIndices[bins-1] = startIndices[bins-1];
-		int currentBin = startBin;
+		endIndices[highestBin] = startIndices[highestBin];
+		int currentBin = lowestBin;
 		
 		for(int currentPointer=startIdx;currentPointer<endIdx;)
 		{
 			Radixable current = toSort[currentPointer];
 			int radix, target = -1;
+			// do a swapping dance through the array until we find something that fits into the current bin
 			while((radix = current.getRadix(depth)) != currentBin)
 			{
 				target = endIndices[radix];
@@ -68,9 +99,9 @@ public class RadixSort {
 				needsUpdate = true;
 				
 				// recurse inside the loop to exploit cache locality in mostly sorted arrays
-				doRecursion(toSort,startIndices[bin],endIndices[bin],depth);
+				//doRecursion(toSort,startIndices[bin],endIndices[bin],depth);
 				// fudge pointers so we don't recurse into this bucket again
-				startIndices[bin] = endIndices[bin];
+				//startIndices[bin] = endIndices[bin];
 			}	
 			
 			// skip over anything we have already completed in the swapping phase
@@ -79,7 +110,7 @@ public class RadixSort {
 		
 		}
 		
-		for(int recursionBin = startBin;recursionBin<bins;recursionBin++)
+		for(int recursionBin = lowestBin;recursionBin<=highestBin;recursionBin++)
 			doRecursion(toSort,startIndices[recursionBin ],endIndices[recursionBin ],depth);
 		
 	}
@@ -96,14 +127,19 @@ public class RadixSort {
 	}
 	
 	public static void main(String[] args) {
+		
+		Prefix p = Prefix.WHOLE_KEYSPACE;
+		for(int i=0;i<64;i++)
+			p = p.splitPrefixBranch(false);
+		
 		Key[] values = new Key[5000000];
 		for(int i=0;i<values.length;i++)
-			values[i] = Key.createRandomKey();
+			values[i] = p.createRandomKeyFromPrefix();
 		
 		Comparator<Key> k = new Key.DistanceOrder(Key.createRandomKey());
 		
 		//Arrays.sort(values);
-		//Collections.shuffle(Arrays.asList(values));
+		Collections.shuffle(Arrays.asList(values));
 		
 		for(int i=0;i<200;i++)
 		{

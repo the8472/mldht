@@ -92,7 +92,7 @@ public class Main {
 				logWriter.println(message);
 			}
 
-			public void log (Exception e) {
+			public void log (Throwable e) {
 				e.printStackTrace(exWriter);
 
 			}

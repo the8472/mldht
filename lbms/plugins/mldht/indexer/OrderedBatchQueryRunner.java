@@ -1,6 +1,7 @@
 package lbms.plugins.mldht.indexer;
 
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.hibernate.HibernateException;
@@ -17,10 +18,10 @@ public class OrderedBatchQueryRunner implements AssemblyTask {
 	
 	public static final int MAX_QUERY_CHARGE = 100;
 	
-	ConcurrentLinkedQueue<BatchQuery> queries;
+	BlockingQueue<BatchQuery> queries;
 	
 	
-	public OrderedBatchQueryRunner(ConcurrentLinkedQueue<BatchQuery> queries) {
+	public OrderedBatchQueryRunner(BlockingQueue<BatchQuery> queries) {
 		this.queries = queries;
 		
 	}

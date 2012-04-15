@@ -38,7 +38,7 @@ public class AddressUtils {
 		{
 			for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces()))
 			{
-				if(!iface.isUp())
+				if(!iface.isUp() || iface.isLoopback())
 					continue;
 				for (InterfaceAddress ifaceAddr : iface.getInterfaceAddresses())
 				{

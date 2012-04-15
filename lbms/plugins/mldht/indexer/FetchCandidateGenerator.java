@@ -59,7 +59,8 @@ public class FetchCandidateGenerator implements AssemblyTask {
 			List<TorrentDBEntry> results = Collections.EMPTY_LIST;
 
 			// get canidates for combined scrape+retrieve
-			String query = "from ihdata e where useindex(e, infohashIdx) is true and :startHash < e.info_hash and e.info_hash < :endHash and e.status = :status and e.hitCount > 0 and e.lastLookupTime < :time order by e.info_hash";
+			// useindex(e, infohashIdx) is true and 
+			String query = "from ihdata e where :startHash < e.info_hash and e.info_hash < :endHash and e.status = :status and e.hitCount > 0 and e.lastLookupTime < :time order by e.info_hash";
 
 			results = session.createQuery(query)
 			.setBinary("startHash", startKey.getHash())

@@ -73,7 +73,13 @@ public class DHT implements DHTBase {
 		scheduler = new ScheduledThreadPoolExecutor(threads, new ThreadFactory() {
 			public Thread newThread (Runnable r) {
 				Thread t = new Thread(executorGroup, r, "mlDHT Scheduler");
-
+				
+				t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+					@Override
+					public void uncaughtException(Thread t, Throwable e) {
+						DHT.log(e, LogLevel.Error);
+					}
+				});
 				t.setDaemon(true);
 				return t;
 			}
@@ -93,7 +99,7 @@ public class DHT implements DHTBase {
 			 * 
 			 * @see lbms.plugins.mldht.kad.DHTLogger#log(java.lang.Exception)
 			 */
-			public void log (Exception e) {
+			public void log (Throwable e) {
 				e.printStackTrace();
 			}
 		};
@@ -229,7 +235,17 @@ public class DHT implements DHTBase {
 
 		node.recieved(r);
 		
-		List<DBItem> dbl = db.sample(r.getInfoHash(), 50,type, r.isNoSeeds());
+		BloomFilterBEP33 peerFilter = r.isScrape() ? db.createScrapeFilter(r.getInfoHash(), false) : null;
+		BloomFilterBEP33 seedFilter = r.isScrape() ? db.createScrapeFilter(r.getInfoHash(), true) : null;
+		
+		boolean v6 = Inet6Address.class.isAssignableFrom(type.PREFERRED_ADDRESS_TYPE);
+		
+		int valuesTargetLength = 50;
+		// scrape filter gobble up a lot of space, restrict list sizes
+		if(peerFilter != null)
+			valuesTargetLength =  v6 ? 15 : 30;
+		
+		List<DBItem> dbl = db.sample(r.getInfoHash(), valuesTargetLength,type, r.isNoSeeds());
 
 		for(DHTIndexingListener listener : indexingListeners)
 		{
@@ -250,13 +266,20 @@ public class DHT implements DHTBase {
 		KClosestNodesSearch kns4 = null; 
 		KClosestNodesSearch kns6 = null;
 		
-		// add our local address of the respective DHT for cross-seeding, but not for local requests
 		if(r.doesWant4()) {
 			kns4 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV4_DHT));
+			// add our local address of the respective DHT for cross-seeding, but not for local requests
 			kns4.fill(DHTtype.IPV4_DHT != type);
 		}
+		
 		if(r.doesWant6()) {
-			kns6 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV6_DHT));
+			
+			int targetNodesCount = DHTConstants.MAX_ENTRIES_PER_BUCKET;
+			// can't embed many nodes in v6 responses with filters
+			if(v6 && peerFilter != null)
+				targetNodesCount = Math.min(5, targetNodesCount);
+			
+			kns6 = new KClosestNodesSearch(r.getTarget(), targetNodesCount, getDHT(DHTtype.IPV6_DHT));
 			kns6.fill(DHTtype.IPV6_DHT != type);
 		}
 
@@ -266,11 +289,8 @@ public class DHT implements DHTBase {
 			kns6 != null ? kns6.pack() : null,
 			db.insertForKeyAllowed(r.getInfoHash()) ? token.arr : null);
 		
-		if(r.isScrape())
-		{
-			resp.setScrapePeers(db.createScrapeFilter(r.getInfoHash(), false));
-			resp.setScrapeSeeds(db.createScrapeFilter(r.getInfoHash(), true));			
-		}
+		resp.setScrapePeers(peerFilter);
+		resp.setScrapeSeeds(seedFilter);			
 
 		
 		resp.setPeerItems(dbl);
@@ -924,6 +944,20 @@ public class DHT implements DHTBase {
 	public void printDiagnostics(PrintWriter w) {
 		//StringBuilder b = new StringBuilder();
 
+		for(ScheduledFuture<?> f : scheduledActions)
+			if(f.isDone())
+			{ // check for exceptions
+				try
+				{
+					f.get();
+				} catch (ExecutionException | InterruptedException e)
+				{
+					e.printStackTrace(w);
+				}
+
+			}
+				
+		
 		w.println("==========================");
 		w.println("DHT Diagnostics. Type "+type);
 		w.println("# of active servers / all servers: "+ serverManager.getActiveServerCount()+ '/'+ serverManager.getServerCount());
@@ -944,7 +978,7 @@ public class DHT implements DHTBase {
 			w.append(srv.toString());
 		w.append("-----------------------\n");
 		w.append("Lookup Cache\n");
-		w.append(cache.toString());
+		cache.printDiagnostics(w);
 		w.append("-----------------------\n");
 		w.append("Tasks\n");
 		w.append(tman.toString());
@@ -992,7 +1026,7 @@ public class DHT implements DHTBase {
 		}
 	}
 
-	public static void log (Exception e, LogLevel level) {
+	public static void log (Throwable e, LogLevel level) {
 		if (level.compareTo(logLevel) < 1) { // <=
 			logger.log(e);
 		}

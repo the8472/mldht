@@ -555,8 +555,9 @@ public class RPCServer {
 		public void doStateChecks(long now) throws IOException {
 			if(!channel.isOpen() || channel.socket().isClosed() || !manager.isAddressValid(addr))
 			{
-				channel.close();
+				pipeline.clear();
 				connectionManager.deRegister(this);
+				channel.close();
 				stop();
 				//sel = null;
 				return;

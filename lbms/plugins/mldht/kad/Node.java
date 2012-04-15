@@ -17,10 +17,10 @@
 package lbms.plugins.mldht.kad;
 
 import java.io.*;
-import java.net.Inet6Address;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 import org.gudy.azureus2.core3.util.LightHashMap;
 
@@ -492,7 +492,7 @@ public class Node {
 			
 			if(dataStore == null)
 			{
-				dataStore = new HashMap<String, Serializable>();
+				dataStore = new ConcurrentSkipListMap<>();
 				dataStore.put("commonKey", Key.createRandomKey());
 			}
 		}

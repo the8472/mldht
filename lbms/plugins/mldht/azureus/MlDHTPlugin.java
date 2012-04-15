@@ -178,7 +178,7 @@ public class MlDHTPlugin implements UnloadablePlugin, PluginListener {
 			 * 
 			 * @see lbms.plugins.mldht.kad.DHTLogger#log(java.lang.Exception)
 			 */
-			public void log (Exception e) {
+			public void log (Throwable e) {
 				logChannel.log(e);
 			}
 		});

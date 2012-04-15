@@ -16,8 +16,8 @@
  */
 package lbms.plugins.mldht.indexer;
 
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
+import java.math.BigInteger;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
@@ -93,7 +93,7 @@ public class PullMetaDataConnection implements Selectable {
 	boolean						incoming;
 	
 	Deque<ByteBuffer>			outputBuffers			= new LinkedList<ByteBuffer>();
-	ByteBuffer					inputBuffer				= ByteBuffer.allocate(32 * 1024);
+	ByteBuffer					inputBuffer;
 
 	int							LTEP_REMOTE_META_ID;
 	ByteBuffer					metaData;
@@ -114,7 +114,19 @@ public class PullMetaDataConnection implements Selectable {
 	
 	InetSocketAddress			destination;
 	String 						remoteClient;
- 
+	
+	static PrintWriter idWriter;
+	
+	static {
+		try
+		{
+			idWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream("./peer_ids.log",true))),true);
+		} catch (FileNotFoundException e)
+		{
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
 	
 	
 	void setState(int mask, boolean onOff) {
@@ -142,8 +154,6 @@ public class PullMetaDataConnection implements Selectable {
 		
 		destination = (InetSocketAddress) chan.socket().getRemoteSocketAddress();
 		setState(STATE_BASIC_HANDSHAKING,true);
-		// await handshake
-		inputBuffer.limit(20+8+20+20);
 	}
 	
 	
@@ -168,8 +178,6 @@ public class PullMetaDataConnection implements Selectable {
 		
 		setState(STATE_CONNECTING, true);
 		setState(STATE_BASIC_HANDSHAKING, true);
-		// await BT handshake
-		inputBuffer.limit(20+8+20+20);
 		sendBTHandshake();
 	}
 	
@@ -273,6 +281,8 @@ public class PullMetaDataConnection implements Selectable {
 
 			// check peer ID
 			inputBuffer.get(temp);
+			// log
+			idWriter.append(System.currentTimeMillis()+ " " + new Key(temp).toString(false) + " " + destination.getAddress().getHostAddress()+ " \n");
 			if(temp[0] == '-' && temp[1] == 'S' && temp[2] == 'D' && temp[3] == '0' && temp[4] == '1' && temp[5] == '0' &&  temp[6] == '0' && temp[7] == '-')
 				connectionMatches = false; // xunlei claims ltep support but doesn't actually do it
 
@@ -452,6 +462,13 @@ public class PullMetaDataConnection implements Selectable {
 	
 	public void canReadEvent() throws IOException {
 		int bytesRead = 0;
+		
+		if(inputBuffer == null)
+		{
+			inputBuffer = ByteBuffer.allocate(32 * 1024);
+			// await BT handshake on first allocation since this has to be the first read
+			inputBuffer.limit(20+8+20+20);
+		}
 		
 		do {
 			try

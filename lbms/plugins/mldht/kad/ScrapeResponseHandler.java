@@ -17,13 +17,11 @@
 package lbms.plugins.mldht.kad;
 
 import java.net.InetAddress;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 import lbms.plugins.mldht.kad.messages.GetPeersResponse;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
+import lbms.plugins.mldht.utils.Blackhole;
 
 public class ScrapeResponseHandler {
 	private List<GetPeersResponse>			scrapeResponses = new ArrayList<GetPeersResponse>(20);
@@ -98,6 +96,9 @@ public class ScrapeResponseHandler {
 		scrapePeers = BloomFilterBEP33.unionSize(peerFilters);
 		
 		direct = directPeers.size();
+		
+		// we extracted the results, no need to retain all the networking stuff, replace it with a dummy
+		scrapeResponses = (List<GetPeersResponse>) Blackhole.SINGLETON;
 	}
 	
 	

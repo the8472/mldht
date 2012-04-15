@@ -108,9 +108,12 @@ public class GetPeersResponse extends MessageBase {
 		return null;
 	}
 
-
+	public void setScrapeSeeds(byte[] scrapeSeeds) {
+		this.scrapeSeeds = scrapeSeeds;		
+	}
+	
 	public void setScrapeSeeds(BloomFilterBEP33 scrapeSeeds) {
-		this.scrapeSeeds = scrapePeers != null ? scrapeSeeds.serialize() : null;
+		this.scrapeSeeds = scrapeSeeds != null ? scrapeSeeds.serialize() : null;
 	}
 
 
@@ -120,6 +123,9 @@ public class GetPeersResponse extends MessageBase {
 		return null;
 	}
 
+	public void setScrapePeers(byte[] scrapePeers) {
+		this.scrapePeers = scrapePeers;
+	}
 
 	public void setScrapePeers(BloomFilterBEP33 scrapePeers) {
 		this.scrapePeers = scrapePeers != null ? scrapePeers.serialize() : null;
@@ -131,6 +137,12 @@ public class GetPeersResponse extends MessageBase {
 
 	
 	public String toString() {
-		return super.toString() + "contains: "+ (nodes != null ? (nodes.length/DHTtype.IPV4_DHT.NODES_ENTRY_LENGTH)+" nodes" : "") + (nodes6 != null ? (nodes6.length/DHTtype.IPV6_DHT.NODES_ENTRY_LENGTH)+" nodes6" : "") + (items != null ? (items.size())+" values" : "") ;
+		return super.toString() +
+			(nodes != null ? (nodes.length/DHTtype.IPV4_DHT.NODES_ENTRY_LENGTH)+" nodes | " : "") +
+			(nodes6 != null ? (nodes6.length/DHTtype.IPV6_DHT.NODES_ENTRY_LENGTH)+" nodes6 | " : "") +
+			(items != null ? (items.size())+" values | " : "") +
+			(scrapePeers != null ? "peer bloom filter | " : "") +
+			(scrapeSeeds != null ? "seed bloom filter | " :  "" ) +
+			(token != null ? "token "+token.length+" | " : "");
 	}
 }

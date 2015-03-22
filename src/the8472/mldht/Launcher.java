@@ -29,6 +29,7 @@ import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.DHTLogger;
 import the8472.utils.ConfigReader;
 import the8472.utils.FilesystemNotifications;
+import the8472.utils.XMLUtils;
 
 public class Launcher {
 	
@@ -68,7 +69,7 @@ public class Launcher {
 		
 		@Override
 		public boolean noRouterBootstrap() {
-			return configReader.getBoolean("//core/useBootstrapServers").orElse(true);
+			return !configReader.getBoolean("//core/useBootstrapServers").orElse(true);
 		}
 
 		@Override
@@ -118,7 +119,7 @@ public class Launcher {
 		final PrintWriter logWriter = new PrintWriter(Files.newBufferedWriter(log, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE), true);
 		final PrintWriter exWriter = new PrintWriter(Files.newBufferedWriter(exLog, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE), true);
 		
-		configReader.getAll("//component/className").forEach(className -> {
+		configReader.getAll(XMLUtils.buildXPath("//component/className",null)).forEach(className -> {
 			try {
 				Class<Component> clazz = (Class<Component>) Class.forName(className);
 				components.add(clazz.newInstance());
@@ -228,7 +229,7 @@ public class Launcher {
 	}
 	
 	private void setLogLevel() {
-		String rawLevel = configReader.get("//core/logLevel").orElse("Info");
+		String rawLevel = configReader.get(XMLUtils.buildXPath("//core/logLevel")).orElse("Info");
 		LogLevel level = LogLevel.valueOf(rawLevel);
 		DHT.setLogLevel(level);
 	}

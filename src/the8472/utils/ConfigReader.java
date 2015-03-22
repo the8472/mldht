@@ -21,11 +21,9 @@ import javax.xml.transform.stream.StreamSource;
 import javax.xml.validation.Schema;
 import javax.xml.validation.SchemaFactory;
 import javax.xml.validation.Validator;
-import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpression;
 import javax.xml.xpath.XPathExpressionException;
-import javax.xml.xpath.XPathFactory;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
@@ -88,8 +86,8 @@ public class ConfigReader {
 		notifications = notifier;
 		notifier.addRegistration(configFile, (path, kind) -> {
 			if(path.equals(configFile)) {
-				current = null;
-				callbacks.forEach(c -> c.run());
+				current = readFile(configFile);
+				callbacks.forEach(Runnable::run);
 			}
 		});
 		
@@ -119,13 +117,9 @@ public class ConfigReader {
 		
 	}
 	
-	public Optional<String> get(String path) {
-		
-		XPathFactory xPathfactory = XPathFactory.newInstance();
-		XPath xpath = xPathfactory.newXPath();
+	public Optional<String> get(XPathExpression expr) {
 		Node result;
 		try {
-			XPathExpression expr = xpath.compile(path);
 			result = (Node) expr.evaluate(current, XPathConstants.NODE);
 		} catch (XPathExpressionException e) {
 			throw new RuntimeException(e);
@@ -138,21 +132,19 @@ public class ConfigReader {
 	}
 	
 	public Optional<Boolean> getBoolean(String path) {
-		return get(path).map(str -> str.equals("true") || str.equals("1"));
+		return get(XMLUtils.buildXPath(path)).map(str -> str.equals("true") || str.equals("1"));
 	}
 	
 	public Optional<Long> getLong(String path) {
-		return get(path).map(Long::valueOf);
+		return get(XMLUtils.buildXPath(path)).map(Long::valueOf);
 	}
 	
-	public Stream<String> getAll(String path) {
+	public Stream<String> getAll(XPathExpression path) {
 		
-		XPathFactory xPathfactory = XPathFactory.newInstance();
-		XPath xpath = xPathfactory.newXPath();
+
 		NodeList result;
 		try {
-			XPathExpression expr = xpath.compile(path);
-			result = (NodeList) expr.evaluate(current, XPathConstants.NODESET);
+			result = (NodeList) path.evaluate(current, XPathConstants.NODESET);
 		} catch (XPathExpressionException e) {
 			throw new RuntimeException(e);
 		}

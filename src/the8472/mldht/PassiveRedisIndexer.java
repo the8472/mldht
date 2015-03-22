@@ -1,6 +1,7 @@
 package the8472.mldht;
 
 import static the8472.bencode.Utils.str2buf;
+import static the8472.utils.Functional.tap;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -8,6 +9,8 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.TransferQueue;
@@ -19,6 +22,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import the8472.utils.ConfigReader;
+import the8472.utils.XMLUtils;
 
 public class PassiveRedisIndexer implements Component {
 	
@@ -107,14 +111,17 @@ public class PassiveRedisIndexer implements Component {
 		}
 	}
 	
+	
+	static private final Map<String,String> namespaces = tap(new HashMap<>(), m -> m.put("xsi","http://www.w3.org/2001/XMLSchema-instance"));
+	
 	private InetAddress getAddress() {
-		return config.get("//components/component[@xsi:type='redisIndexerType']/address").flatMap((str) -> {
+		return config.get(XMLUtils.buildXPath("//components/component[@xsi:type='mldht:redisIndexerType']/address",namespaces)).flatMap((str) -> {
 			try {
 				return Optional.of(InetAddress.getByName(str));
 			} catch(Exception e ) {
 				throw new RuntimeException(e);
 			}
-		}).orElseGet(InetAddress::getLoopbackAddress);
+		}).get();
 	}
 	
 	private void write() {

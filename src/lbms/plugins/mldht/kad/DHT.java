@@ -995,6 +995,8 @@ public class DHT implements DHTBase {
 	}
 	
 	public void printDiagnostics(PrintWriter w) {
+		if(!running)
+			return;
 		//StringBuilder b = new StringBuilder();
 
 		for(ScheduledFuture<?> f : scheduledActions)

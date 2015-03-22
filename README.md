@@ -15,7 +15,7 @@ Originally developed as [DHT plugin](http://azsmrc.sourceforge.net/index.php?act
 - high-performance implementation without compromising correctness, i.e. the node will be a good citizen
  - 20k packets per second on a single Xeon core
 - low latency lookups by using adaptive timeouts and a secondary routing table/cache tuned for RTT instead of stability
-- export of passively observed <infohash, ip> tuples to redis to survey torrent activity
+- export of passively observed \<infohash, ip\> tuples to redis to survey torrent activity
 - fetch-only [metadata exchange (BEP9)](http://bittorrent.org/beps/bep_0009.html), code is there but currently unmaintained
 
 ## Dependencies
@@ -47,7 +47,7 @@ this will create various files
 add the following lines to the `<components>` section of the config.xml:
 
     <component xsi:type="mldht:redisIndexerType">
-      <className>the8472.mldht.PassiveRedixIndexer</className>
+      <className>the8472.mldht.PassiveRedisIndexer</className>
       <address>127.0.0.1</address>
     </component>
 

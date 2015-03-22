@@ -20,7 +20,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import the8472.utils.ConfigReader;
 
-public class PassiveRedixIndexer implements Component {
+public class PassiveRedisIndexer implements Component {
 	
 	private TransferQueue<ByteBuffer> writeQueue = new LinkedTransferQueue<>();
 	

@@ -45,7 +45,7 @@ public class Prefix extends Key {
 	
 	/**
 	 *
-	 * @param Key to be checked
+	 * @param KeyTest to be checked
 	 * @return true if this Prefix covers the provided key
 	 */
 	public boolean isPrefixOf(Key k)

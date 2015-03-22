@@ -1,25 +1,29 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad;
 
+import static java.lang.Math.min;
+
 import java.io.Serializable;
 import java.math.BigInteger;
-import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Set;
 
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import lbms.plugins.mldht.utils.Radixable;
@@ -53,7 +57,7 @@ public class Key implements Radixable<Key>, Serializable {
 	static {
 		MIN_KEY = new Key();
 		MAX_KEY = new Key();
-		Arrays.fill(MAX_KEY.hash, (byte)0xFF); 
+		Arrays.fill(MAX_KEY.hash, (byte)0xFF);
 	}
 
 	private static final long	serialVersionUID	= -1180893806923345652L;
@@ -106,10 +110,10 @@ public class Key implements Radixable<Key>, Serializable {
 	 * compares Keys according to their natural distance
 	 */
 	public int compareTo (Key o) {
-		for (int i = 0,n=hash.length; i < n; i++) {
-			//needs & 0xFF since bytes are signed in Java
-			//so we must convert to int to compare it unsigned
-			int t = (hash[i] & 0xFF) - (o.hash[i] & 0xFF);
+		for (int i = 0,n=min(hash.length,o.hash.length); i < n; i+=4) {
+			int a = Byte.toUnsignedInt(hash[i]) << 24 | Byte.toUnsignedInt(hash[i+1]) << 16 | Byte.toUnsignedInt(hash[i+2]) << 8 | Byte.toUnsignedInt(hash[i+3]);
+			int b = Byte.toUnsignedInt(o.hash[i]) << 24 | Byte.toUnsignedInt(o.hash[i+1]) << 16 | Byte.toUnsignedInt(o.hash[i+2]) << 8 | Byte.toUnsignedInt(o.hash[i+3]);
+			int t = Integer.compareUnsigned(a, b);
 			if(t != 0)
 				return t;
 		}
@@ -129,7 +133,7 @@ public class Key implements Radixable<Key>, Serializable {
 			//needs & 0xFF since bytes are signed in Java
 			//so we must convert to int to compare it unsigned
 			int byte1 = (k1.hash[i] ^ hash[i]) & 0xFF;
-			int byte2 = (k2.hash[i] ^ hash[i]) & 0xFF; 
+			int byte2 = (k2.hash[i] ^ hash[i]) & 0xFF;
 			
 			if (byte1 < byte2)
 				return -1;
@@ -139,6 +143,7 @@ public class Key implements Radixable<Key>, Serializable {
 	}
 
 
+	@Override
 	public boolean equals (Object o) {
 		if(o instanceof Key)
 		{
@@ -203,7 +208,7 @@ public class Key implements Radixable<Key>, Serializable {
 			nibble = hash[i] & 0x0F;
 			b.append((char)(nibble < 0x0A ? '0'+nibble : 'A'+nibble-10 ));
 		}
-		return b.toString();		
+		return b.toString();
 	}
 
 	/**
@@ -256,10 +261,10 @@ public class Key implements Radixable<Key>, Serializable {
 	
 	/**
 	 * calculates log2(this - otherKey % 2^161).<br />
-	 * To get the natural distance for ascending key order this should be the successive element of otherKey 
+	 * To get the natural distance for ascending key order this should be the successive element of otherKey
 	 */
 	public double naturalDistance(Key otherKey) {
-		return Math.log(new BigInteger(1,hash).subtract(new BigInteger(1, otherKey.hash)).mod(new BigInteger(1,MAX_KEY.hash).add(new BigInteger("1"))).doubleValue())/Math.log(2);		
+		return Math.log(new BigInteger(1,hash).subtract(new BigInteger(1, otherKey.hash)).mod(new BigInteger(1,MAX_KEY.hash).add(new BigInteger("1"))).doubleValue())/Math.log(2);
 	}
 
 
@@ -316,7 +321,7 @@ public class Key implements Radixable<Key>, Serializable {
 		
 		/*
 		
-		// simulation to check that natural order != xor order 
+		// simulation to check that natural order != xor order
 		Random rand = new Random();
 		
 		for(int i=0;i<10000;i++)
@@ -331,13 +336,13 @@ public class Key implements Radixable<Key>, Serializable {
 					j--;
 					keys.remove(j);
 				}
-			Key[] keysArray = keys.toArray(new Key[keys.size()]); 
+			Key[] keysArray = keys.toArray(new Key[keys.size()]);
 			
 			
 			for(int j=0;j<1000;j++)
 			{
 				Key target = Key.createRandomKey();
-				int closestSetSize = rand.nextInt(12); 
+				int closestSetSize = rand.nextInt(12);
 				 
 				
 				TreeSet<Key> referenceClosestSet = new TreeSet<Key>(new DistanceOrder(target));
@@ -378,7 +383,7 @@ public class Key implements Radixable<Key>, Serializable {
 				
 				for(int k=0;k<closestSet2.size();k++)
 					System.out.print(Arrays.binarySearch(keysArray, closestSet2.get(k))+" ");
-				System.out.println("\n");				
+				System.out.println("\n");
 				
 				if(!closestSet1.equals(closestSet2))
 					System.out.println("damn");
@@ -439,7 +444,7 @@ public class Key implements Radixable<Key>, Serializable {
 		}
 		*/
 		
-		/* // checking some binary arithmetic 		
+		/* // checking some binary arithmetic
 		byte b1 = (byte) 0x7F;
 		byte b2 = (byte) 0x80;
 		

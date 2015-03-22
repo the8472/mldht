@@ -1,18 +1,18 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad;
 
@@ -23,7 +23,7 @@ import java.util.Comparator;
  * @author Damokles
  *
  */
-public class DBItem {
+public class DBItem implements Comparable<DBItem> {
 
 	protected byte[] item;
 	private final long	time_stamp;
@@ -51,6 +51,16 @@ public class DBItem {
 	public String toString() {
 		return "DBItem length:"+item.length;
 	}
+	
+	// sort by raw data. only really useful for binary search
+	public int compareTo(DBItem other) {
+		for (int i = 0,n=item.length; i < n; i++) {
+			int t = Byte.compare(item[i], other.item[i]);
+			if(t != 0)
+				return t;
+		}
+		return item.length - other.item.length;
+	}
 
 	@Override
 	public boolean equals(final Object obj) {
@@ -67,9 +77,5 @@ public class DBItem {
 		return Arrays.hashCode(item);
 	}
 
-	public static final Comparator<DBItem> ageOrdering = new Comparator<DBItem>() {
-		public int compare(final DBItem o1, final DBItem o2) {
-			return (int)(o1.time_stamp - o2.time_stamp);
-		}
-	};
+	public static final Comparator<DBItem> ageOrdering = (o1, o2) -> (int)(o1.time_stamp - o2.time_stamp);
 }

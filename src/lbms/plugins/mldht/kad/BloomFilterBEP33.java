@@ -16,14 +16,14 @@
  */
 package lbms.plugins.mldht.kad;
 
+import static java.lang.Math.log1p;
+
 import java.net.InetAddress;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.*;
+import java.util.Collection;
 
 import lbms.plugins.mldht.kad.utils.BitVector;
-
-import static java.lang.Math.*;
 
 
 public class BloomFilterBEP33 implements Comparable<BloomFilterBEP33>, Cloneable {
@@ -75,7 +75,7 @@ public class BloomFilterBEP33 implements Comparable<BloomFilterBEP33>, Cloneable
 			newFilter = (BloomFilterBEP33) super.clone();
 		} catch (CloneNotSupportedException e)
 		{
-			// never happens
+			throw new Error("never happens");
 		}
 		newFilter.filter = new BitVector(filter);		
 		return newFilter;		

@@ -1,18 +1,18 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad.tasks;
 
@@ -20,9 +20,18 @@ package lbms.plugins.mldht.kad.tasks;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
-import lbms.plugins.mldht.kad.*;
+import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
-import lbms.plugins.mldht.kad.messages.*;
+import lbms.plugins.mldht.kad.DHTConstants;
+import lbms.plugins.mldht.kad.KBucketEntry;
+import lbms.plugins.mldht.kad.KClosestNodesSearch;
+import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.Node;
+import lbms.plugins.mldht.kad.RPCCall;
+import lbms.plugins.mldht.kad.RPCServer;
+import lbms.plugins.mldht.kad.messages.FindNodeRequest;
+import lbms.plugins.mldht.kad.messages.FindNodeResponse;
+import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
@@ -41,11 +50,7 @@ public class NodeLookup extends Task {
 		super(node_id, rpc, node);
 		forBootstrap = isBootstrap;
 		this.closestSet = new TreeSet<Key>(new Key.DistanceOrder(targetKey));
-		addListener(new TaskListener() {
-			public void finished(Task t) {
-				done();
-			}
-		});
+		addListener(t -> updatedPopulationEstimates());
 	}
 
 	@Override
@@ -75,8 +80,6 @@ public class NodeLookup extends Task {
 				else
 					todo.add(e);
 				
-					
-				// remove the entry from the todo list
 			}
 		}
 
@@ -97,56 +100,50 @@ public class NodeLookup extends Task {
 	void callFinished (RPCCall c, MessageBase rsp) {
 
 		// check the response and see if it is a good one
-		if (rsp.getMethod() == Method.FIND_NODE
-				&& rsp.getType() == Type.RSP_MSG) {
+		if (rsp.getMethod() != Method.FIND_NODE || rsp.getType() != Type.RSP_MSG)
+			return;
 
-			synchronized (closestSet) {
-				Key toAdd = rsp.getID();
-				closestSet.add(toAdd);
-				if (closestSet.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET) {
-					Key last = closestSet.last();
-					closestSet.remove(last);
-					if (toAdd == last) {
-						validReponsesSinceLastClosestSetModification++;
-					} else {
-						validReponsesSinceLastClosestSetModification = 0;
-					}
+		synchronized (closestSet) {
+			Key toAdd = rsp.getID();
+			closestSet.add(toAdd);
+			if (closestSet.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET) {
+				Key last = closestSet.last();
+				closestSet.remove(last);
+				if (toAdd == last) {
+					validReponsesSinceLastClosestSetModification++;
+				} else {
+					validReponsesSinceLastClosestSetModification = 0;
 				}
 			}
-			
-			FindNodeResponse fnr = (FindNodeResponse) rsp;
-			
-			for (DHTtype type : DHTtype.values())
-			{
-				byte[] nodes = fnr.getNodes(type);
-				if (nodes == null)
-					continue;
-				int nval = nodes.length / type.NODES_ENTRY_LENGTH;
-				if (type == rpc.getDHT().getType())
-				{
-					synchronized (todo)
-					{
-						for (int i = 0; i < nval; i++)
-						{
-							// add node to todo list
-							KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-							if (!AddressUtils.isBogon(e.getAddress()) && !node.allLocalIDs().contains(e.getID()) && !todo.contains(e) && !hasVisited(e))
-							{
-								todo.add(e);
-							}
-						}
-					}
-				} else
+		}
+
+		FindNodeResponse fnr = (FindNodeResponse) rsp;
+
+		for (DHTtype type : DHTtype.values())
+		{
+			byte[] nodes = fnr.getNodes(type);
+			if (nodes == null)
+				continue;
+			int nval = nodes.length / type.NODES_ENTRY_LENGTH;
+			if (type == rpc.getDHT().getType()) {
+				synchronized (todo)
 				{
 					for (int i = 0; i < nval; i++)
 					{
 						KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-						DHT.getDHT(type).addDHTNode(e.getAddress().getAddress().getHostAddress(), e.getAddress().getPort());
+						if (!AddressUtils.isBogon(e.getAddress()) && !node.isLocalId(e.getID()) && !todo.contains(e) && !hasVisited(e))
+							todo.add(e);
 					}
 				}
+			} else {
+				for (int i = 0; i < nval; i++)
+				{
+					KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
+					DHT.getDHT(type).addDHTNode(e.getAddress().getAddress().getHostAddress(), e.getAddress().getPort());
+				}
 			}
-
 		}
+
 	}
 
 	@Override
@@ -173,7 +170,7 @@ public class NodeLookup extends Task {
 		super.start();
 	}
 
-	private void done () {
+	private void updatedPopulationEstimates () {
 		synchronized (closestSet)
 		{
 			rpc.getDHT().getEstimator().update(closestSet,targetKey);

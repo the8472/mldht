@@ -9,10 +9,12 @@ public class UnknownTypeRequest extends AbstractLookupRequest {
 		super(target, Method.UNKNOWN);
 	}
 	
+	@Override
 	protected String targetBencodingName() {
-		return null;
+		throw new UnsupportedOperationException("the name is only used for encoding. encoding of unknown requests is not supported");
 	}
 	
+	@Override
 	public void apply(DHT dh_table) {
 		dh_table.findNode(this);
 	}

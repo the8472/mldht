@@ -1,32 +1,28 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.text.DateFormat;
-import java.util.*;
+import java.time.Duration;
+import java.util.Comparator;
 
 import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
-
-import org.apache.commons.collections.Unmodifiable;
-import org.gudy.azureus2.core3.util.TimeFormatter;
 
 /**
  * Entry in a KBucket, it basically contains an ip_address of a node,
@@ -41,29 +37,17 @@ public class KBucketEntry implements Serializable {
 	/**
 	 * ascending order for last seen, i.e. the last value will be the least recently seen one
 	 */
-	public static final Comparator<KBucketEntry> LAST_SEEN_ORDER = new Comparator<KBucketEntry>() {
-		public int compare(KBucketEntry o1, KBucketEntry o2) {
-			return Long.signum(o1.lastSeen - o2.lastSeen);
-		}
-	};
+	public static final Comparator<KBucketEntry> LAST_SEEN_ORDER = (o1, o2) -> Long.signum(o1.lastSeen - o2.lastSeen);
 
 	/**
 	 * ascending order for timeCreated, i.e. the first value will be the oldest
 	 */
-	public static final Comparator<KBucketEntry> AGE_ORDER = new Comparator<KBucketEntry>() {
-		public int compare(KBucketEntry o1, KBucketEntry o2) {
-			return Long.signum(o1.timeCreated - o2.timeCreated);
-		}
-	};
+	public static final Comparator<KBucketEntry> AGE_ORDER = (o1, o2) -> Long.signum(o1.timeCreated - o2.timeCreated);
 
 	/**
 	 * same order as the Key class, based on the Entrie's nodeID
 	 */
-	public static final Comparator<KBucketEntry> KEY_ORDER = new Comparator<KBucketEntry>() {
-		public int compare(KBucketEntry o1, KBucketEntry o2) {
-			return o1.nodeID.compareTo(o2.nodeID);
-		}
-	};
+	public static final Comparator<KBucketEntry> KEY_ORDER = (o1, o2) -> o1.nodeID.compareTo(o2.nodeID);
 
 	
 	public static final class DistanceOrder implements Comparator<KBucketEntry> {
@@ -156,6 +140,7 @@ public class KBucketEntry implements Serializable {
 		return addr;
 	}
 	
+	@Override
 	public boolean equals(Object o)
 	{
 		if(o instanceof KBucketEntry)
@@ -163,22 +148,21 @@ public class KBucketEntry implements Serializable {
 		return this == o;
 	}
 
-	/**
-	 * violating the equals contract (specifically: the transitivity requirement) here, use with care
-	 */
-	public boolean equals (KBucketEntry other) {
+	public boolean equals(KBucketEntry other) {
 		if(other == null)
 			return false;
-		return nodeID.equals(other.nodeID) || addr.getAddress().equals(other.addr.getAddress());
+		return nodeID.equals(other.nodeID) && addr.getAddress().equals(other.addr.getAddress());
+	}
+	
+	public boolean matchIPorID(KBucketEntry other) {
+		if(other == null)
+			return false;
+		return nodeID.equals(other.getID()) || addr.getAddress().equals(other.addr.getAddress());
 	}
 
-	/**
-	 * overriding hash code to always return 0 because we can't compute a good one that represents that OR-comparison semantic between 
-	 */
 	@Override
 	public int hashCode () {
-		new Exception("KBucketEntry hashCode should not be used").printStackTrace();
-		return 0;
+		return nodeID.hashCode() + 1;
 	}
 
 	/**
@@ -220,9 +204,10 @@ public class KBucketEntry implements Serializable {
 		return failedQueries;
 	}
 	
+	@Override
 	public String toString() {
 		long now = System.currentTimeMillis();
-		return nodeID+"/"+addr+";seen:"+TimeFormatter.format((now-lastSeen)/1000)+";age:"+TimeFormatter.format((now-timeCreated) / 1000)+(failedQueries>0?";fail:"+failedQueries:"");
+		return nodeID+"/"+addr+";seen:"+Duration.ofMillis(now-lastSeen)+";age:"+Duration.ofMillis(now-timeCreated)+(failedQueries>0?";fail:"+failedQueries:"");
 	}
 
 	/**
@@ -259,21 +244,14 @@ public class KBucketEntry implements Serializable {
 		if (failedQueries >= DHTConstants.KBE_BAD_IMMEDIATLY_ON_FAILED_QUERIES) {
 	        return true;
         }
-		if(failedQueries > DHTConstants.KBE_BAD_IF_FAILED_QUERIES_LARGER_THAN && 
+		if(failedQueries > DHTConstants.KBE_BAD_IF_FAILED_QUERIES_LARGER_THAN &&
 			System.currentTimeMillis() - lastSeen > DHTConstants.KBE_QUESTIONABLE_TIME) {
 	        return true;
         }
 		return false;
 	}
 
-	/**
-	 * Should be called to signal that the peer has sent a message to us, not necesarly a response to a query
-	 */
-	public void signalLastSeen() {
-		lastSeen = System.currentTimeMillis();
-	}
-	
-	public void mergeInTimestamps (KBucketEntry entry) {
+	public void mergeInTimestamps(KBucketEntry entry) {
 		if(!this.equals(entry))
 			return;
 		lastSeen = Math.max(lastSeen, entry.getLastSeen());
@@ -291,17 +269,11 @@ public class KBucketEntry implements Serializable {
 	 */
 	public void signalResponse(long rtt) {
 		lastSeen = System.currentTimeMillis();
-		failedQueries = 0;		
+		failedQueries = 0;
 		if(rtt > 0)
 			avgRTT.updateAverage(rtt);
 	}
 
-	/**
-	 * Should be called to signal that the peer has responded to an outgoing request
-	 */
-	public void signalResponse() {
-		signalResponse(-1);
-	}
 
 	/**
 	 * Should be called to signal that a request to this peer has timed out;

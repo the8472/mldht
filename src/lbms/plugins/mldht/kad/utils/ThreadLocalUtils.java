@@ -1,53 +1,44 @@
 package lbms.plugins.mldht.kad.utils;
 
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Random;
 
-import org.gudy.azureus2.core3.util.BDecoder;
-import org.gudy.azureus2.core3.util.SHA1;
+import the8472.bencode.BDecoder;
 
 public class ThreadLocalUtils {
 
-	private static ThreadLocal<Random> randTL = new ThreadLocal<Random>();
-	private static ThreadLocal<SHA1> sha1TL = new ThreadLocal<SHA1>();
-	private static ThreadLocal<BDecoder> decoder = new ThreadLocal<BDecoder>();
+	private static ThreadLocal<Random> randTL = ThreadLocal.withInitial(() -> {
+		try
+		{
+			return SecureRandom.getInstance("SHA1PRNG");
+		} catch (NoSuchAlgorithmException e) {
+			return new SecureRandom();
+		}
+	});
+	
+	private static ThreadLocal<MessageDigest> sha1TL = ThreadLocal.withInitial(() -> {
+		try {
+			return MessageDigest.getInstance("SHA");
+		} catch (NoSuchAlgorithmException e) {
+			throw new Error("expected SHA1 digest to be available", e);
+		}
+	});
+	
+	private static ThreadLocal<BDecoder> decoder = ThreadLocal.withInitial(() -> new BDecoder());
 	
 
 	public static Random getThreadLocalRandom() {
-		Random rand = randTL.get();
-		if(rand == null)
-		{
-			try
-			{
-				rand = SecureRandom.getInstance("SHA1PRNG");
-			} catch (NoSuchAlgorithmException e)
-			{
-				rand = new SecureRandom();
-			}
-			randTL.set(rand);
-		}
-		return rand;
+		return randTL.get();
 	}
 	
 	public static BDecoder getDecoder() {
-		BDecoder dec = decoder.get();
-		if(dec == null)
-		{
-			dec = new BDecoder();
-			decoder.set(dec);
-		}
-		return dec;
+		return decoder.get();
 	}
 	
-	public static SHA1 getThreadLocalSHA1() {
-		SHA1 hash = sha1TL.get();
-		if(hash == null)
-		{
-			hash = new SHA1();
-			sha1TL.set(hash);
-		}
-		return hash;
+	public static MessageDigest getThreadLocalSHA1() {
+		return sha1TL.get();
 	}
 	
 }

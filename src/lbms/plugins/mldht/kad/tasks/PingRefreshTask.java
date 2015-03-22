@@ -1,27 +1,30 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad.tasks;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-import lbms.plugins.mldht.kad.*;
-import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
+import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.KBucket;
+import lbms.plugins.mldht.kad.KBucketEntry;
+import lbms.plugins.mldht.kad.Node;
+import lbms.plugins.mldht.kad.RPCCall;
+import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.PingRequest;
 
@@ -57,27 +60,6 @@ public class PingRefreshTask extends Task {
 		}
 	}
 
-	/**
-	 * @param rpc
-	 * @param node
-	 * @param bucket the bucket to refresh
-	 * @param cleanOnTimeout if true Nodes that fail to respond are removed. should be false for normal use.
-	 */
-	public PingRefreshTask (RPCServer rpc, Node node, List<RoutingTableEntry> buckets,
-			boolean cleanOnTimeout) {
-		super(node.getRootID(), rpc, node,"Multi Bucket Refresh");
-		this.cleanOnTimeout = cleanOnTimeout;
-		if (cleanOnTimeout) {
-			lookupMap = new HashMap<MessageBase, KBucketEntry>();
-		}
-
-		for (RoutingTableEntry tableEntry : buckets)
-			for (KBucketEntry e : tableEntry.getBucket().getEntries())
-				if (e.isQuestionable() || cleanOnTimeout)
-					todo.add(e);
-		
-	}
-
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.Task#callFinished(lbms.plugins.mldht.kad.RPCCallBase, lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
@@ -105,7 +87,7 @@ public class PingRefreshTask extends Task {
 					KBucket bucket = node.findBucketForId(e.getID()).getBucket();
 					if (bucket != null) {
 						DHT.logDebug("Removing invalid entry from cache.");
-						bucket.removeEntry(e, true);
+						bucket.removeEntryIfBad(e, true);
 					}
 				}
 			}
@@ -141,6 +123,7 @@ public class PingRefreshTask extends Task {
 		}
 	}
 	
+	@Override
 	protected boolean isDone() {
 		return todo.isEmpty() && getNumOutstandingRequests() == 0 && !isFinished();
 	}

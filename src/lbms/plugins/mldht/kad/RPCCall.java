@@ -1,18 +1,18 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad;
 
@@ -45,6 +45,8 @@ public class RPCCall {
 	
 
 	public RPCCall (RPCServer srv, MessageBase msg) {
+		assert(srv != null);
+		assert(msg != null);
 		this.rpc = srv;
 		this.msg = msg;
 	}
@@ -83,10 +85,8 @@ public class RPCCall {
 			return;
 		}
 		
-		if(rsp.getType() == Type.ERR_MSG) {
-			onCallTimeout();
-		}
-
+		onCallTimeout();
+		DHT.logError("received non-response ["+ rsp +"] in response to request: "+ msg.toString());
 	}
 
 	/* (non-Javadoc)
@@ -145,7 +145,7 @@ public class RPCCall {
 				}
 			}
 		},
-		// spread out the stalls by +- 1ms to reduce locking issues
+		// spread out the stalls by +- 1ms to reduce lock contention
 		rpc.getTimeoutFilter().getStallTimeout()*1000+ThreadLocalUtils.getThreadLocalRandom().nextInt(2000)-1000,
 		TimeUnit.MICROSECONDS);
 	}
@@ -205,7 +205,7 @@ public class RPCCall {
 					DHT.log(e, LogLevel.Error);
 				}
 			}
-		}		
+		}
 	}
 	
 	/**

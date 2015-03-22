@@ -1,32 +1,41 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad.tasks;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.NavigableSet;
+import java.util.TreeSet;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.gudy.azureus2.core3.util.LightHashSet;
-
-import lbms.plugins.mldht.kad.*;
+import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
+import lbms.plugins.mldht.kad.DHTConstants;
+import lbms.plugins.mldht.kad.KBucketEntry;
+import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.Node;
+import lbms.plugins.mldht.kad.RPCCall;
+import lbms.plugins.mldht.kad.RPCCallListener;
+import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 
 /**
@@ -178,8 +187,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 */
 	public void start () {
 		if (queued) {
-			DHT.logDebug("Starting Task: " + this.getClass().getSimpleName()
-					+ " TaskID:" + taskID);
+			DHT.logDebug("Starting Task taskID: " + toString());
 			queued = false;
 			startTimeout();
 			try
@@ -206,7 +214,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	abstract void callFinished (RPCCall c, MessageBase rsp);
 	
 	/**
-	 * A call hasn't timed out yet but is estimated to be unlikely to finish, it will either time out or finish after this event has occured  
+	 * A call hasn't timed out yet but is estimated to be unlikely to finish, it will either time out or finish after this event has occured
 	 */
 	void callStalled(RPCCall c) {}
 
@@ -323,7 +331,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	}
 
 	/**
-	 * @return number of requests that this task is actively waiting for 
+	 * @return number of requests that this task is actively waiting for
 	 */
 	public int getNumOutstandingRequestsExcludingStalled () {
 		return outstandingRequestsExcludingStalled.get();
@@ -351,16 +359,10 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 */
 	private void startTimeout () {
 		startTime = System.currentTimeMillis();
-		timeoutTimer = DHT.getScheduler().schedule(new Runnable() {
-			/* (non-Javadoc)
-			 * @see java.lang.Runnable#run()
-			 */
-			public void run () {
-				if (!taskFinished) {
-					DHT.logDebug("Task was Killed by Timeout. TaskID: "
-							+ taskID);
-					kill();
-				}
+		timeoutTimer = DHT.getScheduler().schedule(() -> {
+			if (!taskFinished) {
+				DHT.logDebug("Task "+taskID+" was Killed by Timeout.");
+				kill();
 			}
 		}, DHTConstants.TASK_TIMEOUT, TimeUnit.MILLISECONDS);
 	}
@@ -392,7 +394,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		if(finishTime != -1)
 			finishTime = System.currentTimeMillis();
 		
-		DHT.logDebug("Task finished: " + getTaskID());
+		DHT.logDebug("Task "+getTaskID()+" finished: " + toString());
 		if (timeoutTimer != null) {
 			timeoutTimer.cancel(false);
 		}
@@ -403,7 +405,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		}
 	}
 	
-	protected abstract boolean isDone(); 
+	protected abstract boolean isDone();
 
 	public void addListener (TaskListener listener) {
 		if (listeners == null) {
@@ -423,6 +425,6 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	
 	@Override
 	public String toString() {
-		return "target:"+targetKey+" todo:"+todo.size()+" sent:"+sentReqs+" recv:"+recvResponses+" srv:"+rpc.getDerivedID()+ " name: "+info+"\n";
+		return this.getClass().getSimpleName() + " target:"+targetKey+" todo:"+todo.size()+" sent:"+sentReqs+" recv:"+recvResponses+" srv:"+rpc.getDerivedID()+ " name: "+info+"\n";
 	}
 }

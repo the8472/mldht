@@ -1,30 +1,34 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad;
 
-import java.io.File;
 import java.net.SocketException;
-import java.util.List;
-import java.util.Map;
 
 import lbms.plugins.mldht.DHTConfiguration;
-import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
-import lbms.plugins.mldht.kad.messages.*;
-import lbms.plugins.mldht.kad.tasks.*;
+import lbms.plugins.mldht.kad.messages.AbstractLookupRequest;
+import lbms.plugins.mldht.kad.messages.AnnounceRequest;
+import lbms.plugins.mldht.kad.messages.ErrorMessage;
+import lbms.plugins.mldht.kad.messages.GetPeersRequest;
+import lbms.plugins.mldht.kad.messages.MessageBase;
+import lbms.plugins.mldht.kad.messages.PingRequest;
+import lbms.plugins.mldht.kad.tasks.AnnounceTask;
+import lbms.plugins.mldht.kad.tasks.NodeLookup;
+import lbms.plugins.mldht.kad.tasks.PeerLookupTask;
+import lbms.plugins.mldht.kad.tasks.TaskManager;
 
 /**
  * @author Damokles
@@ -101,10 +105,6 @@ public interface DHTBase {
 	public TaskManager getTaskManager ();
 
 	NodeLookup findNode (Key id);
-
-	PingRefreshTask refreshBucket (KBucket bucket);
-
-	public PingRefreshTask refreshBuckets (List<RoutingTableEntry> buckets, boolean cleanOnTimeout);
 
 	NodeLookup fillBucket (Key id, KBucket bucket);
 

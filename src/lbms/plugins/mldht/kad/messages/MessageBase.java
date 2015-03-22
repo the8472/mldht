@@ -18,11 +18,17 @@ package lbms.plugins.mldht.kad.messages;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.*;
+import java.nio.ByteBuffer;
+import java.util.Map;
+import java.util.TreeMap;
 
-import org.gudy.azureus2.core3.util.BEncoder;
-
-import lbms.plugins.mldht.kad.*;
+import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.DHTConstants;
+import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.RPCCall;
+import lbms.plugins.mldht.kad.RPCServer;
+import lbms.plugins.mldht.kad.utils.AddressUtils;
+import the8472.bencode.BEncoder;
 
 /**
  * Base class for all RPC messages.
@@ -33,12 +39,21 @@ public abstract class MessageBase {
 	
 	public static final String	VERSION_KEY = "v";
 	public static final String	TRANSACTION_KEY = "t";
+	public static final String  EXTERNAL_IP_KEY = "ip";
 
 	protected byte[]			mtid;
 	protected Method			method;
 	protected Type				type;
 	protected Key				id;
+	
+	// TODO: unify as remoteAddress
 	protected InetSocketAddress	origin;
+	protected InetSocketAddress destination;
+
+	// for outgoing messages this is the IP we tell them
+	// for incoming messages this is the IP they told us
+	protected InetSocketAddress publicIP;
+
 	protected String			version;
 	protected RPCServer			srv;
 	protected RPCCall			associatedCall;
@@ -61,9 +76,12 @@ public abstract class MessageBase {
 	 * BEncode the message.
 	 * @return Data array
 	 */
-	public byte[] encode() throws IOException
+	public byte[] encode(int capacity) throws IOException
 	{
-		return BEncoder.encode(getBase());
+		ByteBuffer buf = new BEncoder().encode(getBase(),capacity);
+		byte out[] = new byte[buf.remaining()];
+		buf.get(out);
+		return out;
 	}
 	
 	public Map<String, Object> getBase()
@@ -73,6 +91,7 @@ public abstract class MessageBase {
 		if(inner != null)
 			base.put(getType().innerKey(), inner);
 		
+		assert(mtid != null);
 		// transaction ID
 		base.put(TRANSACTION_KEY, mtid);
 		// version
@@ -84,7 +103,8 @@ public abstract class MessageBase {
 		// message method if we're a request
 		if(getType() == Type.REQ_MSG)
 			base.put(getType().getRPCTypeName(), getMethod().getRPCName());
-
+		if(publicIP != null && getType() == Type.RSP_MSG)
+			base.put(EXTERNAL_IP_KEY, AddressUtils.packAddress(publicIP));
 
 		return base;
 	}
@@ -95,24 +115,22 @@ public abstract class MessageBase {
 	}
 
 
-	/// Set the origin (i.e. where the message came from)
 	public void setOrigin (InetSocketAddress o) {
 		origin = o;
 	}
 
-	/// Get the origin
 	public InetSocketAddress getOrigin () {
 		return origin;
 	}
 
-	/// Set the origin (i.e. where the message came from)
+	// where the message was sent to
 	public void setDestination (InetSocketAddress o) {
-		origin = o;
+		destination = o;
 	}
 
 	/// Get the origin
 	public InetSocketAddress getDestination () {
-		return origin;
+		return destination;
 	}
 
 	/// Get the MTID
@@ -124,6 +142,15 @@ public abstract class MessageBase {
 	public void setMTID (byte[] m) {
 		mtid = m;
 	}
+	
+	public InetSocketAddress getPublicIP() {
+		return publicIP;
+	}
+
+	public void setPublicIP(InetSocketAddress publicIP) {
+		this.publicIP = publicIP;
+	}
+
 
 	public String getVersion () {
     	return version;

@@ -16,6 +16,9 @@
  */
 package lbms.plugins.mldht.kad;
 
+import java.time.Duration;
+import java.time.Instant;
+
 import lbms.plugins.mldht.kad.tasks.Task;
 
 /**
@@ -30,7 +33,7 @@ public class DHTStats {
 
 	private RPCStats		rpcStats;
 
-	private long			startedTimestamp;
+	private Instant			startedTimestamp;
 
 	/// number of peers in the routing table
 	private int				numPeers;
@@ -98,7 +101,7 @@ public class DHTStats {
 	/**
 	 * @return the startedTimestamp
 	 */
-	public long getStartedTimestamp () {
+	public Instant getStartedTimestamp () {
 		return startedTimestamp;
 	}
 
@@ -164,7 +167,7 @@ public class DHTStats {
 	}
 
 	protected void resetStartedTimestamp () {
-		startedTimestamp = System.currentTimeMillis();
+		startedTimestamp = Instant.now();
 	}
 	
 	@Override
@@ -174,7 +177,7 @@ public class DHTStats {
 		b.append("DB Items: ").append(dbStats.getItemCount()).append('\n');
 		b.append("TX sum: ").append(numSentPackets).append(" RX sum: ").append(numReceivedPackets).append('\n');
 		b.append("avg task time/avg 1st result time (ms): ").append((int)avgFinishTime).append('/').append((int)avgFirstResultTime).append('\n');
-		b.append("Uptime: ").append((System.currentTimeMillis()-startedTimestamp)/1000).append("s\n");
+		b.append("Uptime: ").append(Duration.between(startedTimestamp, Instant.now())).append("s\n");
 		b.append("RPC stats\n");
 		b.append(rpcStats.toString());
 		return b.toString();

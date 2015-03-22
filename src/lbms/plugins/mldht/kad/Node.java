@@ -1,28 +1,40 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
-
-import org.gudy.azureus2.core3.util.LightHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -30,9 +42,9 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.tasks.NodeLookup;
 import lbms.plugins.mldht.kad.tasks.PingRefreshTask;
-import lbms.plugins.mldht.kad.tasks.Task;
-import lbms.plugins.mldht.kad.tasks.TaskListener;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
+import the8472.utils.Pair;
+import the8472.utils.SortedCoWSet;
 
 
 /**
@@ -43,7 +55,7 @@ public class Node {
 	
 	public static final class RoutingTableEntry implements Comparable<RoutingTableEntry> {
 		
-		public RoutingTableEntry(Prefix prefix, KBucket bucket) { 
+		public RoutingTableEntry(Prefix prefix, KBucket bucket) {
 			this.prefix = prefix;
 			this.bucket = bucket;
 		}
@@ -60,8 +72,8 @@ public class Node {
 		}
 	}
 
-	private Object routingTableCoWLock = new Object();
-	private volatile List<RoutingTableEntry> routingTable = new ArrayList<RoutingTableEntry>();
+	private Object CoWLock = new Object();
+	private volatile List<RoutingTableEntry> routingTableCOW = new ArrayList<RoutingTableEntry>();
 	private DHT dht;
 	private int num_receives;
 	
@@ -70,8 +82,8 @@ public class Node {
 	private long timeOfLastReceiveCountChange;
 	private long timeOfRecovery;
 	private int num_entries;
-	private ConcurrentHashMap<Key, RPCServer> usedIDs = new ConcurrentHashMap<Key, RPCServer>();
-	private volatile Map<InetSocketAddress,RoutingTableEntry> knownNodes = new HashMap<InetSocketAddress, RoutingTableEntry>();
+	private final SortedCoWSet<Key> usedIDs = new SortedCoWSet<>(Key.class, null);
+	private volatile Map<InetAddress,RoutingTableEntry> knownNodes = new HashMap<InetAddress, RoutingTableEntry>();
 	
 	private static Map<String,Serializable> dataStore;
 
@@ -83,48 +95,116 @@ public class Node {
 		num_receives = 0;
 		num_entries = 0;
 		
-		routingTable.add(new RoutingTableEntry(new Prefix(), new KBucket(this)));		
+		routingTableCOW.add(new RoutingTableEntry(new Prefix(), new KBucket(this)));
 	}
 
 	/**
-	 * An RPC message was received, the node must now update
-	 * the right bucket.
+	 * An RPC message was received, the node must now update the right bucket.
 	 * @param msg The message
 	 */
 	void recieved(MessageBase msg) {
+		InetAddress ip = msg.getOrigin().getAddress();
+		Key id = msg.getID();
+				
+		Optional<Key> expectedId = Optional.ofNullable(msg.getAssociatedCall()).map(RPCCall::getExpectedID);
+		Optional<Pair<KBucket, KBucketEntry>> entryByIp = bucketForIP(ip);
 		
-		KBucketEntry newEntry = new KBucketEntry(msg.getOrigin(), msg.getID());
-		newEntry.setVersion(msg.getVersion());
-		
-		
-		boolean nodeIDchanged = false;
-		// to avoid scanning all buckets on each incoming packet we use a cache of Addresses we have in our buckets
-		// this is inaccurate, but good enough to catch most node ID changes
-		RoutingTableEntry cachedEntry = knownNodes.get(newEntry.getAddress()); 
-		if(cachedEntry != null)
-			nodeIDchanged = cachedEntry.bucket.checkForIDChange(msg);
-
-		if(!nodeIDchanged)
-		{
-			if(msg.getType() == Type.RSP_MSG)
-			{
-				RoutingTableEntry entry = findBucketForId(msg.getID());
-				entry.bucket.notifyOfResponse(msg);
+		if(entryByIp.isPresent()) {
+			KBucket bucket = entryByIp.get().a;
+			KBucketEntry entry = entryByIp.get().b;
+				
+			
+			if(!entryByIp.get().b.getID().equals(id)) {
+				// ID mismatch
+				
+				if(msg.getAssociatedCall() != null) {
+					/*
+					 *  we are here because:
+					 *  a) a node with that IP is in our routing table
+					 *  b) the message is a response (mtid checked)
+					 *  c) the ID does not match our routing table entry
+					 * 
+					 *  That means we are certain that the node either changed its node ID or does some ID-spoofing.
+					 *  In either case we don't want it in our routing table
+					 */
+					
+					bucket.removeEntryIfBad(entry, true);
+				}
+				
+				// even if this is not a response we don't want to account for this response, it's an ID mismatch after all
+				return;
 			}
 			
-			insertEntry(newEntry,false);
+			
+		}
+		
+		Optional<KBucket> bucketById = Optional.of(findBucketForId(id).bucket);
+		Optional<KBucketEntry> entryById = bucketById.flatMap(bucket -> bucket.findByIPorID(null, id));
+		
+		// entry is claiming the same ID as entry with different IP in our routing table -> ignore
+		if(entryById.isPresent() && !entryById.get().getAddress().getAddress().equals(ip))
+			return;
+		
+		// ID mismatch from call (not the same as ID mismatch from routing table)
+		// it's fishy at least. don't insert even if it proves useful during a lookup
+		if(!entryById.isPresent() && expectedId.isPresent() && !expectedId.get().equals(id))
+			return;
+
+		/*
+			DHT.logInfo("response "+msg+" did not match expected ID, ignoring for the purpose routing table maintenance (may still be consumed by lookups)");
+		};*/
+			
+		
+		KBucketEntry newEntry = new KBucketEntry(msg.getOrigin(), id);
+		newEntry.setVersion(msg.getVersion());
+		
+		/*
+		if(scanForMismatchedEntry(newEntry)) {
+			DHT.logInfo("ID or IP mismatching pre-existing routing table entries detected "+msg+"; ignoring for routing table maintenance");
+			return;
+		}*/
+			
+		insertEntry(newEntry,false);
+		
+		// we already should have the bucket. might be an old one by now due to splitting
+		// but it doesn't matter, we just need to update the entry, which should stay the same object across bucket splits
+		if(msg.getType() == Type.RSP_MSG) {
+			bucketById.ifPresent(bucket -> bucket.notifyOfResponse(msg));
 		}
 			
 		
-
-
 		num_receives++;
-		
 	}
+	
+	private Optional<Pair<KBucket, KBucketEntry>> bucketForIP(InetAddress addr) {
+		return Optional.ofNullable(knownNodes.get(addr)).map(RoutingTableEntry::getBucket).flatMap(bucket -> bucket.findByIPorID(addr, null).map(Pair.of(bucket)));
+	}
+	
+	/**
+	 * Detects node ID or IP changes. such changes are ignored until the existing entry times out
+	 * 
+	 * @return true if there is a routing table entry that matches IP or ID of the new entry but is not equal to the new entry.
+	 
+	private boolean scanForMismatchedEntry(KBucketEntry newEntry) {
+		
+		// if either of them exists and doesn't match exactly ignore this node
+		
+		Optional<RoutingTableEntry> cachedEntry = Optional.ofNullable(knownNodes.get(newEntry.getAddress().getAddress()));
+		Optional<KBucketEntry> existing = cachedEntry.flatMap(e -> e.bucket.findByIPorID(newEntry));
+		if(existing.isPresent() && !existing.get().equals(newEntry))
+			return true;
+			
+		existing = findBucketForId(newEntry.getID()).bucket.findByIPorID(newEntry);
+		if(existing.isPresent() && !existing.get().equals(newEntry))
+			return true;
+
+		
+		return false;
+	}*/
 	
 	
 	public void insertEntry (KBucketEntry entry, boolean internalInsert) {
-		if(entry == null || usedIDs.containsKey(entry.getID()) || AddressUtils.isBogon(entry.getAddress()) || !dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(entry.getAddress().getAddress()))
+		if(entry == null || usedIDs.contains(entry.getID()) || AddressUtils.isBogon(entry.getAddress()) || !dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(entry.getAddress().getAddress()))
 			return;
 		
 		Key nodeID = entry.getID();
@@ -133,7 +213,7 @@ public class Node {
 		while(tableEntry.bucket.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET && tableEntry.prefix.getDepth() < Key.KEY_BITS - 1)
 		{
 			boolean isLocalBucket = false;
-			for(Key k : allLocalIDs())
+			for(Key k : usedIDs.getSnapshot())
 				isLocalBucket |= tableEntry.prefix.isPrefixOf(k);
 			if(!isLocalBucket)
 				break;
@@ -155,9 +235,9 @@ public class Node {
 	}
 	
 	private void splitEntry(RoutingTableEntry entry) {
-		synchronized (routingTableCoWLock)
+		synchronized (CoWLock)
 		{
-			List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTable);
+			List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
 			// check if we haven't entered the sync block after some other thread that did the same split operation
 			if(!newTable.contains(entry))
 				return;
@@ -166,7 +246,7 @@ public class Node {
 			newTable.add(new RoutingTableEntry(entry.prefix.splitPrefixBranch(false), new KBucket(this)));
 			newTable.add(new RoutingTableEntry(entry.prefix.splitPrefixBranch(true), new KBucket(this)));
 			Collections.sort(newTable);
-			routingTable = newTable;
+			routingTableCOW = newTable;
 			for(KBucketEntry e : entry.bucket.getEntries())
 				insertEntry(e, true);
 			for(KBucketEntry e : entry.bucket.getReplacementEntries())
@@ -195,7 +275,7 @@ public class Node {
 	}
 	
 	public RoutingTableEntry findBucketForId(Key id) {
-		List<RoutingTableEntry> table = routingTable;
+		List<RoutingTableEntry> table = routingTableCOW;
 		return table.get(findIdxForId(table, id));
 	}
 
@@ -209,8 +289,8 @@ public class Node {
 		return Key.MIN_KEY;
 	}
 	
-	public Set<Key> allLocalIDs() {
-		return usedIDs.keySet();
+	public boolean isLocalId(Key id) {
+		return usedIDs.contains(id);
 	}
 	
 	public DHT getDHT() {
@@ -231,7 +311,7 @@ public class Node {
 		{
 			findBucketForId(call.getExpectedID()).bucket.onTimeout(dest);
 		} else {
-			RoutingTableEntry entry = knownNodes.get(dest);
+			RoutingTableEntry entry = knownNodes.get(dest.getAddress());
 			if(entry != null)
 				entry.bucket.onTimeout(dest);
 		}
@@ -244,8 +324,9 @@ public class Node {
 	
 	void removeServer(RPCServer server)
 	{
-		if(server.getDerivedID() != null)
-			usedIDs.remove(server.getDerivedID(),server);
+		if(server.getDerivedID() != null) {
+			usedIDs.removeIf(e -> e.equals(server.getDerivedID()));
+		}
 	}
 	
 	Key registerServer(RPCServer server)
@@ -256,7 +337,7 @@ public class Node {
 		while(true)
 		{
 			k = getRootID().getDerivedKey(idx);
-			if(usedIDs.putIfAbsent(k,server) == null)
+			if(usedIDs.add(k))
 				break;
 			idx++;
 		}
@@ -268,7 +349,7 @@ public class Node {
 	
 
 	/**
-	 * Check if a buckets needs to be refreshed, and refresh if necesarry.
+	 * Check if a buckets needs to be refreshed, and refresh if necessary.
 	 */
 	public void doBucketChecks (long now) {
 		
@@ -279,36 +360,36 @@ public class Node {
 			return;
 		timeOfLastPingCheck = now;
 
-		synchronized (routingTableCoWLock)
+		synchronized (CoWLock)
 		{
 			// perform bucket merge operations where possible
-			for(int i=1;i<routingTable.size();i++)
+			for(int i=1;i<routingTableCOW.size();i++)
 			{
-				RoutingTableEntry e1 = routingTable.get(i-1);
-				RoutingTableEntry e2 = routingTable.get(i);
+				RoutingTableEntry e1 = routingTableCOW.get(i-1);
+				RoutingTableEntry e2 = routingTableCOW.get(i);
 
 				if(e1.prefix.isSiblingOf(e2.prefix))
 				{
 					// uplift siblings if the other one is dead
 					if(e1.getBucket().getNumEntries() == 0)
 					{
-						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTable);
+						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
 						newTable.remove(e1);
 						newTable.remove(e2);
 						newTable.add(new RoutingTableEntry(e2.prefix.getParentPrefix(), e2.getBucket()));
 						Collections.sort(newTable);
-						routingTable = newTable;
+						routingTableCOW = newTable;
 						i--;continue;
 					}
 
 					if(e2.getBucket().getNumEntries() == 0)
 					{
-						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTable);
+						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
 						newTable.remove(e1);
 						newTable.remove(e2);
 						newTable.add(new RoutingTableEntry(e1.prefix.getParentPrefix(), e1.getBucket()));
 						Collections.sort(newTable);
-						routingTable = newTable;
+						routingTableCOW = newTable;
 						i--;continue;
 
 					}
@@ -316,12 +397,12 @@ public class Node {
 					// check if the buckets can be merged without losing entries
 					if(e1.getBucket().getNumEntries() + e2.getBucket().getNumEntries() < DHTConstants.MAX_ENTRIES_PER_BUCKET)
 					{
-						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTable);
+						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
 						newTable.remove(e1);
 						newTable.remove(e2);
 						newTable.add(new RoutingTableEntry(e1.prefix.getParentPrefix(), new KBucket(this)));
 						Collections.sort(newTable);
-						routingTable = newTable;
+						routingTableCOW = newTable;
 						// no need to carry over replacements. there shouldn't be any, otherwise the bucket(s) would be full
 						for(KBucketEntry e : e1.bucket.getEntries())
 							insertEntry(e, true);
@@ -337,7 +418,7 @@ public class Node {
 		
 		int newEntryCount = 0;
 		
-		for (RoutingTableEntry e : routingTable) {
+		for (RoutingTableEntry e : routingTableCOW) {
 			KBucket b = e.bucket;
 
 			List<KBucketEntry> entries = b.getEntries();
@@ -348,9 +429,9 @@ public class Node {
 			for (KBucketEntry entry : entries)
 			{
 				if (wasFull && DHTConstants.BOOTSTRAP_NODE_ADDRESSES.contains(entry.getAddress()))
-					b.removeEntry(entry, true);
-				if(allLocalIDs().contains(entry.getID()))
-					b.removeEntry(entry, true);
+					b.removeEntryIfBad(entry, true);
+				if(isLocalId(entry.getID()))
+					b.removeEntryIfBad(entry, true);
 				allBad &= entry.isBad();
 				
 				
@@ -369,12 +450,20 @@ public class Node {
 				// if the bucket survived that test, ping it
 				DHT.logDebug("Refreshing Bucket: " + e.prefix);
 				// the key needs to be the refreshed
-				PingRefreshTask nl = dht.refreshBucket(b);
-				if (nl != null)
-				{
-					b.setRefreshTask(nl);
-					nl.setInfo("Refreshing Bucket #" + e.prefix);
+				
+				
+				RPCServer srv = dht.getServerManager().getRandomActiveServer(true);
+				if(srv != null) {
+					PingRefreshTask prt = new PingRefreshTask(srv, this, b, false);
+					
+					b.setRefreshTask(prt);
+					prt.setInfo("Refreshing Bucket #" + e.prefix);
+					
+					if(prt.getTodoCount() > 0)
+						dht.getTaskManager().addTask(prt);
 				}
+					
+
 
 			} else if(!isInSurvivalMode())
 			{
@@ -393,14 +482,14 @@ public class Node {
 	}
 	
 	private void rebuildAddressCache() {
-		Map<InetSocketAddress, RoutingTableEntry> newKnownMap = new LightHashMap<InetSocketAddress, RoutingTableEntry>(num_entries);
-		List<RoutingTableEntry> table = routingTable;
+		Map<InetAddress, RoutingTableEntry> newKnownMap = new HashMap<InetAddress, RoutingTableEntry>(num_entries);
+		List<RoutingTableEntry> table = routingTableCOW;
 		for(int i=0,n=table.size();i<n;i++)
 		{
 			RoutingTableEntry entry = table.get(i);
 			List<KBucketEntry> entries = entry.bucket.getEntries();
 			for(int j=0,m=entries.size();j<m;j++)
-				newKnownMap.put(entries.get(j).getAddress(), entry);
+				newKnownMap.put(entries.get(j).getAddress().getAddress(), entry);
 		}
 		
 		knownNodes = newKnownMap;
@@ -413,8 +502,8 @@ public class Node {
 	 */
 	public void fillBuckets (DHTBase dh_table) {
 
-		for (int i = 0;i<routingTable.size();i++) {
-			RoutingTableEntry entry = routingTable.get(i);
+		for (int i = 0;i<routingTableCOW.size();i++) {
+			RoutingTableEntry entry = routingTableCOW.get(i);
 
 			if (entry.bucket.getNumEntries() < DHTConstants.MAX_ENTRIES_PER_BUCKET) {
 				DHT.logDebug("Filling Bucket: " + entry.prefix);
@@ -434,22 +523,25 @@ public class Node {
 	 * @param file to save to
 	 * @throws IOException
 	 */
-	void saveTable (File file) throws IOException {
-		ObjectOutputStream oos = null;
+	void saveTable(File file) throws IOException {
 		
-		File tempFile = new File(file.getPath()+".tmp");
 		
-		try {
-			oos = new ObjectOutputStream(new FileOutputStream(tempFile));
+		Path saveTo = file.toPath();
+		
+		Path tempFile = Files.createTempFile(saveTo.getParent(), "saveTable", "tmp");
+		
+		try(ObjectOutputStream oos = new ObjectOutputStream(Files.newOutputStream(tempFile))) {
 			HashMap<String,Serializable> tableMap = new HashMap<String, Serializable>();
 			
 			dataStore.put("table"+dht.getType().name(), tableMap);
 			
 			tableMap.put("oldKey", getRootID());
 			
-			KBucket[] bucket = new KBucket[routingTable.size()];
+			List<RoutingTableEntry> table = routingTableCOW;
+			
+			KBucket[] bucket = new KBucket[table.size()];
 			for(int i=0;i<bucket.length;i++)
-				bucket[i] = routingTable.get(i).bucket;
+				bucket[i] = table.get(i).bucket;
 				
 			tableMap.put("bucket", bucket);
 			tableMap.put("log2estimate", dht.getEstimator().getRawDistanceEstimate());
@@ -458,13 +550,7 @@ public class Node {
 			oos.writeObject(dataStore);
 			oos.close();
 			
-			if(!file.exists() || file.delete())
-				tempFile.renameTo(file);
-
-		} finally {
-			if (oos != null) {
-				oos.close();
-			}
+			Files.move(tempFile, saveTo, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
 		}
 	}
 	
@@ -475,26 +561,18 @@ public class Node {
 		if(dataStore != null)
 			return;
 		
-		ObjectInputStream ois = null;
-		try {
-			if (!file.exists()) {
-				return;
+		if (file.exists()) {
+			try (FileInputStream fis = new FileInputStream(file); ObjectInputStream ois = new ObjectInputStream(fis)) {
+				dataStore = (Map<String, Serializable>) ois.readObject();
+			} catch (Exception e) {
+				e.printStackTrace();
 			}
-
-			ois = new ObjectInputStream(new FileInputStream(file));
-			dataStore = (Map<String, Serializable>) ois.readObject();
-		} catch (Exception e)
+		}
+		
+		if(dataStore == null)
 		{
-			e.printStackTrace();
-		} finally {
-			if(ois != null)
-				try { ois.close(); } catch (IOException e) { e.printStackTrace(); }
-			
-			if(dataStore == null)
-			{
-				dataStore = new ConcurrentSkipListMap<>();
-				dataStore.put("commonKey", Key.createRandomKey());
-			}
+			dataStore = new ConcurrentSkipListMap<>();
+			dataStore.put("commonKey", Key.createRandomKey());
 		}
 		
 		if(!config.isPersistingID())
@@ -511,8 +589,7 @@ public class Node {
 	 * @param runWhenLoaded is executed when all load operations are finished
 	 * @throws IOException
 	 */
-	void loadTable (final Runnable runWhenLoaded) {
-		boolean runDeferred = false;
+	void loadTable () {
 
 		try {
 			Map<String,Serializable> table = (Map<String,Serializable>)dataStore.get("table"+dht.getType().name());
@@ -540,30 +617,10 @@ public class Node {
 				for(KBucketEntry e : b.getEntries())
 					insertEntry(e,true);
 				for(KBucketEntry e : b.getReplacementEntries())
-					insertEntry(e,true);				
+					insertEntry(e,true);
 			}
 			
 			rebuildAddressCache();
-
-			if (entriesLoaded > 0) {
-				runDeferred = true;
-				PingRefreshTask prt = dht.refreshBuckets(routingTable, true);
-				if(prt == null)
-				{
-					runWhenLoaded.run();
-				} else
-				{
-					prt.setInfo("Pinging cached entries.");
-					TaskListener bootstrapListener = new TaskListener() {
-						public void finished (Task t) {
-							if (runWhenLoaded != null) {
-								runWhenLoaded.run();
-							}
-						}
-					};
-					prt.addListener(bootstrapListener);
-				}
-			}
 
 			DHT.logInfo("Loaded " + entriesLoaded + " from cache. Cache was "
 					+ ((System.currentTimeMillis() - timestamp) / (60 * 1000))
@@ -573,10 +630,6 @@ public class Node {
 		} catch (Exception e) {
 			// loading the cache can fail for various reasons... just log and bootstrap if we have to
 			DHT.log(e,LogLevel.Error);
-		} finally {
-			if (!runDeferred && runWhenLoaded != null) {
-				runWhenLoaded.run();
-			}
 		}
 	}
 
@@ -590,14 +643,20 @@ public class Node {
 	}
 
 	public List<RoutingTableEntry> getBuckets () {
-		return Collections.unmodifiableList(routingTable) ;
+		return Collections.unmodifiableList(routingTableCOW) ;
+	}
+	
+	public Optional<KBucketEntry> getRandomEntry() {
+		return Optional.of(routingTableCOW).filter(t -> !t.isEmpty()).map(table -> table.get(ThreadLocalRandom.current().nextInt(table.size())).bucket).flatMap(KBucket::randomEntry);
 	}
 	
 	@Override
 	public String toString() {
 		StringBuilder b = new StringBuilder(10000);
-		b.append("# of entries: ").append(num_entries).append('\n');
-		for(RoutingTableEntry e : routingTable)
+		List<RoutingTableEntry> table = routingTableCOW;
+		
+		b.append("buckets: ").append(table.size()).append(" / entries: ").append(num_entries).append('\n');
+		for(RoutingTableEntry e : table )
 			b.append(e.prefix).append("   entries:").append(e.bucket.getNumEntries()).append(" replacements:").append(e.bucket.getNumReplacements()).append('\n');
 		return b.toString();
 	}

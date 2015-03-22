@@ -28,11 +28,6 @@ public final class ByteWrapper {
 		hash = Arrays.hashCode(a);
 	}
 	
-	public ByteWrapper(short s)
-	{
-		this(new byte[] {(byte)(s>>8),(byte)(s&0xff)});
-	}
-	
 	@Override
 	public int hashCode() {
 		return hash;

@@ -16,18 +16,7 @@
  */
 package lbms.plugins.mldht.kad.messages;
 
-import java.io.IOException;
-import java.util.AbstractSet;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.TreeMap;
-
-import javax.naming.OperationNotSupportedException;
-
 import lbms.plugins.mldht.kad.DHT;
-import lbms.plugins.mldht.kad.DHTConstants;
-import lbms.plugins.mldht.kad.Key;
-import lbms.plugins.mldht.kad.DHT.DHTtype;
 
 /**
  * @author Damokles
@@ -43,6 +32,6 @@ public class UnknownTypeResponse extends FindNodeResponse {
 
 	@Override
 	public void apply (DHT dh_table) {
-		throw new UnsupportedOperationException("incoming responses should never be 'unknown'");
+		throw new UnsupportedOperationException("incoming, unknown responses cannot be applied, they may only exist to send error messages");
 	}
 }

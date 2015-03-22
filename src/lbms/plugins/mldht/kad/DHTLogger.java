@@ -16,12 +16,14 @@
  */
 package lbms.plugins.mldht.kad;
 
+import lbms.plugins.mldht.kad.DHT.LogLevel;
+
 /**
  * @author Damokles
  *
  */
 public interface DHTLogger {
-	public void log (String message);
+	public void log (String message, LogLevel l);
 
-	public void log (Throwable t);
+	public void log (Throwable t, LogLevel l);
 }

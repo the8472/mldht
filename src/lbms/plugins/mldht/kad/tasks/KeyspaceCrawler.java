@@ -1,18 +1,18 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad.tasks;
 
@@ -20,9 +20,15 @@ import java.net.InetSocketAddress;
 import java.util.HashSet;
 import java.util.Set;
 
-import lbms.plugins.mldht.kad.*;
+import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
+import lbms.plugins.mldht.kad.DHTConstants;
+import lbms.plugins.mldht.kad.KBucketEntry;
+import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.Node;
 import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
+import lbms.plugins.mldht.kad.RPCCall;
+import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.FindNodeRequest;
 import lbms.plugins.mldht.kad.messages.FindNodeResponse;
 import lbms.plugins.mldht.kad.messages.MessageBase;
@@ -41,11 +47,7 @@ public class KeyspaceCrawler extends Task {
 	KeyspaceCrawler (RPCServer rpc, Node node) {
 		super(Key.createRandomKey(),rpc, node);
 		setInfo("Exhaustive Keyspace Crawl");
-		addListener(new TaskListener() {
-			public void finished(Task t) {
-				done();
-			}
-		});
+		addListener(t -> done());
 	}
 
 	@Override
@@ -81,7 +83,7 @@ public class KeyspaceCrawler extends Task {
 					fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || DHT.getDHT(DHTtype.IPV4_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || DHT.getDHT(DHTtype.IPV6_DHT).getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS);
 					fnr.setDestination(e.getAddress());
-					rpcCall(fnr,e.getID(),null);						
+					rpcCall(fnr,e.getID(),null);
 				}
 
 				visited(e);
@@ -118,7 +120,7 @@ public class KeyspaceCrawler extends Task {
 						{
 							// add node to todo list
 							KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-							if (!node.allLocalIDs().contains(e.getID()) && !todo.contains(e) && !hasVisited(e))
+							if (!node.isLocalId(e.getID()) && !todo.contains(e) && !hasVisited(e))
 							{
 								todo.add(e);
 							}
@@ -153,7 +155,7 @@ public class KeyspaceCrawler extends Task {
 	protected boolean isDone() {
 		if (todo.size() == 0 && getNumOutstandingRequests() == 0 && !isFinished()) {
 			return true;
-		} 
+		}
 		return false;
 	}
 

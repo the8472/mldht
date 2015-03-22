@@ -146,4 +146,10 @@ public class Blackhole<E> implements List<E>, Queue<E>, Set<E>, RandomAccess {
 	public List<E> subList(int fromIndex, int toIndex) {
 		return this;
 	}
+	
+	@Override
+	public Spliterator<E> spliterator() {
+		// TODO Auto-generated method stub
+		return List.super.spliterator();
+	}
 }

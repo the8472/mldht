@@ -1,27 +1,47 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad.tasks;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
-import lbms.plugins.mldht.kad.*;
+import lbms.plugins.mldht.kad.AnnounceNodeCache;
+import lbms.plugins.mldht.kad.DBItem;
+import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
-import lbms.plugins.mldht.kad.messages.*;
+import lbms.plugins.mldht.kad.DHTConstants;
+import lbms.plugins.mldht.kad.KBucketEntry;
+import lbms.plugins.mldht.kad.KBucketEntryAndToken;
+import lbms.plugins.mldht.kad.KClosestNodesSearch;
+import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.Node;
+import lbms.plugins.mldht.kad.PeerAddressDBItem;
+import lbms.plugins.mldht.kad.RPCCall;
+import lbms.plugins.mldht.kad.RPCServer;
+import lbms.plugins.mldht.kad.ScrapeResponseHandler;
+import lbms.plugins.mldht.kad.messages.GetPeersRequest;
+import lbms.plugins.mldht.kad.messages.GetPeersResponse;
+import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.PackUtil;
@@ -38,7 +58,7 @@ public class PeerLookupTask extends Task {
 	private boolean							fastTerminate;
 	
 	// nodes which have answered with tokens
-	private List<KBucketEntryAndToken>		announceCanidates;		
+	private List<KBucketEntryAndToken>		announceCanidates;
 	private ScrapeResponseHandler			scrapeHandler;
 
 	private Set<PeerAddressDBItem>			returnedItems;
@@ -61,11 +81,7 @@ public class PeerLookupTask extends Task {
 
 		DHT.logDebug("PeerLookupTask started: " + getTaskID());
 		
-		addListener(new TaskListener() {
-			public void finished(Task t) {
-				done();
-			}
-		});
+		addListener(t -> done());
 		
 	}
 
@@ -88,7 +104,7 @@ public class PeerLookupTask extends Task {
 			setNoAnnounce(true);
 	}
 	
-	public void setLowPriority(boolean lowPriority) 
+	public void setLowPriority(boolean lowPriority)
 	{
 		this.lowPriority = lowPriority;
 	}
@@ -126,7 +142,7 @@ public class PeerLookupTask extends Task {
 					{
 						// add node to todo list
 						KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-						if(!AddressUtils.isBogon(e.getAddress()) && !node.allLocalIDs().contains(e.getID()) && !hasVisited(e))
+						if(!AddressUtils.isBogon(e.getAddress()) && !node.isLocalId(e.getID()) && !hasVisited(e))
 							todo.add(e);
 					}
 				}
@@ -202,6 +218,7 @@ public class PeerLookupTask extends Task {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.Task#update()
 	 */
+	@Override
 	void update () {
 		// check if the cache has any closer nodes after the initial query
 		Collection<KBucketEntry> cacheResults = cache.get(targetKey, lowPriority ? DHTConstants.MAX_CONCURRENT_REQUESTS_LOWPRIO : DHTConstants.MAX_CONCURRENT_REQUESTS);
@@ -248,9 +265,10 @@ public class PeerLookupTask extends Task {
 	private synchronized boolean isClosestSetStable() {
 		if(todo.isEmpty())
 			return true;
-		return closestSet.size() >= DHTConstants.MAX_ENTRIES_PER_BUCKET && targetKey.threeWayDistance(todo.first().getID(), closestSet.last().getID()) > 0; 
+		return closestSet.size() >= DHTConstants.MAX_ENTRIES_PER_BUCKET && targetKey.threeWayDistance(todo.first().getID(), closestSet.last().getID()) > 0;
 	}
 	
+	@Override
 	protected boolean isDone() {
 		int waitingFor = fastTerminate ? getNumOutstandingRequestsExcludingStalled() : getNumOutstandingRequests();
 		

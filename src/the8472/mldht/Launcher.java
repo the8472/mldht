@@ -1,11 +1,11 @@
 package the8472.mldht;
 
 import java.io.File;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TransferQueue;
+import java.util.function.Supplier;
 
 import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.kad.DHT;
@@ -49,20 +50,11 @@ public class Launcher {
 		defaults.put(LOG_LEVEL, LogLevel.Verbose.name());
 	}
 	
-	Path configSchema;
+	Supplier<InputStream> configSchema = () -> Launcher.class.getResourceAsStream("config.xsd");
 	
-	Path configDefaults;
+	Supplier<InputStream> configDefaults = () -> Launcher.class.getResourceAsStream("config-defaults.xml");
 	
 	List<Component> components = new ArrayList<>();
-	
-	{
-		try {
-			configSchema = Paths.get(Launcher.class.getResource("config.xsd").toURI());
-			configDefaults = Paths.get(Launcher.class.getResource("config-defaults.xml").toURI());
-		} catch (URISyntaxException e) {
-			throw new Error(e);
-		}
-	}
 	
 	private ConfigReader configReader = new ConfigReader(Paths.get(".", "config.xml"), configDefaults, configSchema);
 	

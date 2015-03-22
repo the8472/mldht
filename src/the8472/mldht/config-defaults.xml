@@ -14,12 +14,12 @@
  
     -->
   </core>
+  <!--  
   <components>
-    <!--  
     <component xsi:type="mldht:redisIndexerType">
       <className>the8472.mldht.PassiveRedisIndexer</className>
       <address>127.0.0.1</address>
     </component>
-    -->
   </components>
+  -->
 </mldht:config>

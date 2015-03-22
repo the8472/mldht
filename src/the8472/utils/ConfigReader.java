@@ -1,11 +1,13 @@
 package the8472.utils;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -42,24 +44,38 @@ public class ConfigReader {
 	
 	FilesystemNotifications notifications;
 	Path configFile;
-	Path schema;
-	Path defaults;
+	Schema schema;
+	Supplier<InputStream> defaults;
 	Document current;
 	
-	public ConfigReader(Path toRead, Path defaults, Path schema) {
+	public ConfigReader(Path toRead, Supplier<InputStream> defaults, Supplier<InputStream> schemaSource) {
 		configFile = toRead;
 		this.defaults = defaults;
-		this.schema = schema;
+		
+		try {
+			buildSchema(schemaSource.get());
+		} catch (SAXException e1) {
+			throw new RuntimeException(e1);
+		}
 		
 		if(!Files.exists(configFile)) {
 			try {
-				Files.copy(defaults, configFile);
+				Files.copy(defaults.get(), configFile);
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		}
 			
+	}
+	
+	private void buildSchema(InputStream source) throws SAXException {
+		// create a SchemaFactory capable of understanding WXS schemas
+		SchemaFactory schemaFactory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
+
+		// load a WXS schema, represented by a Schema instance
+		Source schemaFile = new StreamSource(source);
+		schema = schemaFactory.newSchema(schemaFile);
 	}
 	
 	List<Runnable> callbacks = new ArrayList<>();
@@ -159,12 +175,7 @@ public class ConfigReader {
 			DocumentBuilder parser = factory.newDocumentBuilder();
 			document = parser.parse(p.toFile());
 
-			// create a SchemaFactory capable of understanding WXS schemas
-			SchemaFactory schemaFactory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
 
-			// load a WXS schema, represented by a Schema instance
-			Source schemaFile = new StreamSource(schema.toFile());
-			Schema schema = schemaFactory.newSchema(schemaFile);
 
 			// create a Validator instance, which can be used to validate an instance document
 			Validator validator = schema.newValidator();

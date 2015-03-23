@@ -14,6 +14,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,7 @@ import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TransferQueue;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.kad.DHT;
@@ -30,6 +32,7 @@ import lbms.plugins.mldht.kad.DHTLogger;
 import the8472.utils.ConfigReader;
 import the8472.utils.FilesystemNotifications;
 import the8472.utils.XMLUtils;
+import the8472.utils.io.NetMask;
 
 public class Launcher {
 	
@@ -205,6 +208,10 @@ public class Launcher {
 			// dht.addIndexingListener(dumper);
 		}
 		
+		// need to run this after startup, Node doesn't exist before then
+		setTrustedMasks();
+		configReader.addChangeCallback(this::setTrustedMasks);
+		
 		components.forEach(c -> c.start(dhts.values(), configReader));
 
 		Runtime.getRuntime().addShutdownHook(shutdownHook);
@@ -232,6 +239,14 @@ public class Launcher {
 		String rawLevel = configReader.get(XMLUtils.buildXPath("//core/logLevel")).orElse("Info");
 		LogLevel level = LogLevel.valueOf(rawLevel);
 		DHT.setLogLevel(level);
+	}
+	
+	private void setTrustedMasks() {
+		Collection<NetMask> masks = configReader.getAll(XMLUtils.buildXPath("//core/clusterNodes/networkPrefix")).map(NetMask::fromString).collect(Collectors.toList());
+		dhts.values().forEach((d) -> {
+			if(d.isRunning())
+				d.getNode().setTrustedNetMasks(masks);
+		});
 	}
 	
 	private boolean isIPVersionDisabled(Class<? extends InetAddress> type) {

@@ -28,6 +28,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -45,6 +47,7 @@ import lbms.plugins.mldht.kad.tasks.PingRefreshTask;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import the8472.utils.Pair;
 import the8472.utils.SortedCoWSet;
+import the8472.utils.io.NetMask;
 
 
 /**
@@ -85,6 +88,8 @@ public class Node {
 	private final SortedCoWSet<Key> usedIDs = new SortedCoWSet<>(Key.class, null);
 	private volatile Map<InetAddress,RoutingTableEntry> knownNodes = new HashMap<InetAddress, RoutingTableEntry>();
 	
+	Collection<NetMask> trustedNodes = Collections.emptyList();
+	
 	private static Map<String,Serializable> dataStore;
 
 	/**
@@ -122,7 +127,7 @@ public class Node {
 					/*
 					 *  we are here because:
 					 *  a) a node with that IP is in our routing table
-					 *  b) the message is a response (mtid checked)
+					 *  b) the message is a response (mtid-verified)
 					 *  c) the ID does not match our routing table entry
 					 * 
 					 *  That means we are certain that the node either changed its node ID or does some ID-spoofing.
@@ -165,8 +170,12 @@ public class Node {
 			DHT.logInfo("ID or IP mismatching pre-existing routing table entries detected "+msg+"; ignoring for routing table maintenance");
 			return;
 		}*/
+		
+		// force trusted entry into the routing table (by splitting if necessary) if it passed all preliminary tests and it's not yet in the table
+		// although we can only trust responses, anything else might be spoofed to clobber our routing table
+		boolean trustedAndNotPresent = !entryById.isPresent() && msg.getType() == Type.RSP_MSG && trustedNodes.stream().anyMatch(mask -> mask.contains(ip));
 			
-		insertEntry(newEntry,false);
+		insertEntry(newEntry, false, trustedAndNotPresent);
 		
 		// we already should have the bucket. might be an old one by now due to splitting
 		// but it doesn't matter, we just need to update the entry, which should stay the same object across bucket splits
@@ -204,8 +213,12 @@ public class Node {
 		return false;
 	}*/
 	
+	public void insertEntry(KBucketEntry entry, boolean internalInsert) {
+		insertEntry(entry, internalInsert, false);
+	}
 	
-	public void insertEntry (KBucketEntry entry, boolean internalInsert) {
+	
+	void insertEntry (KBucketEntry entry, boolean internalInsert, boolean nonLocalSplit) {
 		if(entry == null || usedIDs.contains(entry.getID()) || AddressUtils.isBogon(entry.getAddress()) || !dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(entry.getAddress().getAddress()))
 			return;
 		
@@ -217,7 +230,7 @@ public class Node {
 			boolean isLocalBucket = false;
 			for(Key k : usedIDs.getSnapshot())
 				isLocalBucket |= tableEntry.prefix.isPrefixOf(k);
-			if(!isLocalBucket)
+			if(!isLocalBucket && !nonLocalSplit)
 				break;
 			
 			splitEntry(tableEntry);
@@ -293,6 +306,10 @@ public class Node {
 	
 	public boolean isLocalId(Key id) {
 		return usedIDs.contains(id);
+	}
+	
+	Collection<Key> localIDs() {
+		return Collections.unmodifiableList(Arrays.asList(usedIDs.getSnapshot()));
 	}
 	
 	public DHT getDHT() {
@@ -483,7 +500,7 @@ public class Node {
 		rebuildAddressCache();
 	}
 	
-	private void rebuildAddressCache() {
+	void rebuildAddressCache() {
 		Map<InetAddress, RoutingTableEntry> newKnownMap = new HashMap<InetAddress, RoutingTableEntry>(num_entries);
 		List<RoutingTableEntry> table = routingTableCOW;
 		for(int i=0,n=table.size();i<n;i++)
@@ -646,6 +663,10 @@ public class Node {
 
 	public List<RoutingTableEntry> getBuckets () {
 		return Collections.unmodifiableList(routingTableCOW) ;
+	}
+	
+	public void setTrustedNetMasks(Collection<NetMask> masks) {
+		trustedNodes = masks;
 	}
 	
 	public Optional<KBucketEntry> getRandomEntry() {

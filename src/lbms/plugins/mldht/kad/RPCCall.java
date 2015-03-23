@@ -39,13 +39,12 @@ public class RPCCall {
 	private boolean					awaitingResponse;
 	private List<RPCCallListener>	listeners		= new ArrayList<RPCCallListener>(3);
 	private ScheduledFuture<?>		timeoutTimer;
-	private long					sentTime		= -1;
-	private long					responseTime	= -1;
+	long					sentTime		= -1;
+	long					responseTime	= -1;
 	private Key						expectedID;
 	
 
 	public RPCCall (RPCServer srv, MessageBase msg) {
-		assert(srv != null);
 		assert(msg != null);
 		this.rpc = srv;
 		this.msg = msg;

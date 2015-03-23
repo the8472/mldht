@@ -177,7 +177,7 @@ public class DHT implements DHTBase {
 		return dhts.get(type);
 	}
 
-	private DHT(DHTtype type) {
+	DHT(DHTtype type) {
 		this.type = type;
 		
 		stats = new DHTStats();

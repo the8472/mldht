@@ -22,9 +22,8 @@
     </complexType>
 
     <complexType name="dhtCoreConfig">
-    	<sequence>
-    		<element name="clusterNodes" type="mldht:clusterNodeList"
-    			maxOccurs="1" minOccurs="0">
+        <all>
+    		<element name="clusterNodes" type="mldht:clusterNodeList" maxOccurs="1" minOccurs="0">
     		</element>
     		<element name="logLevel">
     			<simpleType>
@@ -47,8 +46,7 @@
     		<element name="useBootstrapServers" type="boolean"></element>
     		<element name="multihoming" type="boolean"></element>
     		<element name="persistID" type="boolean"></element>
-    		<element name="disableIPVersion" minOccurs="0"
-    			maxOccurs="1">
+    		<element name="disableIPVersion" minOccurs="0" maxOccurs="1">
     			<simpleType>
     				<restriction base="int">
     					<enumeration value="4"></enumeration>
@@ -56,7 +54,7 @@
     				</restriction>
     			</simpleType>
     		</element>
-    	</sequence>
+    	</all>
     </complexType>
 
     <complexType name="componentList">

@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mldht:config xmlns:mldht="http://mldht/config/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://mldht/config/ config.xsd ">
   <core>
+	<!--
+    <clusterNodes>
+      <networkPrefix>1.2.3.0/24</networkPrefix>
+    </clusterNodes>
+    -->
     <logLevel>Info</logLevel>
     <port>49001</port>
     <useBootstrapServers>true</useBootstrapServers>
     <multihoming>true</multihoming>
     <persistID>true</persistID>
-    <!--
-    <clusterNodes>
-      <networkPrefix>1.2.3.0/24</networkPrefix>
-    </clusterNodes>
+	<!-- 
     <disableIPVersion>6</disableIPVersion>
- 
-    -->
+	-->
   </core>
   <!--  
   <components>

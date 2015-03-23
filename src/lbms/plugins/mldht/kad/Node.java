@@ -105,8 +105,9 @@ public class Node {
 	void recieved(MessageBase msg) {
 		InetAddress ip = msg.getOrigin().getAddress();
 		Key id = msg.getID();
-				
-		Optional<Key> expectedId = Optional.ofNullable(msg.getAssociatedCall()).map(RPCCall::getExpectedID);
+		
+		Optional<RPCCall> associatedCall = Optional.ofNullable(msg.getAssociatedCall());
+		Optional<Key> expectedId = associatedCall .map(RPCCall::getExpectedID);
 		Optional<Pair<KBucket, KBucketEntry>> entryByIp = bucketForIP(ip);
 		
 		if(entryByIp.isPresent()) {
@@ -157,6 +158,7 @@ public class Node {
 		
 		KBucketEntry newEntry = new KBucketEntry(msg.getOrigin(), id);
 		newEntry.setVersion(msg.getVersion());
+		associatedCall.ifPresent(c -> newEntry.signalResponse(c.getRTT()));
 		
 		/*
 		if(scanForMismatchedEntry(newEntry)) {

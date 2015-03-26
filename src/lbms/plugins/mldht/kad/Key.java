@@ -127,17 +127,19 @@ public class Key implements Radixable<Key>, Serializable {
 	 */
 	public int threeWayDistance(Key k1, Key k2)
 	{
-		for (int i = 0,n=hash.length; i < n; i++) {
-			if(k1.hash[i] == k2.hash[i])
+		for (int i = 0,n=hash.length; i+3 < n; i+=4) {
+			int h = Byte.toUnsignedInt(hash[i]) << 24 | Byte.toUnsignedInt(hash[i+1]) << 16 | Byte.toUnsignedInt(hash[i+2]) << 8 | Byte.toUnsignedInt(hash[i+3]);
+			int a = Byte.toUnsignedInt(k1.hash[i]) << 24 | Byte.toUnsignedInt(k1.hash[i+1]) << 16 | Byte.toUnsignedInt(k1.hash[i+2]) << 8 | Byte.toUnsignedInt(k1.hash[i+3]);
+			int b = Byte.toUnsignedInt(k2.hash[i]) << 24 | Byte.toUnsignedInt(k2.hash[i+1]) << 16 | Byte.toUnsignedInt(k2.hash[i+2]) << 8 | Byte.toUnsignedInt(k2.hash[i+3]);
+			
+			if(a == b)
 				continue;
 			//needs & 0xFF since bytes are signed in Java
 			//so we must convert to int to compare it unsigned
-			int byte1 = (k1.hash[i] ^ hash[i]) & 0xFF;
-			int byte2 = (k2.hash[i] ^ hash[i]) & 0xFF;
+			int byte1 = (a ^ h);
+			int byte2 = (b ^ h);
 			
-			if (byte1 < byte2)
-				return -1;
-			return 1;
+			return Integer.compareUnsigned(byte1, byte2);
 		}
 		return 0;
 	}

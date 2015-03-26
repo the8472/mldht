@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.IntStream;
 
 import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -683,9 +684,16 @@ public class Node {
 		StringBuilder b = new StringBuilder(10000);
 		List<RoutingTableEntry> table = routingTableCOW;
 		
+		Collection<Key> localIds = localIDs();
+		
 		b.append("buckets: ").append(table.size()).append(" / entries: ").append(num_entries).append('\n');
-		for(RoutingTableEntry e : table )
-			b.append(e.prefix).append("   entries:").append(e.bucket.getNumEntries()).append(" replacements:").append(e.bucket.getNumReplacements()).append('\n');
+		for(RoutingTableEntry e : table ) {
+			b.append(e.prefix).append("   num:").append(e.bucket.getNumEntries()).append(" rep:").append(e.bucket.getNumReplacements());
+			if(localIds.stream().anyMatch(e.prefix::isPrefixOf))
+				b.append(" [Home]");
+			b.append('\n');
+		}
+			
 		return b.toString();
 	}
 

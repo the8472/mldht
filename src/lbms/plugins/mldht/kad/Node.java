@@ -670,7 +670,12 @@ public class Node {
 	}
 	
 	public Optional<KBucketEntry> getRandomEntry() {
-		return Optional.of(routingTableCOW).filter(t -> !t.isEmpty()).map(table -> table.get(ThreadLocalRandom.current().nextInt(table.size())).bucket).flatMap(KBucket::randomEntry);
+		List<RoutingTableEntry> table = routingTableCOW;
+		
+		int offset = ThreadLocalRandom.current().nextInt(table.size());
+		
+		// sweep from a random offset in case there are empty buckets
+		return IntStream.range(0, table.size()).mapToObj(i -> table.get((i + offset) % table.size()).getBucket().randomEntry()).filter(Optional::isPresent).map(Optional::get).findAny();
 	}
 	
 	@Override

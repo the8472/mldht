@@ -1022,7 +1022,7 @@ public class DHT implements DHTBase {
 		
 		w.append("-----------------------\n");
 		w.append("Stats\n");
-		w.append("Reachable node estimate: "+ estimator.getEstimate()+'\n');
+		w.append("Reachable node estimate: "+ estimator.getEstimate()+ " ("+estimator.getStability()+")\n");
 		w.append(stats.toString());
 		w.append("-----------------------\n");
 		w.append("Routing table\n");

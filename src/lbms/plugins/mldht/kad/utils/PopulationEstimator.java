@@ -1,15 +1,21 @@
 package lbms.plugins.mldht.kad.utils;
 
-import java.io.PrintStream;
-import java.math.BigInteger;
 import java.text.NumberFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.TreeSet;
 
 import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.Prefix;
-import lbms.plugins.mldht.kad.DHT.LogLevel;
-import lbms.plugins.mldht.kad.Key.DistanceOrder;
+import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
 
 /**
  * @author The_8472, Damokles
@@ -31,25 +37,29 @@ public class PopulationEstimator {
 	LinkedList<Double> 					rawDistances					= new LinkedList<Double>();
 
 	
-	private double						averageNodeDistanceExp2			= KEYSPACE_BITS;
+	private ExponentialWeightendMovingAverage						errorEstimate = new ExponentialWeightendMovingAverage().setWeight(0.03).setValue(0.5);
+	private ExponentialWeightendMovingAverage						averageNodeDistanceExp2 = new ExponentialWeightendMovingAverage().setValue(1);
 	private List<PopulationListener>	listeners						= new ArrayList<PopulationListener>(1);
 	private static final int			MAX_RECENT_LOOKUP_CACHE_SIZE	= 40;
 	private Deque<Prefix>				recentlySeenPrefixes			= new LinkedList<Prefix>();
 
 	public long getEstimate () {
-		return (long) (Math.pow(2, KEYSPACE_BITS - averageNodeDistanceExp2));
-
+		return (long) (Math.pow(2, averageNodeDistanceExp2.getAverage()));
 	}
-
+	
+	public double getStability() {
+		return 1.0 - errorEstimate.getAverage();
+	}
 	
 	public double getRawDistanceEstimate() {
-		return averageNodeDistanceExp2;
+		return averageNodeDistanceExp2.getAverage();
 	}
 
 	public void setInitialRawDistanceEstimate(double initialValue) {
-		averageNodeDistanceExp2 = initialValue;
-		if(averageNodeDistanceExp2 > KEYSPACE_BITS)
-			averageNodeDistanceExp2 = KEYSPACE_BITS;
+		if(initialValue > KEYSPACE_BITS)
+			averageNodeDistanceExp2.setValue(1);
+		else
+			averageNodeDistanceExp2.setValue(initialValue);
 	}
 	
 	private double distanceToDouble(Key a, Key b) {
@@ -74,22 +84,24 @@ public class PopulationEstimator {
 
 	double toLog2(double value)
 	{
-		return Math.log(value)/Math.log(2);
+		return 160 - Math.log(value)/Math.log(2);
 	}
 	
 	long estimate(double avg) {
-		return (long) (Math.pow(2, KEYSPACE_BITS - avg ));
+		return (long) (Math.pow(2, avg ));
 	}
 	
 	
-	private double median()
+	private double median(List<Double> distances)
 	{
-		double values[] = new double[rawDistances.size()];
+		if(distances.size() == 1)
+			return distances.get(0);
+		double values[] = new double[distances.size()];
 		int i=0;
-		for(Double d : rawDistances)
+		for(Double d : distances)
 			values[i++] = d;
 		Arrays.sort(values);
-		// use a weighted 2-element median for max. accuracy 
+		// use a weighted 2-element median for max. accuracy
 		double middle = (values.length - 1.0) / 2.0 ;
 		int idx1 = (int) Math.floor(middle);
 		int idx2 = (int) Math.ceil(middle);
@@ -141,35 +153,59 @@ public class PopulationEstimator {
 		
 		
 		ArrayList<Key> found = new ArrayList<Key>(neighbors);
+		//found.add(target);
 		Collections.sort(found,new Key.DistanceOrder(target));
 
 		synchronized (PopulationEstimator.class)
 		{
+			
+			List<Double> distances = new LinkedList<>();
 
 			for(int i=1;i<found.size();i++)
 			{
-				rawDistances.add(distanceToDouble(target, found.get(i)) - distanceToDouble(target, found.get(i-1)));
+				distances.add(distanceToDouble(target, found.get(i)) - distanceToDouble(target, found.get(i-1)));
+				//distances.add(distanceToDouble(found.get(i-1), found.get(i)));
+				//distances.add(distanceToDouble(target, found.get(i))/(i+1.0));
+				//distances.add(target.naturalDistance(found.get(i)));
 			}
+			
+			//System.out.println(distances);
 
 			// distances are exponentially distributed. since we're taking the median we need to compensate here
-			double median = median()/Math.log(2);
+			double median = median(distances) / Math.log(2);
 
 			// work in log2 space for better averaging
 			median = toLog2(median);
+			//143.39035952556318
+			//143.255
+			//0.135
 
 			DHT.log("Estimator: distance value: " + median + " avg:" + averageNodeDistanceExp2, LogLevel.Debug);
+			
+			double absArror = Math.abs(errorEstimate.getAverage());
+			double amplifiedError = Math.pow(absArror, 1.5);
+			double clampedError = Math.max(0, Math.min(1, amplifiedError));
 
 
-			double weight = updateCount++ < INITIAL_UPDATE_COUNT ? DISTANCE_WEIGHT_INITIAL : DISTANCE_WEIGHT;
+			double weight = 0.0001 + clampedError * 0.3 ;   //updateCount++ < INITIAL_UPDATE_COUNT ? DISTANCE_WEIGHT_INITIAL : DISTANCE_WEIGHT;
+			//double weight = 0.001;
+			
+			double oldAverage = averageNodeDistanceExp2.getAverage();
 
 			// exponential average of the mean value
-			averageNodeDistanceExp2 = median * weight  + averageNodeDistanceExp2 * (1. - weight);
+			averageNodeDistanceExp2.setWeight(weight).updateAverage(median);
+			
+			double newAverage = averageNodeDistanceExp2.getAverage();
+			
+			//System.out.print("update: "+ Math.pow(2, KEYSPACE_BITS - median)+" ");
+			
+			errorEstimate.updateAverage((median - newAverage) / Math.min(median, newAverage));
 			
 			
 			while(rawDistances.size() > MAX_RAW_HISTORY)
 				rawDistances.remove();
 		}
-		DHT.log("Estimator: new estimate:"+getEstimate(), LogLevel.Info);
+		DHT.log("Estimator: new estimate:"+getEstimate()+" raw:"+averageNodeDistanceExp2.getAverage()+" error:"+errorEstimate.getAverage(), LogLevel.Info);
 		
 		fireUpdateEvent();
 
@@ -195,46 +231,43 @@ public class PopulationEstimator {
 
 	
 	public static void main(String[] args) throws Exception {
-		PrintStream out;
 		NumberFormat formatter = NumberFormat.getNumberInstance(Locale.GERMANY);
 
-		int keyspaceSize = 1000000;
+		int keyspaceSize = 20000000;
 
-		out = new PrintStream("dump.txt");
-		
-		Random rand = new Random();
-		
 		formatter.setMaximumFractionDigits(30);
 		
 		PopulationEstimator estimator = new PopulationEstimator();
 		
 		
 		
-		System.out.println(160-Math.log(keyspaceSize)/Math.log(2)); 
+		System.out.println(160-Math.log(keyspaceSize)/Math.log(2));
 		
 		Key[] keyspace = new Key[keyspaceSize];
-		for(int i = 0;i< keyspaceSize;i++)
-			keyspace[i] = Key.createRandomKey();
-		Arrays.sort(keyspace);
+		Runnable r = () -> {
+			Arrays.parallelSetAll(keyspace, i -> Key.createRandomKey());
+		};
+		//Arrays.sort(keyspace);
 		
-		Key[] targetSet = keyspace.clone();
-		
-		for(int i=0;i<1000;i++)
+		for(int i=0;i<100;i++)
 		{
-				Key target = Key.createRandomKey();
-				
-				Arrays.sort(targetSet, new Key.DistanceOrder(target));
-				
+			if(i % 20 == 0)
+				r.run();
 
-				int sizeGoal = 8;
-				
-				TreeSet<Key> closestSet = new TreeSet<Key>();
+			Key target = Key.createRandomKey();
 
-				for(int j=0;j<sizeGoal;j++)
-					closestSet.add(targetSet[j]);
-				
-				//estimator.update(closestSet);
-				estimator.update(closestSet,target);
+			Arrays.parallelSort(keyspace, new Key.DistanceOrder(target));
+
+
+			int sizeGoal = 8;
+
+			TreeSet<Key> closestSet = new TreeSet<Key>();
+
+			for(int j=0;j<sizeGoal;j++)
+				closestSet.add(keyspace[j]);
+
+			//estimator.update(closestSet);
+			estimator.update(closestSet,target);
 		}
 		
 	}

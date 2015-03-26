@@ -1,12 +1,14 @@
 package the8472.test.bencode;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 import static the8472.bencode.Utils.buf2str;
 import static the8472.bencode.Utils.str2buf;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,8 +19,8 @@ import the8472.bencode.BEncoder;
 public class EncoderTest {
 
 	@Test
-	public void test() {
-		Map<String, Object> root = new HashMap<>();
+	public void testBasics() {
+		Map<String, Object> root = new LinkedHashMap<>();
 		List<Object> l = new ArrayList<>();
 		l.add(1234L);
 		l.add(str2buf("foo"));
@@ -34,6 +36,41 @@ public class EncoderTest {
 		ByteBuffer out = enc.encode(root, 1024);
 		
 		assertEquals(str2buf("d2:aai1e2:bbi1e1:cli1234e3:fooe2:xxi1e2:yyi1e2:zzi3ee"), out);
+	}
+	
+	@Test
+	public void testSorting() {
+		Map<String, Object> root = new LinkedHashMap<>();
+		
+		String[] keys = new String[256];
+		
+		Arrays.setAll(keys, (i) -> buf2str(ByteBuffer.wrap(new byte[] {(byte) i})));
+		// clone to shuffle independently of original order
+		List<String> keyList = Arrays.asList(keys);
+		List<String> shuffledKeys = Arrays.asList(keys.clone());
+		Collections.shuffle(shuffledKeys);
+		
+		shuffledKeys.forEach(s -> root.put(s, 1L));
+		
+		BEncoder enc = new BEncoder();
+		ByteBuffer out = enc.encode(root, 2048);
+		
+		StringBuilder reference = new StringBuilder();
+		
+		reference.append("d");
+		
+		keyList.forEach(str -> {
+			reference.append("1:");
+			reference.append(str);
+			reference.append("i1e");
+		});
+		
+		
+		reference.append("e");
+		
+		
+		
+		assertEquals(str2buf(reference.toString()), out);
 	}
 
 }

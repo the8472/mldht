@@ -48,7 +48,7 @@ public class PopulationEstimator {
 	}
 	
 	public double getStability() {
-		return 1.0 - errorEstimate.getAverage();
+		return 1.0 - Math.abs(errorEstimate.getAverage());
 	}
 	
 	public double getRawDistanceEstimate() {

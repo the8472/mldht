@@ -682,9 +682,9 @@ public class DHT implements DHTBase {
 				node.getRandomEntry().ifPresent((entry) -> {
 					PingRequest req = new PingRequest();
 					req.setDestination(entry.getAddress());
-					RPCCall call = new RPCCall(srv, req);
+					RPCCall call = new RPCCall(req);
 					call.setExpectedID(entry.getID());
-					call.start();
+					srv.doCall(call);
 				});
 			}
 				;

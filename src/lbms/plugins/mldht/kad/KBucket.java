@@ -294,7 +294,7 @@ public class KBucket implements Externalizable {
 		if(activeServer == null)
 			return false;
 		
-		new RPCCall(activeServer, p).setExpectedID(entry.getID()).addListener(listener).addListener(new RPCCallListener() {
+		activeServer.doCall(new RPCCall(p).setExpectedID(entry.getID()).addListener(listener).addListener(new RPCCallListener() {
 			public void onTimeout(RPCCall c) {
 				pendingPings.remove(entry.getID());
 			}
@@ -305,7 +305,7 @@ public class KBucket implements Externalizable {
 			public void onResponse(RPCCall c, MessageBase rsp) {
 				pendingPings.remove(entry.getID());
 			}
-		}).start();
+		}));
 		
 		return true;
 	}

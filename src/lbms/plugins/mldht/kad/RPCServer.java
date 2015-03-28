@@ -167,7 +167,7 @@ public class RPCServer {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#doCall(lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
-	void doCall (RPCCall c) {
+	public void doCall (RPCCall c) {
 		
 		while(true)
 		{
@@ -209,7 +209,7 @@ public class RPCServer {
 		PingRequest pr = new PingRequest();
 		pr.setID(derivedId);
 		pr.setDestination(addr);
-		new RPCCall(this, pr).start();
+		doCall(new RPCCall(pr));
 	}
 
 	/* (non-Javadoc)
@@ -681,6 +681,9 @@ public class RPCServer {
 			if((toSend instanceof PingResponse || toSend instanceof FindNodeResponse) && toSend.getPublicIP() == null) {
 				toSend.setPublicIP(toSend.getDestination());
 			}
+			
+			if(toSend.getAssociatedCall() != null && toSend.getAssociatedCall().getExpectedRTT() == -1)
+				toSend.getAssociatedCall().setExpectedRTT(timeoutFilter.getStallTimeout());
 		}
 		
 		ByteBuffer getBuffer() throws IOException {

@@ -19,13 +19,13 @@ package lbms.plugins.mldht.kad;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
-import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 
 /**
  * @author Damokles
@@ -34,7 +34,6 @@ import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 public class RPCCall {
 
 	private MessageBase				msg;
-	private RPCServer				rpc;
 	private boolean					stalled;
 	private boolean					awaitingResponse;
 	private List<RPCCallListener>	listeners		= new ArrayList<RPCCallListener>(3);
@@ -42,11 +41,11 @@ public class RPCCall {
 	long					sentTime		= -1;
 	long					responseTime	= -1;
 	private Key						expectedID;
+	long					expectedRTT = -1;
 	
 
-	public RPCCall (RPCServer srv, MessageBase msg) {
+	public RPCCall (MessageBase msg) {
 		assert(msg != null);
-		this.rpc = srv;
 		this.msg = msg;
 	}
 	
@@ -55,19 +54,21 @@ public class RPCCall {
 		return this;
 	}
 	
+	public RPCCall setExpectedRTT(long rtt) {
+		expectedRTT = rtt;
+		return this;
+	}
+	
+	public long getExpectedRTT() {
+		return expectedRTT;
+	}
+	
 	public boolean matchesExpectedID(Key id) {
 		return expectedID == null || id.equals(expectedID);
 	}
 	
 	public Key getExpectedID() {
 		return expectedID;
-	}
-
-	/* (non-Javadoc)
-	 * @see lbms.plugins.mldht.kad.RPCCallBase#start()
-	 */
-	public void start () {
-		rpc.doCall(this);
 	}
 	
 	/* (non-Javadoc)
@@ -145,7 +146,7 @@ public class RPCCall {
 			}
 		},
 		// spread out the stalls by +- 1ms to reduce lock contention
-		rpc.getTimeoutFilter().getStallTimeout()*1000+ThreadLocalUtils.getThreadLocalRandom().nextInt(2000)-1000,
+		expectedRTT*1000+ThreadLocalRandom.current().nextInt(-1000, 1000),
 		TimeUnit.MICROSECONDS);
 	}
 

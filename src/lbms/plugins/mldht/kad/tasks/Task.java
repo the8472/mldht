@@ -234,7 +234,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 			return false;
 		}
 
-		new RPCCall(rpc,req).setExpectedID(expectedID).addListener(this).addListener(listener).start();
+		rpc.doCall(new RPCCall(req).setExpectedID(expectedID).addListener(this).addListener(listener));
 		outstandingRequestsExcludingStalled.incrementAndGet();
 		outstandingRequests.incrementAndGet();
 		

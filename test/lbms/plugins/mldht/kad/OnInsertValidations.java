@@ -57,7 +57,7 @@ public class OnInsertValidations {
 		KBucketEntry entry = bucket.randomEntry().get();
 		
 		PingRequest req = new PingRequest();
-		RPCCall c = new RPCCall(null, req);
+		RPCCall c = new RPCCall(req);
 		c.setExpectedID(entry.getID());
 		PingResponse rsp = new PingResponse(new byte[0]);
 		rsp.setOrigin(entry.getAddress());
@@ -79,7 +79,7 @@ public class OnInsertValidations {
 		RoutingTableEntry nonLocalFullBucket = node.getBuckets().stream().filter(b -> b.getBucket().getNumReplacements() == DHTConstants.MAX_ENTRIES_PER_BUCKET && localIds.stream().noneMatch(k -> b.prefix.isPrefixOf(k))).findAny().get();
 		
 		PingRequest req = new PingRequest();
-		RPCCall call = new RPCCall(null, req);
+		RPCCall call = new RPCCall(req);
 		PingResponse rsp = new PingResponse(new byte[0]);
 		rsp.setAssociatedCall(call);
 		Key newId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
@@ -110,7 +110,7 @@ public class OnInsertValidations {
 		RoutingTableEntry nonLocalFullBucket = node.getBuckets().stream().filter(e -> e.getBucket().getNumEntries() == DHTConstants.MAX_ENTRIES_PER_BUCKET && localIds.stream().noneMatch(k -> e.prefix.isPrefixOf(k))).findAny().get();
 		
 		PingRequest req = new PingRequest();
-		RPCCall call = new RPCCall(null, req);
+		RPCCall call = new RPCCall(req);
 		PingResponse rsp = new PingResponse(new byte[0]);
 		rsp.setAssociatedCall(call);
 		Key newId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();

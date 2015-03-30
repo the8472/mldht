@@ -225,8 +225,11 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		if (!canDoRequest()) {
 			return false;
 		}
+		
+		RPCCall call = new RPCCall(req).setExpectedID(expectedID).addListener(this).addListener(listener);
 
-		rpc.doCall(new RPCCall(req).setExpectedID(expectedID).addListener(this).addListener(listener));
+		// asyncify since we're under a lock here
+		DHT.getScheduler().execute(() -> rpc.doCall(call)) ;
 		outstandingRequestsExcludingStalled.incrementAndGet();
 		outstandingRequests.incrementAndGet();
 		

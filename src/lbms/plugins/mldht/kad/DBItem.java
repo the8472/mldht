@@ -16,8 +16,12 @@
  */
 package lbms.plugins.mldht.kad;
 
+import static the8472.utils.Arrays.compareUnsigned;
+
 import java.util.Arrays;
 import java.util.Comparator;
+
+import the8472.bencode.Utils;
 
 /**
  * @author Damokles
@@ -41,6 +45,10 @@ public class DBItem implements Comparable<DBItem> {
 	public boolean expired (final long now) {
 		return (now - time_stamp >= DHTConstants.MAX_ITEM_AGE);
 	}
+	
+	public long getCreatedAt() {
+		return time_stamp;
+	}
 
 	/// Get the data of an item
 	public byte[] getData () {
@@ -49,17 +57,12 @@ public class DBItem implements Comparable<DBItem> {
 
 	@Override
 	public String toString() {
-		return "DBItem length:"+item.length;
+		return "DBItem: "+Utils.prettyPrint(item);
 	}
 	
 	// sort by raw data. only really useful for binary search
 	public int compareTo(DBItem other) {
-		for (int i = 0,n=item.length; i < n; i++) {
-			int t = Byte.compare(item[i], other.item[i]);
-			if(t != 0)
-				return t;
-		}
-		return item.length - other.item.length;
+		return compareUnsigned(item, other.item);
 	}
 
 	@Override

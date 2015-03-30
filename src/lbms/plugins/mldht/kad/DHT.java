@@ -754,6 +754,10 @@ public class DHT implements DHTBase {
 	public Node getNode () {
 		return node;
 	}
+	
+	public Database getDatabase() {
+		return db;
+	}
 
 	/*
 	 * (non-Javadoc)

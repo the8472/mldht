@@ -207,7 +207,7 @@ public class KBucketEntry implements Serializable {
 	@Override
 	public String toString() {
 		long now = System.currentTimeMillis();
-		return nodeID+"/"+addr+";seen:"+Duration.ofMillis(now-lastSeen)+";age:"+Duration.ofMillis(now-timeCreated)+(failedQueries>0?";fail:"+failedQueries:"");
+		return nodeID+"/"+addr+";seen:"+Duration.ofMillis(now-lastSeen)+";age:"+Duration.ofMillis(now-timeCreated)+(failedQueries>0?";fail:"+failedQueries:"")+";rtt:"+avgRTT.getAverage();
 	}
 
 	/**

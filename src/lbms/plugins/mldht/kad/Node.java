@@ -309,7 +309,7 @@ public class Node {
 		return usedIDs.contains(id);
 	}
 	
-	Collection<Key> localIDs() {
+	public Collection<Key> localIDs() {
 		return Collections.unmodifiableList(Arrays.asList(usedIDs.getSnapshot()));
 	}
 	
@@ -668,6 +668,10 @@ public class Node {
 	
 	public void setTrustedNetMasks(Collection<NetMask> masks) {
 		trustedNodes = masks;
+	}
+	
+	public Collection<NetMask> getTrustedNetMasks() {
+		return trustedNodes;
 	}
 	
 	public Optional<KBucketEntry> getRandomEntry() {

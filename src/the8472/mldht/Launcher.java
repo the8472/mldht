@@ -10,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -19,7 +18,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.LinkedTransferQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TransferQueue;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -171,30 +169,8 @@ public class Launcher {
 				e.printStackTrace(exWriter);
 			}
 		});
-
-		Path diagnostics = logDir.resolve("diagnostics.log");
-
-		DHT.getScheduler().scheduleWithFixedDelay(
-				() -> {
-
-					try {
-						Path tempFile = Files.createTempFile(diagnostics.getParent(), "diag", ".tmp");
-
-						try (PrintWriter statusWriter = new PrintWriter(Files.newBufferedWriter(tempFile,
-								StandardCharsets.UTF_8))) {
-							for (DHT dht : dhts.values()) {
-								dht.printDiagnostics(statusWriter);
-							}
-
-							statusWriter.close();
-
-							Files.move(tempFile, diagnostics, StandardCopyOption.ATOMIC_MOVE,
-									StandardCopyOption.REPLACE_EXISTING);
-						}
-					} catch (Exception e) {
-						e.printStackTrace();
-					}
-				}, 10, 30, TimeUnit.SECONDS);
+		
+		new Diagnostics().init(dhts.values(), logDir);
 
 		setLogLevel();
 		configReader.registerFsNotifications(notifications);

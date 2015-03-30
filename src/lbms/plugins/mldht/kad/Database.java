@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -362,11 +363,15 @@ public class Database {
 		
 		return toCheck.equals(new ByteWrapper(rawToken));
 	}
-
-	/// Test whether or not the DB contains a key
-	boolean contains(Key key) {
-		return items.containsKey(key);
+	
+	public Map<Key, List<DBItem>> getData() {
+		return items.entrySet().stream().collect(Collectors.toMap((e) -> {
+			return e.getKey();
+		}, (e) -> {
+			return Arrays.asList(e.getValue().snapshot());
+		}));
 	}
+
 
 	/**
 	 * @return the stats

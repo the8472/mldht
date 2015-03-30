@@ -69,7 +69,7 @@ public class Diagnostics {
 		f.format("Keys: %d Entries: %d%n", items.size(), items.values().stream().collect(Collectors.summingInt(l -> l.size())));
 		
 		items.entrySet().stream().sorted((a,b) -> b.getValue().size() - a.getValue().size()).forEach(e -> {
-			f.format("%s: %4d%n", e.getKey(), e.getValue().size());
+			f.format("%s: %4d%n", e.getKey().toString(false), e.getValue().size());
 		});
 		
 		f.format("%n======%n%n");

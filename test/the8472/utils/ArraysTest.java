@@ -11,7 +11,7 @@ public class ArraysTest {
 		assertTrue(Arrays.compareUnsigned(new byte[] {0x0A}, new byte[] {0x0A}) == 0);
 		assertTrue(Arrays.compareUnsigned(new byte[] {0x00}, new byte[] {0x01}) == -1);
 		// length
-		assertTrue(Arrays.compareUnsigned(new byte[] {0x00}, new byte[] {0x00,0x00}) == 1);
+		assertTrue(Arrays.compareUnsigned(new byte[] {0x00}, new byte[] {0x00,0x00}) == -1);
 		// unsignedness
 		assertTrue(Arrays.compareUnsigned(new byte[] {(byte) 0xFE}, new byte[] {(byte) 0xFF}) == -1);
 		assertTrue(Arrays.compareUnsigned(new byte[] {(byte) 0x01}, new byte[] {(byte) 0xFF}) == -1);

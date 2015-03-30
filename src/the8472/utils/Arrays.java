@@ -37,7 +37,7 @@ public class Arrays {
 				return Integer.compare(ia, ib);
 		}
 		
-		return b.length - a.length;
+		return a.length - b.length;
 	}
 
 }

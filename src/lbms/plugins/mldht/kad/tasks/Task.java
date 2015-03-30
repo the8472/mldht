@@ -149,9 +149,6 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	{
 		outstandingRequestsExcludingStalled.decrementAndGet();
 		
-		if(!isFinished())
-			callStalled(c);
-		
 		if(isDone())
 			finished();
 		
@@ -213,11 +210,6 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 */
 	abstract void callFinished (RPCCall c, MessageBase rsp);
 	
-	/**
-	 * A call hasn't timed out yet but is estimated to be unlikely to finish, it will either time out or finish after this event has occured
-	 */
-	void callStalled(RPCCall c) {}
-
 	/**
 	 * A call timedout
 	 * @param c The call

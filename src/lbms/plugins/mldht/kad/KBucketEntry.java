@@ -251,12 +251,13 @@ public class KBucketEntry implements Serializable {
 		return false;
 	}
 
-	public void mergeInTimestamps(KBucketEntry entry) {
-		if(!this.equals(entry))
+	public void mergeInTimestamps(KBucketEntry other) {
+		if(!this.equals(other))
 			return;
-		lastSeen = Math.max(lastSeen, entry.getLastSeen());
-		timeCreated = Math.min(timeCreated, entry.getCreationTime());
-		avgRTT.updateAverage(entry.getRTT());
+		lastSeen = Math.max(lastSeen, other.getLastSeen());
+		timeCreated = Math.min(timeCreated, other.getCreationTime());
+		if(!Double.isNaN(other.avgRTT.getAverage()) )
+			avgRTT.updateAverage(other.avgRTT.getAverage());
 	}
 	
 	public int getRTT() {

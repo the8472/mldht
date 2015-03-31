@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import lbms.plugins.mldht.DHTConfiguration;
@@ -219,7 +220,7 @@ public class Node {
 	}
 	
 	
-	void insertEntry (KBucketEntry entry, boolean internalInsert, boolean nonLocalSplit) {
+	void insertEntry (KBucketEntry entry, boolean internalInsert, boolean isTrusted) {
 		if(entry == null || usedIDs.contains(entry.getID()) || AddressUtils.isBogon(entry.getAddress()) || !dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(entry.getAddress().getAddress()))
 			return;
 		
@@ -231,7 +232,7 @@ public class Node {
 			boolean isLocalBucket = false;
 			for(Key k : usedIDs.getSnapshot())
 				isLocalBucket |= tableEntry.prefix.isPrefixOf(k);
-			if(!isLocalBucket && !nonLocalSplit)
+			if(!isLocalBucket)
 				break;
 			
 			splitEntry(tableEntry);
@@ -240,8 +241,14 @@ public class Node {
 		
 		int oldSize = tableEntry.bucket.getNumEntries();
 		
-		if(internalInsert)
-			tableEntry.bucket.modifyMainBucket(null,entry);
+		KBucketEntry toRemove = null;
+		
+		if(isTrusted) {
+			toRemove = tableEntry.bucket.getEntries().stream().filter(e -> trustedNodes.stream().noneMatch(mask -> mask.contains(e.getAddress().getAddress()))).collect(Collectors.maxBy(KBucketEntry.AGE_ORDER)).orElse(null);
+		}
+		
+		if(internalInsert || isTrusted)
+			tableEntry.bucket.modifyMainBucket(toRemove,entry);
 		else
 			tableEntry.bucket.insertOrRefresh(entry);
 		

@@ -49,6 +49,17 @@ public class OnInsertValidations {
 		}
 		node.rebuildAddressCache();
 	}
+	
+	private PingResponse buildResponse(Key k, InetSocketAddress origin) {
+		PingRequest req = new PingRequest();
+		RPCCall call = new RPCCall(req);
+		PingResponse rsp = new PingResponse(new byte[0]);
+		rsp.setAssociatedCall(call);
+		rsp.setID(k);
+		rsp.setOrigin(origin);
+		
+		return rsp;
+	}
 
 	@Test
 	public void testImmediateEvictionOnIdMismatch() {
@@ -56,13 +67,9 @@ public class OnInsertValidations {
 		KBucket bucket = node.getBuckets().get(0).getBucket();
 		KBucketEntry entry = bucket.randomEntry().get();
 		
-		PingRequest req = new PingRequest();
-		RPCCall c = new RPCCall(req);
-		c.setExpectedID(entry.getID());
-		PingResponse rsp = new PingResponse(new byte[0]);
-		rsp.setOrigin(entry.getAddress());
-		rsp.setID(Key.createRandomKey());
-		rsp.setAssociatedCall(c);
+		PingResponse rsp = buildResponse(Key.createRandomKey(), entry.getAddress());
+		rsp.getAssociatedCall().setExpectedID(entry.getID());
+
 		node.recieved(rsp);
 
 		assertFalse(bucket.findByIPorID(entry.getAddress().getAddress(), entry.getID()).isPresent());
@@ -78,27 +85,35 @@ public class OnInsertValidations {
 				
 		RoutingTableEntry nonLocalFullBucket = node.getBuckets().stream().filter(b -> b.getBucket().getNumReplacements() == DHTConstants.MAX_ENTRIES_PER_BUCKET && localIds.stream().noneMatch(k -> b.prefix.isPrefixOf(k))).findAny().get();
 		
-		PingRequest req = new PingRequest();
-		RPCCall call = new RPCCall(req);
-		PingResponse rsp = new PingResponse(new byte[0]);
-		rsp.setAssociatedCall(call);
 		Key newId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
-		rsp.setID(newId);
-		rsp.setOrigin(new InetSocketAddress(generateIp((byte)0x00), 1234));
+		PingResponse rsp = buildResponse(newId, new InetSocketAddress(generateIp((byte)0x00), 1234));
 		
 		node.recieved(rsp);
 		
-		// doesn't get inserted because the replacement buckets only overwrite entries once every second
+		// doesn't get inserted because the replacement buckets only overwrite entries once every second and the main bucket is stable anyway
+		assertFalse(nonLocalFullBucket.getBucket().getEntries().stream().anyMatch(e -> e.getID().equals(newId)));
 		assertFalse(nonLocalFullBucket.getBucket().getReplacementEntries().stream().anyMatch(e -> e.getID().equals(newId)));
 		
 		long now = System.currentTimeMillis();
+		RPCCall call = rsp.getAssociatedCall();
 		call.sentTime = now - 50;
 		call.responseTime = now;
 		
 		node.recieved(rsp);
 		
-		// the once-per-second rule does not apply if the new entry has a lower RTT than the existing value
-		assertTrue(nonLocalFullBucket.getBucket().getReplacementEntries().stream().anyMatch(e -> e.getID().equals(newId)));
+		// main bucket accepts one RTT-based replacement for the youngest entry
+		assertTrue(nonLocalFullBucket.getBucket().getEntries().stream().anyMatch(e -> e.getID().equals(newId)));
+		
+		Key anotherId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
+		rsp = buildResponse(anotherId, new InetSocketAddress(generateIp((byte)0x00), 1234));
+		call = rsp.getAssociatedCall();
+		call.sentTime = now - 50;
+		call.responseTime = now;
+		
+		node.recieved(rsp);
+		
+		// replacement bucket accepts RTT-based overwrite once main bucket is satisfied
+		assertTrue(nonLocalFullBucket.getBucket().getReplacementEntries().stream().anyMatch(e -> e.getID().equals(anotherId)));
 	}
 	
 	@Test

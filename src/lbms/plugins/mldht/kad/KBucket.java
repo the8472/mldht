@@ -114,10 +114,10 @@ public class KBucket implements Externalizable {
 		if (replaceBadEntry(newEntry))
 			return;
 
-		// older entries displace younger ones (this code path is mostly used on changing node IDs)
+		// older entries displace younger ones ()
 		KBucketEntry youngest = entriesRef.get(entriesRef.size()-1);
 		
-		if (youngest.getCreationTime() > newEntry.getCreationTime())
+		if (youngest.getCreationTime() > newEntry.getCreationTime() || newEntry.getRTT() < youngest.getRTT())
 		{
 			modifyMainBucket(youngest,newEntry);
 			// it was a useful entry, see if we can use it to replace something questionable
@@ -324,7 +324,7 @@ public class KBucket implements Externalizable {
 					modifyMainBucket(toTest, replacement_entry);
 					// we could replace this one, try another one.
 					KBucketEntry nextReplacementEntry;
-					nextReplacementEntry = getYoungestReplacementEntry();
+					nextReplacementEntry = getBestReplacementEntry();
 					if (nextReplacementEntry != null && !replaceBadEntry(nextReplacementEntry))
 						pingQuestionable(nextReplacementEntry);
 				}
@@ -369,43 +369,65 @@ public class KBucket implements Externalizable {
 		return false;
 	}
 	
-	private KBucketEntry getYoungestReplacementEntry()
+	private KBucketEntry getBestReplacementEntry()
 	{
 		while(true) {
-			int current = currentReplacementPointer.get();
-			int newValue = current-1;
-			if(newValue < 0)
-				newValue = replacementBucket.length()-1;
-			if(currentReplacementPointer.compareAndSet(current, newValue))
-			{
-				return replacementBucket.getAndSet(current, null);
+			int bestIndex = -1;
+			KBucketEntry bestFound = null;
+			
+			for(int i=0;i<replacementBucket.length();i++) {
+				KBucketEntry entry = replacementBucket.get(i);
+				if(entry == null)
+					continue;
+				boolean isBetter = bestFound == null || entry.getRTT() < bestFound.getRTT() || (entry.getRTT() == bestFound.getRTT() && entry.getLastSeen() > bestFound.getLastSeen());
+				
+				if(isBetter) {
+					bestFound = entry;
+					bestIndex = i;
+				}
+			}
+			
+			if(bestFound == null)
+				return null;
+			
+			int newPointer = bestIndex-1;
+			if(newPointer < 0)
+				newPointer = replacementBucket.length()-1;
+			if(replacementBucket.compareAndSet(bestIndex, bestFound, null)) {
+				currentReplacementPointer.set(newPointer);
+				return bestFound;
 			}
 		}
 	}
 	
-	private void insertInReplacementBucket(KBucketEntry entry)
+	private void insertInReplacementBucket(KBucketEntry toInsert)
 	{
-		if(entry == null)
+		if(toInsert == null)
 			return;
 		
 		outer:
 		while(true)
 		{
 			int current = currentReplacementPointer.get();
-			int next = (current+1) % replacementBucket.length();
+			int insertationPoint = (current+1) % replacementBucket.length();
 			
-			KBucketEntry nextEntry = replacementBucket.get(next);
-			if(nextEntry == null || entry.getLastSeen() - nextEntry.getLastSeen() > 1000 || entry.getRTT() < nextEntry.getRTT())
+			KBucketEntry nextEntry = replacementBucket.get(insertationPoint);
+			if(nextEntry == null || toInsert.getLastSeen() - nextEntry.getLastSeen() > 1000 || toInsert.getRTT() < nextEntry.getRTT())
 			{
 				for(int i=0;i<replacementBucket.length();i++)
 				{
 					// don't insert if already present
-					if(entry.matchIPorID(replacementBucket.get(i)))
+					KBucketEntry potentialDuplicate = replacementBucket.get(i);
+					if(toInsert.matchIPorID(potentialDuplicate)) {
+						if(toInsert.equals(potentialDuplicate))
+							potentialDuplicate.mergeInTimestamps(toInsert);
 						break outer;
+					}
+						
 				}
-				if(currentReplacementPointer.compareAndSet(current, next))
+				if(currentReplacementPointer.compareAndSet(current, insertationPoint))
 				{
-					replacementBucket.set(next, entry);
+					replacementBucket.set(insertationPoint, toInsert);
 					break;
 				}
 			} else
@@ -433,7 +455,7 @@ public class KBucket implements Externalizable {
 		if (toRemove == null)
 			return;
 		
-		KBucketEntry replacement = getYoungestReplacementEntry();
+		KBucketEntry replacement = getBestReplacementEntry();
 		if (replacement != null)
 			modifyMainBucket(toRemove, replacement);
 	}
@@ -474,7 +496,7 @@ public class KBucket implements Externalizable {
 		if (entriesRef.contains(toRemove) && (force || toRemove.isBad()))
 		{
 			KBucketEntry replacement = null;
-			replacement = getYoungestReplacementEntry();
+			replacement = getBestReplacementEntry();
 
 			// only remove if we have a replacement or really need to
 			if(replacement != null || force)

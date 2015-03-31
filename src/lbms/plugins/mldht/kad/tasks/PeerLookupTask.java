@@ -248,10 +248,14 @@ public class PeerLookupTask extends Task {
 			gpr.setDestination(e.getAddress());
 			gpr.setScrape(true);
 			gpr.setNoSeeds(noSeeds);
-			if(rpcCall(gpr,e.getID(),cache.getRPCListener()))
+			if(rpcCall(gpr, e.getID(), call -> {
+				call.addListener(cache.getRPCListener());
+				long rtt = e.getRTT();
+				if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX)
+					call.setExpectedRTT(rtt);
+			})) {
 				visited(e);
-			else
-			{
+			} else {
 				synchronized (this)
 				{
 					todo.add(e);

@@ -26,6 +26,7 @@ import java.util.TreeSet;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -221,12 +222,15 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 * @param req THe request to send
 	 * @return true if call was made, false if not
 	 */
-	boolean rpcCall (MessageBase req, Key expectedID, RPCCallListener listener) {
+	boolean rpcCall (MessageBase req, Key expectedID, Consumer<RPCCall> modifyCallBeforeSubmit) {
 		if (!canDoRequest()) {
 			return false;
 		}
 		
-		RPCCall call = new RPCCall(req).setExpectedID(expectedID).addListener(this).addListener(listener);
+		RPCCall call = new RPCCall(req).setExpectedID(expectedID).addListener(this);
+		
+		if(modifyCallBeforeSubmit != null)
+			modifyCallBeforeSubmit.accept(call);
 
 		// asyncify since we're under a lock here
 		DHT.getScheduler().execute(() -> rpc.doCall(call)) ;

@@ -16,6 +16,8 @@
  */
 package lbms.plugins.mldht.kad;
 
+import static the8472.bencode.Utils.prettyPrint;
+
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
@@ -207,7 +209,7 @@ public class KBucketEntry implements Serializable {
 	@Override
 	public String toString() {
 		long now = System.currentTimeMillis();
-		return nodeID+"/"+addr+";seen:"+Duration.ofMillis(now-lastSeen)+";age:"+Duration.ofMillis(now-timeCreated)+(failedQueries>0?";fail:"+failedQueries:"")+";rtt:"+avgRTT.getAverage();
+		return nodeID+"/"+addr+";seen:"+Duration.ofMillis(now-lastSeen)+";age:"+Duration.ofMillis(now-timeCreated)+(failedQueries>0?";fail:"+failedQueries:"")+";rtt:"+avgRTT.getAverage()+(version!=null?";ver:"+prettyPrint(version):"");
 	}
 
 	/**

@@ -120,34 +120,29 @@ public class RPCCall {
 		awaitingResponse = true;
 		sentTime = System.currentTimeMillis();
 		
-		
-		timeoutTimer = DHT.getScheduler().schedule(new Runnable() {
-			public void run () {
-				
-				synchronized (RPCCall.this)
-				{
-					if(!awaitingResponse)
-						return;
-					// we stalled. for accurate measurement we still need to wait out the max timeout.
-					// Start a new timer for the remaining time
-					long elapsed = System.currentTimeMillis() - sentTime;
-					long remaining = DHTConstants.RPC_CALL_TIMEOUT_MAX - elapsed;
-					if(remaining > 0 && !stalled)
-					{
-						onStall();
-						// re-schedule timer, we'll directly detect the timeout based on the stalled flag
-						timeoutTimer = DHT.getScheduler().schedule(this, remaining, TimeUnit.MILLISECONDS);
-					} else {
-						onCallTimeout();
-					}
-
-										
-				}
-			}
-		},
 		// spread out the stalls by +- 1ms to reduce lock contention
-		expectedRTT*1000+ThreadLocalRandom.current().nextInt(-1000, 1000),
-		TimeUnit.MICROSECONDS);
+		int smear = ThreadLocalRandom.current().nextInt(-1000, 1000);
+		timeoutTimer = DHT.getScheduler().schedule(this::checkStallOrTimeout, expectedRTT*1000+smear, TimeUnit.MICROSECONDS);
+	}
+	
+	void checkStallOrTimeout() {
+		synchronized (this)
+		{
+			if(!awaitingResponse)
+				return;
+			// we stalled. for accurate measurement we still need to wait out the max timeout.
+			// Start a new timer for the remaining time
+			long elapsed = System.currentTimeMillis() - sentTime;
+			long remaining = DHTConstants.RPC_CALL_TIMEOUT_MAX - elapsed;
+			if(remaining > 0 && !stalled)
+			{
+				onStall();
+				// re-schedule timer, we'll directly detect the timeout based on the stalled flag
+				timeoutTimer = DHT.getScheduler().schedule(this::checkStallOrTimeout, remaining, TimeUnit.MILLISECONDS);
+			} else {
+				onCallTimeout();
+			}
+		}
 	}
 
 	void sendFailed() {

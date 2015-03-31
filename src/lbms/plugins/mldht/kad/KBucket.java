@@ -114,10 +114,11 @@ public class KBucket implements Externalizable {
 		if (replaceBadEntry(newEntry))
 			return;
 
-		// older entries displace younger ones ()
 		KBucketEntry youngest = entriesRef.get(entriesRef.size()-1);
-		
-		if (youngest.getCreationTime() > newEntry.getCreationTime() || newEntry.getRTT() < youngest.getRTT())
+
+		// older entries displace younger ones (although that kind of stuff should probably go through #modifyMainBucket directly)
+		// entries with a 2.5times lower RTT than the current youngest one displace the youngest. safety factor to prevent fibrilliation due to changing RTT-estimates / to only replace when it's really worth it
+		if (youngest.getCreationTime() > newEntry.getCreationTime() || newEntry.getRTT() * 2.5 < youngest.getRTT())
 		{
 			modifyMainBucket(youngest,newEntry);
 			// it was a useful entry, see if we can use it to replace something questionable

@@ -55,7 +55,7 @@ public class Diagnostics {
 	void printDatabases() throws Exception {
 		Path file = logDir.resolve("getPeersDB.log");
 		
-		writeAndAtomicMove(file, writer -> dhts.forEach(d -> {
+		writeAndAtomicMove(file, writer -> dhts.stream().filter(DHT::isRunning).forEach(d -> {
 			writer.append("Type: " + d.getType().shortName + "\n");
 			formatDatabase(writer, d.getDatabase());
 		}));
@@ -96,7 +96,7 @@ public class Diagnostics {
 	private void printRoutingTable() throws Exception {
 		Path file = logDir.resolve("routingTable.log");
 		
-		writeAndAtomicMove(file, writer -> dhts.forEach(d -> this.formatRoutingTable(writer, d.getNode())));
+		writeAndAtomicMove(file, writer -> dhts.stream().filter(DHT::isRunning).forEach(d -> this.formatRoutingTable(writer, d.getNode())));
 	}
 	
 	public void formatRoutingTable(Appendable writer, Node node) {
@@ -145,7 +145,7 @@ public class Diagnostics {
 	void printMain() throws Exception {
 		Path diagnostics = logDir.resolve("diagnostics.log");
 		
-		writeAndAtomicMove(diagnostics, w -> dhts.forEach(d -> d.printDiagnostics(w)));
+		writeAndAtomicMove(diagnostics, w -> dhts.stream().filter(DHT::isRunning).forEach(d -> d.printDiagnostics(w)));
 	}
 	
 	

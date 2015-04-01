@@ -42,6 +42,12 @@ this will create various files
 - `dht.cache`, used to skip bootstrapping after a restart
 - `logs/*`, various diagnostics and log files
 
+## network configuration
+
+Stateful NATs or firewalls should be put into stateless mode/disable connection tracking and use static forwarding rules for the configured local ports [default: 49001]. Otherwise state table overflows may occur which lead to dropped packets and degraded performance.
+
+Rules also should not assume any particular remote port, as other DHT nodes are free to chose their own. 
+
 ## launch with redis export
 
 add the following lines to the `<components>` section of the config.xml:

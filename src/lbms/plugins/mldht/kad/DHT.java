@@ -280,7 +280,7 @@ public class DHT implements DHTBase {
 		
 		boolean heavyWeight = peerFilter != null;
 		
-		int valuesTargetLength = 50;
+		int valuesTargetLength = v6 ? 35 : 50;
 		// scrape filter gobble up a lot of space, restrict list sizes
 		if(heavyWeight)
 			valuesTargetLength =  v6 ? 15 : 30;

@@ -24,7 +24,7 @@ Originally developed as [DHT plugin](http://azsmrc.sourceforge.net/index.php?act
 - maven 3.1 (building)
 - junit 4.x (tests)
 
-## build:
+## build
 
     git clone https://github.com/the8472/mldht.git .
     mvn jar:jar
@@ -34,13 +34,19 @@ Originally developed as [DHT plugin](http://azsmrc.sourceforge.net/index.php?act
     mkdir -p work
     cd work
     ../bin/run.sh
-
-
+    
 this will create various files
 - `config.xml`, change settings as needed, core settings will be picked up on file modification
 - `shutdown`, touch to cleanly shutdown running process (SIGHUP works too)
 - `dht.cache`, used to skip bootstrapping after a restart
 - `logs/*`, various diagnostics and log files
+
+## embedding as library
+
+It is not necessary to use the standalone [<tt>Launcher</tt>](src/the8472/mldht/Launcher.java), instead you can create [<tt>DHT</tt>](src/lbms/plugins/mldht/kad/DHT.java) instances and control their configuration and lifecycle directly.
+
+Consider the Launcher as an example-case how to instantiate DHT nodes.
+
 
 ## network configuration
 
@@ -52,8 +58,19 @@ Rules also should not assume any particular remote port, as other DHT nodes are 
 
 add the following lines to the `<components>` section of the config.xml:
 
+```xml
     <component xsi:type="mldht:redisIndexerType">
       <className>the8472.mldht.PassiveRedisIndexer</className>
       <address>127.0.0.1</address>
     </component>
+```
 
+## launching custom components
+
+Implement [<tt>Component</tt>](src/the8472/mldht/Component.java) and configure the launcher to include it on startup through the confix.xml:
+	
+```xml
+    <component>
+      <className>your.class.name.Here</className>
+    </component>
+```

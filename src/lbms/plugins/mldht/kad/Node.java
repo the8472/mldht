@@ -177,7 +177,7 @@ public class Node {
 		// although we can only trust responses, anything else might be spoofed to clobber our routing table
 		boolean trustedAndNotPresent = !entryById.isPresent() && msg.getType() == Type.RSP_MSG && trustedNodes.stream().anyMatch(mask -> mask.contains(ip));
 			
-		insertEntry(newEntry, false, trustedAndNotPresent);
+		insertEntry(newEntry, false, trustedAndNotPresent, msg.getType() == Type.RSP_MSG);
 		
 		// we already should have the bucket. might be an old one by now due to splitting
 		// but it doesn't matter, we just need to update the entry, which should stay the same object across bucket splits
@@ -216,23 +216,20 @@ public class Node {
 	}*/
 	
 	public void insertEntry(KBucketEntry entry, boolean internalInsert) {
-		insertEntry(entry, internalInsert, false);
+		insertEntry(entry, internalInsert, false, false);
 	}
 	
 	
-	void insertEntry (KBucketEntry entry, boolean internalInsert, boolean isTrusted) {
-		if(entry == null || usedIDs.contains(entry.getID()) || AddressUtils.isBogon(entry.getAddress()) || !dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(entry.getAddress().getAddress()))
+	void insertEntry (KBucketEntry toInsert, boolean internalInsert, boolean isTrusted, boolean isResponse) {
+		if(toInsert == null || usedIDs.contains(toInsert.getID()) || AddressUtils.isBogon(toInsert.getAddress()) || !dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(toInsert.getAddress().getAddress()))
 			return;
 		
-		Key nodeID = entry.getID();
+		Key nodeID = toInsert.getID();
 		
 		RoutingTableEntry tableEntry = findBucketForId(nodeID);
 		while(tableEntry.bucket.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET && tableEntry.prefix.getDepth() < Key.KEY_BITS - 1)
 		{
-			boolean isLocalBucket = false;
-			for(Key k : usedIDs.getSnapshot())
-				isLocalBucket |= tableEntry.prefix.isPrefixOf(k);
-			if(!isLocalBucket)
+			if(!canSplit(tableEntry, toInsert, !internalInsert && isResponse))
 				break;
 			
 			splitEntry(tableEntry);
@@ -248,13 +245,55 @@ public class Node {
 		}
 		
 		if(internalInsert || isTrusted)
-			tableEntry.bucket.modifyMainBucket(toRemove,entry);
+			tableEntry.bucket.modifyMainBucket(toRemove,toInsert);
 		else
-			tableEntry.bucket.insertOrRefresh(entry);
+			tableEntry.bucket.insertOrRefresh(toInsert);
 		
 		// add delta to the global counter. inaccurate, but will be rebuilt by the bucket checks
 		num_entries += tableEntry.bucket.getNumEntries() - oldSize;
 		
+	}
+	
+	boolean canSplit(RoutingTableEntry entry, KBucketEntry toInsert, boolean relaxedSplitting) {
+		if(Arrays.stream(usedIDs.getSnapshot()).anyMatch(localId -> entry.prefix.isPrefixOf(localId)))
+			return true;
+		
+		if(!relaxedSplitting)
+			return false;
+		
+		Key closestLocalId = Arrays.stream(usedIDs.getSnapshot()).collect(Collectors.minBy((a,b) -> toInsert.getID().threeWayDistance(a, b))).orElseThrow(() -> new IllegalStateException("expected to find a local ID"));
+		
+		List<RoutingTableEntry> table = routingTableCOW;
+		
+		int closer = 0;
+		
+		int center = findIdxForId(table, closestLocalId);
+		
+		for(int i=center;i<table.size();i++) {
+			Collection<KBucketEntry> entries = table.get(i).bucket.getEntries();
+			if(entries.size() == 0)
+				continue;
+			int found = entries.stream().filter(e -> closestLocalId.threeWayDistance(e.getID(), toInsert.getID()) < 0).collect(Collectors.counting()).intValue();
+			if(found == 0)
+				break;
+			closer+=found;
+			if(closer >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
+				return false;
+		}
+		
+		for(int i=center-1;i>=0;i--) {
+			Collection<KBucketEntry> entries = table.get(i).bucket.getEntries();
+			if(entries.size() == 0)
+				continue;
+			int found = entries.stream().filter(e -> closestLocalId.threeWayDistance(e.getID(), toInsert.getID()) < 0).collect(Collectors.counting()).intValue();
+			if(found == 0)
+				break;
+			closer+=found;
+			if(closer >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
+				return false;
+		}
+		
+		return closer < DHTConstants.MAX_ENTRIES_PER_BUCKET;
 	}
 	
 	private void splitEntry(RoutingTableEntry entry) {

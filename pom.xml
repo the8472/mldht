@@ -6,6 +6,9 @@
 	<version>0.0.1-SNAPSHOT</version>
 	<name>mldht - Bittorrent Mainline DHT library</name>
 	<packaging>jar</packaging>
+	<properties>
+      <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  	</properties>
 	<build>
 		<sourceDirectory>src</sourceDirectory>
 		<testSourceDirectory>test</testSourceDirectory>

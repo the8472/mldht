@@ -360,7 +360,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		startTime = System.currentTimeMillis();
 		timeoutTimer = DHT.getScheduler().schedule(() -> {
 			if (!taskFinished) {
-				DHT.logDebug("Task "+taskID+" was Killed by Timeout.");
+				DHT.logError("Task "+taskID+" was killed by Timeout: " + this);
 				kill();
 			}
 		}, DHTConstants.TASK_TIMEOUT, TimeUnit.MILLISECONDS);

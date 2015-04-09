@@ -2,6 +2,7 @@ package the8472.mldht;
 
 import static the8472.bencode.Utils.str2buf;
 import static the8472.utils.Functional.tap;
+import static the8472.utils.Functional.unchecked;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -115,13 +116,7 @@ public class PassiveRedisIndexer implements Component {
 	static private final Map<String,String> namespaces = tap(new HashMap<>(), m -> m.put("xsi","http://www.w3.org/2001/XMLSchema-instance"));
 	
 	private InetAddress getAddress() {
-		return config.get(XMLUtils.buildXPath("//components/component[@xsi:type='mldht:redisIndexerType']/address",namespaces)).flatMap((str) -> {
-			try {
-				return Optional.of(InetAddress.getByName(str));
-			} catch(Exception e ) {
-				throw new RuntimeException(e);
-			}
-		}).get();
+		return config.get(XMLUtils.buildXPath("//components/component[@xsi:type='mldht:redisIndexerType']/address",namespaces)).flatMap(unchecked(str -> Optional.of(InetAddress.getByName(str)))).get();
 	}
 	
 	private void write() {

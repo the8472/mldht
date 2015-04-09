@@ -545,7 +545,7 @@ public class DHT implements DHTBase {
 		// schedule them separately
 		scheduledActions.add(scheduler.scheduleWithFixedDelay(serverManager::doBindChecks, 10, 10, TimeUnit.SECONDS));
 		
-		scheduledActions.add(scheduler.scheduleAtFixedRate(() -> {
+		scheduledActions.add(scheduler.scheduleWithFixedDelay(() -> {
 			// maintenance that should run all the time, before the first queries
 			tman.dequeue();
 

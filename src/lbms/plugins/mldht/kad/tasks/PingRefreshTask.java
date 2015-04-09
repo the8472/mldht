@@ -43,9 +43,8 @@ public class PingRefreshTask extends Task {
 	 * @param bucket the bucket to refresh
 	 * @param cleanOnTimeout if true Nodes that fail to respond are removed. should be false for normal use.
 	 */
-	public PingRefreshTask (RPCServer rpc, Node node, KBucket bucket,
-			boolean cleanOnTimeout) {
-		super(node.getRootID(),rpc, node);
+	public PingRefreshTask (RPCServer rpc, Node node, KBucket bucket, boolean cleanOnTimeout) {
+		super(rpc.getDerivedID(),rpc, node);
 		this.cleanOnTimeout = cleanOnTimeout;
 		if (cleanOnTimeout) {
 			lookupMap = new HashMap<MessageBase, KBucketEntry>();

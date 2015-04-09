@@ -30,5 +30,5 @@ public interface Selectable {
 
 	public void doStateChecks(long now) throws IOException;
 
-	public void updateSelection();
+	public int calcInterestOps();
 }

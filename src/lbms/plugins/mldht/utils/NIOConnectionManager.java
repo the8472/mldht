@@ -34,7 +34,6 @@ public class NIOConnectionManager {
 	ConcurrentLinkedQueue<Selectable> registrations = new ConcurrentLinkedQueue<>();
 	ConcurrentLinkedQueue<Selectable> updateInterestOps = new ConcurrentLinkedQueue<>();
 	List<Selectable> connections = new ArrayList<Selectable>();
-	//Thread workerThread;
 	AtomicReference<Thread> workerThread = new AtomicReference<Thread>();
 	
 	String name;
@@ -52,7 +51,7 @@ public class NIOConnectionManager {
 		}
 	}
 	
-	Runnable run = () -> {
+	void selectLoop() {
 		
 		int iterations = 0;
 		
@@ -87,7 +86,7 @@ public class NIOConnectionManager {
 				while((toRegister = registrations.poll()) != null)
 				{
 					connections.add(toRegister);
-					toRegister.registrationEvent(NIOConnectionManager.this,toRegister.getChannel().register(selector, 0,toRegister));
+					toRegister.registrationEvent(NIOConnectionManager.this,toRegister.getChannel().register(selector, toRegister.calcInterestOps(),toRegister));
 				}
 				
 				while(true) {
@@ -97,7 +96,7 @@ public class NIOConnectionManager {
 					toUpdate.add(t);
 				}
 				
-				toUpdate.forEach(Selectable::updateSelection);
+				toUpdate.forEach(sel -> sel.getChannel().keyFor(selector).interestOps(sel.calcInterestOps()));
 				toUpdate.clear();
 					
 			} catch (Exception e)
@@ -121,7 +120,7 @@ public class NIOConnectionManager {
 			}
 				
 		}
-	};
+	}
 	
 	private void ensureRunning() {
 		while(true)
@@ -129,7 +128,7 @@ public class NIOConnectionManager {
 			Thread current = workerThread.get();
 			if(current == null && registrations.peek() != null)
 			{
-				current = new Thread(run);
+				current = new Thread(this::selectLoop);
 				current.setName(name);
 				current.setDaemon(true);
 				if(workerThread.compareAndSet(null, current))
@@ -170,16 +169,4 @@ public class NIOConnectionManager {
 		return selector;
 	}
 
-	/**
-	 * note: this method is not thread-safe
-	 */
-	public void setSelection(Selectable connection, int mask, boolean onOff)
-	{
-		SelectionKey key = connection.getChannel().keyFor(selector);
-		if(onOff)
-			key.interestOps(key.interestOps() | mask);
-		else
-			key.interestOps(key.interestOps() & ~mask);
-		//wakeup();
-	}
 }

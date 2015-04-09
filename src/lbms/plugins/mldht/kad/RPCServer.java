@@ -482,7 +482,6 @@ public class RPCServer {
 	
 	private class SocketHandler implements Selectable {
 		DatagramChannel channel;
-		SelectionKey key;
 
 		private static final int WRITE_STATE_IDLE = 0;
 		private static final int WRITE_STATE_WRITING = 2;
@@ -490,6 +489,7 @@ public class RPCServer {
 		private static final int CLOSED = 4;
 		
 		private final AtomicInteger writeState = new AtomicInteger(WRITE_STATE_IDLE);
+		NIOConnectionManager connectionManager;
 		
 		public SocketHandler() {
 			try
@@ -501,7 +501,8 @@ public class RPCServer {
 				channel.setOption(StandardSocketOptions.SO_RCVBUF, 2*1024*1024);
 				channel.setOption(StandardSocketOptions.SO_REUSEADDR, true);
 				channel.bind(new InetSocketAddress(addr, port));
-				dh_table.getConnectionManager().register(this);
+				connectionManager = dh_table.getConnectionManager();
+				connectionManager.register(this);
 			} catch (IOException e)
 			{
 				e.printStackTrace();
@@ -509,7 +510,7 @@ public class RPCServer {
 		}
 		
 		
-		NIOConnectionManager connectionManager;
+		
 
 		
 		@Override
@@ -627,9 +628,6 @@ public class RPCServer {
 		
 		@Override
 		public void registrationEvent(NIOConnectionManager manager, SelectionKey key) throws IOException {
-			connectionManager = manager;
-			this.key = key;
-			updateSelection();
 		}
 		
 		@Override
@@ -654,11 +652,11 @@ public class RPCServer {
 			}
 		}
 		
-		public void updateSelection() {
+		public int calcInterestOps() {
 			int ops = SelectionKey.OP_READ;
 			if(writeState.get() == WRITE_STATE_AWAITING_NIO_NOTIFICATION)
 				ops |= SelectionKey.OP_WRITE;
-			key.interestOps(ops);
+			return ops;
 		}
 	}
 

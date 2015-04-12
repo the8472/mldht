@@ -96,7 +96,11 @@ public class NIOConnectionManager {
 					toUpdate.add(t);
 				}
 				
-				toUpdate.forEach(sel -> sel.getChannel().keyFor(selector).interestOps(sel.calcInterestOps()));
+				toUpdate.forEach(sel -> {
+					SelectionKey k = sel.getChannel().keyFor(selector);
+					if(k != null && k.isValid())
+						k.interestOps(sel.calcInterestOps());
+				});
 				toUpdate.clear();
 					
 			} catch (Exception e)

@@ -24,6 +24,7 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 import lbms.plugins.mldht.kad.AnnounceNodeCache;
 import lbms.plugins.mldht.kad.DBItem;
@@ -60,6 +61,7 @@ public class PeerLookupTask extends Task {
 	// nodes which have answered with tokens
 	private List<KBucketEntryAndToken>		announceCanidates;
 	private ScrapeResponseHandler			scrapeHandler;
+	Consumer<PeerAddressDBItem>				resultHandler = (x) -> {};
 
 	private Set<PeerAddressDBItem>			returnedItems;
 	private SortedSet<KBucketEntryAndToken>	closestSet;
@@ -87,6 +89,10 @@ public class PeerLookupTask extends Task {
 
 	public void setScrapeHandler(ScrapeResponseHandler scrapeHandler) {
 		this.scrapeHandler = scrapeHandler;
+	}
+	
+	public void setResultHandler(Consumer<PeerAddressDBItem> handler) {
+		resultHandler = handler;
 	}
 	
 	public void setNoSeeds(boolean avoidSeeds) {
@@ -166,8 +172,12 @@ public class PeerLookupTask extends Task {
 				continue;
 			PeerAddressDBItem it = (PeerAddressDBItem) item;
 			// also add the items to the returned_items list
-			if(!AddressUtils.isBogon(it))
+			if(!AddressUtils.isBogon(it)) {
+				resultHandler.accept(it);
 				returnedItems.add(it);
+			}
+				
+			
 		}
 		
 		if(returnedItems.size() > 0 && firstResultTime == 0)

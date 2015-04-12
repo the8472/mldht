@@ -60,6 +60,10 @@ public class PeerAddressDBItem extends DBItem {
 		return null;
 	}
 	
+	public InetSocketAddress toSocketAddress() {
+		return new InetSocketAddress(getAddressAsString(), getPort());
+	}
+	
 	public String getAddressAsString() {
 		return getInetAddress().getHostAddress();
 	}
@@ -94,7 +98,7 @@ public class PeerAddressDBItem extends DBItem {
 
 	@Override
 	public String toString() {
-		return " addr:"+new InetSocketAddress(getAddressAsString(), getPort())+" seed:"+seed;
+		return " addr:"+toSocketAddress()+" seed:"+seed;
 	}
 	
 	public int getPort() {

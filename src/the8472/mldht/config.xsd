@@ -60,7 +60,7 @@
     <complexType name="componentList">
     	<sequence>
 
-    		<element name="component" type="mldht:componentBase"></element>
+    		<element name="component" type="mldht:componentBase" maxOccurs="unbounded" minOccurs="0"></element>
     	</sequence>
     </complexType>
 

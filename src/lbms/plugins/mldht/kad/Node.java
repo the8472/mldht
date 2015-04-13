@@ -146,8 +146,8 @@ public class Node {
 			
 		}
 		
-		Optional<KBucket> bucketById = Optional.of(findBucketForId(id).bucket);
-		Optional<KBucketEntry> entryById = bucketById.flatMap(bucket -> bucket.findByIPorID(null, id));
+		KBucket bucketById = findBucketForId(id).bucket;
+		Optional<KBucketEntry> entryById = Optional.of(bucketById).flatMap(bucket -> bucket.findByIPorID(null, id));
 		
 		// entry is claiming the same ID as entry with different IP in our routing table -> ignore
 		if(entryById.isPresent() && !entryById.get().getAddress().getAddress().equals(ip))
@@ -182,7 +182,7 @@ public class Node {
 		// we already should have the bucket. might be an old one by now due to splitting
 		// but it doesn't matter, we just need to update the entry, which should stay the same object across bucket splits
 		if(msg.getType() == Type.RSP_MSG) {
-			bucketById.ifPresent(bucket -> bucket.notifyOfResponse(msg));
+			bucketById.notifyOfResponse(msg);
 		}
 			
 		

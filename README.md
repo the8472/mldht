@@ -33,13 +33,15 @@ Originally developed as [DHT plugin](http://azsmrc.sourceforge.net/index.php?act
 
     mkdir -p work
     cd work
-    ../bin/run.sh
+    ../bin/mldht-daemon
     
 this will create various files
 - `config.xml`, change settings as needed, core settings will be picked up on file modification
 - `shutdown`, touch to cleanly shutdown running process (SIGHUP works too)
 - `dht.cache`, used to skip bootstrapping after a restart
 - `logs/*`, various diagnostics and log files
+
+**Security note:** the shell script launches the JVM with a debug port bound to localhost for easier maintenance, thus allowing arbitrary code execution with the current user's permissions. In a multi-user environment a custom script with debugging disabled should be used    
 
 ## embedding as library
 
@@ -50,9 +52,10 @@ Consider the Launcher as an example-case how to instantiate DHT nodes.
 
 ## network configuration
 
-Stateful NATs or firewalls should be put into stateless mode/disable connection tracking and use static forwarding rules for the configured local ports [default: 49001]. Otherwise state table overflows may occur which lead to dropped packets and degraded performance.
-
-Rules also should not assume any particular remote port, as other DHT nodes are free to chose their own. 
+* stateful NATs or firewalls should be put into stateless mode/disable connection tracking and use static forwarding rules for the configured local ports [default: 49001].<br>Otherwise state table overflows may occur which lead to dropped packets and degraded performance.
+* nat/firewall rules should not assume any particular remote port, as other DHT nodes are free to chose their own.
+* If no publicly routable IPv6 address is available then IPv6 should be disabled
+* If only NATed IPv4 addresses are available then multihoming mode should be disabled
 
 ## launch with redis export
 
@@ -64,6 +67,25 @@ add the following lines to the `<components>` section of the config.xml:
       <address>127.0.0.1</address>
     </component>
 ```
+
+## remote-cli component
+
+launch daemon with
+
+```xml
+    <component>
+      <className>the8472.mldht.cli.Server</className>
+    </component>
+```
+
+run CLI client with
+
+```
+bin/mldht-remote-cli help
+```
+
+**Security note:** The CLI Server component listens on localhost, accepting commands without authentication from any user on the system. It is recommended to not use this component in a multi-user environment. 
+
 
 ## launching custom components
 

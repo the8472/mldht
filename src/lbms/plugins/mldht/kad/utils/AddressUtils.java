@@ -1,5 +1,7 @@
 package lbms.plugins.mldht.kad.utils;
 
+import static the8472.utils.Functional.unchecked;
+
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
@@ -59,6 +61,31 @@ public class AddressUtils {
 		buf.putChar((char)(addr.getPort() & 0xffff));
 		
 		return result;
+	}
+	
+	public static List<InetSocketAddress> unpackCompact(byte[] raw, Class<? extends InetAddress> type) {
+		if(raw == null || raw.length == 0)
+			return Collections.emptyList();
+		int addressSize = 0;
+		if(type == Inet4Address.class)
+			addressSize = 6;
+		if(type == Inet6Address.class)
+			addressSize = 18;
+		if((raw.length % addressSize) != 0)
+			throw new IllegalArgumentException("ipv4 / ipv6 compact format length must be multiple of 6 / 18 bytes");
+		InetSocketAddress[] addrs = new InetSocketAddress[raw.length / addressSize];
+		
+		ByteBuffer buf = ByteBuffer.wrap(raw);
+		byte[] ip = new byte[addressSize - 2];
+		
+		int i = 0;
+		while(buf.hasRemaining()) {
+			buf.get(ip);
+			addrs[i] = new InetSocketAddress(unchecked(() -> InetAddress.getByAddress(ip)), Short.toUnsignedInt(buf.getShort()));
+			i++;
+		}
+		
+		return java.util.Arrays.asList(addrs);
 	}
 	
 	public static InetSocketAddress unpackAddress(byte[] raw) {

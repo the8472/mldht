@@ -10,6 +10,14 @@ public class BEncoder {
 	
 	private ByteBuffer buf;
 	
+	public static class RawData {
+		ByteBuffer rawBuf;
+		
+		public RawData(ByteBuffer b) {
+			rawBuf = b;
+		}
+	}
+	
 	public ByteBuffer encode(Map<String, Object> toEnc, int maxSize) {
 		buf = ByteBuffer.allocate(maxSize);
 		encodeInternal(toEnc);
@@ -52,6 +60,11 @@ public class BEncoder {
 		if(o instanceof Long) {
 			buf.put((byte) 'i');
 			encodeLong(((Long) o).longValue(), 'e');
+			return;
+		}
+		
+		if(o instanceof RawData) {
+			buf.put(((RawData) o).rawBuf);
 			return;
 		}
 		

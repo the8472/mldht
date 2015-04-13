@@ -13,6 +13,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -24,7 +25,6 @@ import java.util.stream.Collectors;
 
 import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.kad.DHT;
-import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.DHTLogger;
 import the8472.utils.ConfigReader;
@@ -94,11 +94,15 @@ public class Launcher {
 		}
 	};
 
-	protected Map<DHTtype, DHT> dhts = DHT.createDHTs();
+	List<DHT> dhts = new ArrayList<>();
 
 	volatile boolean running = true;
 
 	Thread shutdownHook = new Thread(this::onVmShutdown, "shutdownHook");
+	
+	public Launcher() {
+	
+	}
 
 	private void onVmShutdown() {
 		running = false;
@@ -109,6 +113,12 @@ public class Launcher {
 
 
 	protected void start() throws Exception {
+		Arrays.asList(DHT.DHTtype.values()).stream().filter(t -> !this.isIPVersionDisabled(t.PREFERRED_ADDRESS_TYPE)).forEach(type -> {
+			dhts.add(new DHT(type));
+		});
+		
+		dhts.forEach(d -> d.addSiblings(dhts));
+
 		
 		Path logDir = Paths.get("./logs/");
 		Files.createDirectories(logDir);
@@ -170,13 +180,13 @@ public class Launcher {
 			}
 		});
 		
-		new Diagnostics().init(dhts.values(), logDir);
+		new Diagnostics().init(dhts, logDir);
 
 		setLogLevel();
 		configReader.registerFsNotifications(notifications);
 		configReader.addChangeCallback(this::setLogLevel);
 
-		for (DHT dht : dhts.values()) {
+		for (DHT dht : dhts) {
 			if(isIPVersionDisabled(dht.getType().PREFERRED_ADDRESS_TYPE))
 				continue;
 			dht.start(config);
@@ -188,7 +198,7 @@ public class Launcher {
 		setTrustedMasks();
 		configReader.addChangeCallback(this::setTrustedMasks);
 		
-		components.forEach(c -> c.start(dhts.values(), configReader));
+		components.forEach(c -> c.start(dhts, configReader));
 
 		Runtime.getRuntime().addShutdownHook(shutdownHook);
 		
@@ -219,7 +229,7 @@ public class Launcher {
 	
 	private void setTrustedMasks() {
 		Collection<NetMask> masks = configReader.getAll(XMLUtils.buildXPath("//core/clusterNodes/networkPrefix")).map(NetMask::fromString).collect(Collectors.toList());
-		dhts.values().forEach((d) -> {
+		dhts.forEach((d) -> {
 			if(d.isRunning())
 				d.getNode().setTrustedNetMasks(masks);
 		});
@@ -241,7 +251,7 @@ public class Launcher {
 			}
 			running = false;
 			components.forEach(Component::stop);
-			dhts.values().forEach(DHT::stop);
+			dhts.forEach(DHT::stop);
 		}
 	}
 

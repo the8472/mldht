@@ -26,9 +26,8 @@ import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -155,37 +154,34 @@ public class DHT implements DHTBase {
 
 	private final DHTtype					type;
 	private List<ScheduledFuture<?>>		scheduledActions = new ArrayList<ScheduledFuture<?>>();
+	private List<DHT>						siblingGroup = new ArrayList<>();
 	
-	
-	static Map<DHTtype,DHT> dhts;
 
-
-	public synchronized static Map<DHTtype, DHT> createDHTs() {
-		if(dhts == null)
-		{
-			dhts = new EnumMap<DHTtype,DHT>(DHTtype.class);
-			
-			dhts.put(DHTtype.IPV4_DHT, new DHT(DHTtype.IPV4_DHT));
-			dhts.put(DHTtype.IPV6_DHT, new DHT(DHTtype.IPV6_DHT));
-		}
-		
-		return dhts;
-	}
-	
-	public static DHT getDHT(DHTtype type)
-	{
-		return dhts.get(type);
-	}
-
-	DHT(DHTtype type) {
+	public DHT(DHTtype type) {
 		this.type = type;
 		
+		siblingGroup.add(this);
 		stats = new DHTStats();
 		status = DHTStatus.Stopped;
 		statsListeners = new ArrayList<DHTStatsListener>(2);
 		statusListeners = new ArrayList<DHTStatusListener>(2);
 		indexingListeners = new ArrayList<DHTIndexingListener>();
 		estimator = new PopulationEstimator();
+	}
+	
+	public void addSiblings(List<DHT> toAdd) {
+		toAdd.forEach(s -> {
+			if(siblingGroup.contains(s))
+				siblingGroup.add(s);
+		});
+	}
+	
+	public Optional<DHT> getSiblingByType(DHTtype type) {
+		return siblingGroup.stream().filter(sib -> sib.getType() == type).findAny();
+	}
+	
+	public List<DHT> getSiblings() {
+		return Collections.unmodifiableList(siblingGroup);
 	}
 	
 	public static interface IncomingMessageListener {
@@ -231,24 +227,24 @@ public class DHT implements DHTBase {
 		node.recieved(r);
 		// find the K closest nodes and pack them
 
-		KClosestNodesSearch kns4 = null;
-		KClosestNodesSearch kns6 = null;
+		Optional<KClosestNodesSearch> kns4 = r.doesWant4() ? getSiblingByType(DHTtype.IPV4_DHT).map(sib -> {
+			KClosestNodesSearch kns = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, sib);
+			kns.fill(DHTtype.IPV4_DHT != type);
+			return kns;
+		}) : Optional.empty();
 		
-		// add our local address of the respective DHT for cross-seeding, but not for local requests
-		if(r.doesWant4()) {
-			kns4 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV4_DHT));
-			kns4.fill(DHTtype.IPV4_DHT != type);
-		}
-		if(r.doesWant6()) {
-			kns6 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV6_DHT));
-			kns6.fill(DHTtype.IPV6_DHT != type);
-		}
+		Optional<KClosestNodesSearch> kns6 = r.doesWant6() ? getSiblingByType(DHTtype.IPV6_DHT).map(sib -> {
+			KClosestNodesSearch kns = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, sib);
+			kns.fill(DHTtype.IPV6_DHT != type);
+			return kns;
+		}) : Optional.empty();
+
 		
 		FindNodeResponse response;
 		if(r instanceof FindNodeRequest)
-			response = new FindNodeResponse(r.getMTID(), kns4 != null ? kns4.pack() : null,kns6 != null ? kns6.pack() : null);
+			response = new FindNodeResponse(r.getMTID(), kns4.map(KClosestNodesSearch::pack).orElse(null) ,kns6.map(KClosestNodesSearch::pack).orElse(null));
 		else
-			response = new UnknownTypeResponse(r.getMTID(), kns4 != null ? kns4.pack() : null,kns6 != null ? kns6.pack() : null);
+			response = new UnknownTypeResponse(r.getMTID(), kns4.map(KClosestNodesSearch::pack).orElse(null) ,kns6.map(KClosestNodesSearch::pack).orElse(null));
 		response.setDestination(r.getOrigin());
 		r.getServer().sendMessage(response);
 	}
@@ -304,39 +300,36 @@ public class DHT implements DHTBase {
 		if(db.insertForKeyAllowed(r.getInfoHash()))
 			token = db.genToken(r.getOrigin().getAddress(), r.getOrigin().getPort(), r.getInfoHash());
 
-		KClosestNodesSearch kns4 = null;
-		KClosestNodesSearch kns6 = null;
+		Optional<KClosestNodesSearch> kns4 = r.doesWant4() ? getSiblingByType(DHTtype.IPV4_DHT).map(sib -> {
+			KClosestNodesSearch kns = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, sib);
+			kns.fill(DHTtype.IPV4_DHT != type);
+			return kns;
+		}) : Optional.empty();
 		
-		if(r.doesWant4()) {
-			kns4 = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, getDHT(DHTtype.IPV4_DHT));
-			// add our local address of the respective DHT for cross-seeding, but not for local requests
-			kns4.fill(DHTtype.IPV4_DHT != type);
-		}
-		
-		if(r.doesWant6()) {
-			
+		Optional<KClosestNodesSearch> kns6 = r.doesWant6() ? getSiblingByType(DHTtype.IPV6_DHT).map(sib -> {
 			int targetNodesCount = DHTConstants.MAX_ENTRIES_PER_BUCKET;
 			// can't embed many nodes in v6 responses with filters
 			if(v6 && peerFilter != null)
 				targetNodesCount = Math.min(5, targetNodesCount);
 			
-			kns6 = new KClosestNodesSearch(r.getTarget(), targetNodesCount, getDHT(DHTtype.IPV6_DHT));
-			kns6.fill(DHTtype.IPV6_DHT != type);
-		}
+			KClosestNodesSearch kns = new KClosestNodesSearch(r.getTarget(), targetNodesCount, sib);
+			kns.fill(DHTtype.IPV6_DHT != type);
+			return kns;
+		}) : Optional.empty();
 		
 		// bloom filters + token + values => we can't include both sets of nodes, even if the node requests it
 		if(heavyWeight) {
 			if(v6)
-				kns4 = null;
+				kns4 = Optional.empty();
 			else
-				kns6 = null;
+				kns6 = Optional.empty();
 		}
 		
 
 		
 		GetPeersResponse resp = new GetPeersResponse(r.getMTID(),
-			kns4 != null ? kns4.pack() : null,
-			kns6 != null ? kns6.pack() : null,
+			kns4.map(KClosestNodesSearch::pack).orElse(null),
+			kns6.map(KClosestNodesSearch::pack).orElse(null),
 			token != null ? token.arr : null);
 		
 		resp.setScrapePeers(peerFilter);

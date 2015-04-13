@@ -10,7 +10,7 @@ Originally developed as [DHT plugin](http://azsmrc.sourceforge.net/index.php?act
 - IPv6 support ([BEP32](http://bittorrent.org/beps/bep_0032.html)) 
 - Scrapes ([BEP33](http://bittorrent.org/beps/bep_0033.html)) 
 - DHT security ([BEP42](http://bittorrent.org/beps/bep_0042.html)), partial: IP headers are implemented, node ID restrictions are not
-- metadata exchange ([BEP9](http://bittorrent.org/beps/bep_0009.html), fetch-only
+- metadata exchange ([BEP9](http://bittorrent.org/beps/bep_0009.html)), fetch-only
 - the following [libtorrent DHT extensions](http://www.libtorrent.org/dht_extensions.html): "get_peers response", "forward compatibility", "client identification"
 - multihoming mode: separate IDs for each socket, shared routing table, automatically utilizes all available global unicast addresses available on the machine
 - high-performance implementation without compromising correctness, i.e. the node will be a good citizen
@@ -89,7 +89,7 @@ bin/mldht-remote-cli help
 
 ## launching custom components
 
-Implement [<tt>Component</tt>](src/the8472/mldht/Component.java) and configure the launcher to include it on startup through the confix.xml:
+Implement [<tt>Component</tt>](src/the8472/mldht/Component.java) and configure the launcher to include it on startup through the config.xml:
 	
 ```xml
     <component>

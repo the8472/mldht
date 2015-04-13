@@ -16,9 +16,6 @@
  */
 package the8472.bt;
 
-import static the8472.bencode.Utils.prettyPrint;
-import static the8472.bencode.Utils.stripToAscii;
-
 import java.io.BufferedWriter;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -367,8 +364,6 @@ public class PullMetaDataConnection implements Selectable {
 			BEncoder encoder = new BEncoder();
 			ByteBuffer handshakeBody = encoder.encode(ltepHandshake, 1024);
 
-			System.out.println(stripToAscii(handshakeBody));
-
 			ByteBuffer handshakeHeader = ByteBuffer.allocate(BT_HEADER_LENGTH + 2);
 			handshakeHeader.putInt(handshakeBody.limit() + 2);
 			handshakeHeader.put((byte) LTEP_HEADER_ID);
@@ -445,7 +440,6 @@ public class PullMetaDataConnection implements Selectable {
 		{
 			// read LTEP msg ID
 			int ltepMsgID = inputBuffer.get() & 0xFF;
-			System.out.println(ltepMsgID);
 
 			if(isState(STATE_LTEP_HANDSHAKING) && ltepMsgID == LTEP_HANDSHAKE_ID)
 			{
@@ -453,7 +447,6 @@ public class PullMetaDataConnection implements Selectable {
 				
 				BDecoder decoder = new BDecoder();
 				Map<String,Object> remoteHandshake = decoder.decode(inputBuffer);
-				System.out.println(prettyPrint(remoteHandshake));
 				Map<String,Object> messages = (Map<String, Object>) remoteHandshake.get("m");
 				if(messages == null)
 				{
@@ -512,8 +505,6 @@ public class PullMetaDataConnection implements Selectable {
 				BDecoder decoder = new BDecoder();
 				Map<String, Object> params = decoder.decode(inputBuffer);
 				
-				System.out.println(prettyPrint(params));
-				
 				pexConsumer.accept(AddressUtils.unpackCompact((byte[])params.get("added"), Inet4Address.class));
 				pexConsumer.accept(AddressUtils.unpackCompact((byte[])params.get("added6"), Inet6Address.class));
 			}
@@ -526,13 +517,10 @@ public class PullMetaDataConnection implements Selectable {
 				Long type = (Long) params.get("msg_type");
 				Long idx = (Long) params.get("piece");
 				
-				System.out.println(prettyPrint(params));
-
 				if(type == 1)
 				{ // piece
 					metaPiecesState[idx.intValue()] = META_PIECE_DONE;
 					outstandingRequests--;
-					System.out.println("found!");
 					// use remaining bytes for metadata
 					metaData.position((int) (16*1024 * idx));
 					metaData.put(inputBuffer);
@@ -617,8 +605,6 @@ public class PullMetaDataConnection implements Selectable {
 			header.put((byte) LTEP_HEADER_ID);
 			header.put((byte) ltepRemoteMetadataExchangeMessageId);
 			header.flip();
-			
-			System.out.println("sending meta req "+ltepRemoteMetadataExchangeMessageId+" "+prettyPrint(req));
 			
 			outstandingRequests++;
 			metaPiecesState[i] = META_PIECE_REQUESTED;
@@ -714,7 +700,6 @@ public class PullMetaDataConnection implements Selectable {
 		setState(STATE_CLOSED, true);
 		metaHandler.onTerminate(!isState(STATE_CONNECTING));
 		channel.close();
-		System.out.println(reason + " "+ remoteClient);
 	}
 	
 }

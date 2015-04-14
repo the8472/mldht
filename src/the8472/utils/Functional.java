@@ -1,5 +1,11 @@
 package the8472.utils;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -36,6 +42,16 @@ public class Functional {
 				throw new RuntimeException(e);
 			}
 		};
+	}
+	
+	
+	public static <T> CompletionStage<List<T>> awaitAll(Collection<CompletionStage<T>> stages) {
+		return stages.stream().map(st -> st.thenApply(t -> Collections.singletonList(t))).reduce(CompletableFuture.<List<T>>completedFuture(Collections.emptyList()), (f1, f2) -> {
+			return f1.thenCombine(f2, (a, b) -> {
+				return tap(new ArrayList<>(a), l -> l.addAll(b));
+			});
+		});
+		
 	}
 
 }

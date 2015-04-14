@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import lbms.plugins.mldht.utils.Radixable;
@@ -63,6 +64,7 @@ public class Key implements Radixable<Key>, Serializable {
 	private static final long	serialVersionUID	= -1180893806923345652L;
 	public static final int		SHA1_HASH_LENGTH	= 20;
 	public static final int		KEY_BITS			= SHA1_HASH_LENGTH * 8;
+	public static final Pattern STRING_PATTERN		= Pattern.compile("[a-fA-F0-9]{40}");
 	protected byte[]			hash				= new byte[SHA1_HASH_LENGTH];
 
 	/**
@@ -73,6 +75,8 @@ public class Key implements Radixable<Key>, Serializable {
 	 */
 	protected Key () {
 	}
+	
+	
 
 	/**
 	 * Clone constructor

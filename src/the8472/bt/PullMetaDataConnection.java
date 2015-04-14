@@ -468,11 +468,17 @@ public class PullMetaDataConnection implements Selectable {
 				if(metaMsgID != null && metaLength != null)
 				{
 					int newInfoLength = metaLength.intValue();
-					if(newInfoLength < 10)
-					{
+					if(newInfoLength < 10) {
 						terminate("indicated meta length too small to be a torrent");
 						return;
 					}
+					
+					// 30MB ought to be enough for everyone!
+					if(newInfoLength > 30*1024*1024) {
+						terminate("indicated meta length too large ("+newInfoLength+"), might be a resource exhaustion attack");
+						return;
+					}
+					
 
 					if(metaData == null || newInfoLength != infoLength)
 					{

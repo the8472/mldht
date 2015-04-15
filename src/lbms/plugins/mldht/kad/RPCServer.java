@@ -409,6 +409,12 @@ public class RPCServer {
 	public InetSocketAddress getConsensusExternalAddress() {
 		return consensusExternalAddress;
 	}
+	
+	Queue<Runnable> awaitingDeclog = new ConcurrentLinkedQueue<>();
+	
+	public void onDeclog(Runnable r) {
+		awaitingDeclog.add(r);
+	}
 
 	private void fillPipe(EnqueuedSend es) {
 		pipeline.add(es);
@@ -469,6 +475,12 @@ public class RPCServer {
 				return;
 			
 			doCall(c);
+		}
+		
+		Runnable r;
+		
+		while(calls.size() < DHTConstants.MAX_ACTIVE_CALLS && (r = awaitingDeclog.poll()) != null) {
+			r.run();
 		}
 	}
 	

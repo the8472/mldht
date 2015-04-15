@@ -1,33 +1,31 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad.tasks;
 
-import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import lbms.plugins.mldht.kad.*;
-import lbms.plugins.mldht.kad.DHT.DHTtype;
-import lbms.plugins.mldht.kad.KBucketEntry.DistanceOrder;
+import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.DHTConstants;
+import lbms.plugins.mldht.kad.KBucketEntryAndToken;
+import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.Node;
+import lbms.plugins.mldht.kad.RPCCall;
+import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.AnnounceRequest;
-import lbms.plugins.mldht.kad.messages.GetPeersRequest;
-import lbms.plugins.mldht.kad.messages.GetPeersResponse;
 import lbms.plugins.mldht.kad.messages.MessageBase;
-import lbms.plugins.mldht.kad.messages.MessageBase.Method;
-import lbms.plugins.mldht.kad.utils.PackUtil;
+import the8472.utils.concurrent.GuardedExclusiveTaskExecutor;
 
 /**
  * @author Damokles
@@ -50,40 +48,40 @@ public class AnnounceTask extends Task {
 		this.isSeed = isSeed;
 	}
 
+	@Override
 	void callFinished (RPCCall c, MessageBase rsp) {}
+	@Override
 	void callTimeout (RPCCall c) {}
+	
+	final Runnable exclusiveUpdate = GuardedExclusiveTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() , () -> {
+		KBucketEntryAndToken e = (KBucketEntryAndToken) todo.first();
+
+		if(e == null)
+			return;
+		
+		if(hasVisited(e)) {
+			todo.remove(e);
+			return;
+		}
+
+		AnnounceRequest anr = new AnnounceRequest(targetKey, port, e.getToken());
+		//System.out.println("sending announce to ID:"+e.getID()+" addr:"+e.getAddress());
+		anr.setDestination(e.getAddress());
+		anr.setSeed(isSeed);
+		if(rpcCall(anr,e.getID(),null)) {
+			todo.remove(e);
+			visited(e);
+			
+		}
+	});
+	
 	
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.Task#update()
 	 */
 	@Override
 	void update () {
-
-		while (canDoRequest()) {
-			KBucketEntryAndToken e;
-			synchronized (todo) {
-				e = (KBucketEntryAndToken) todo.pollFirst();
-			}
-
-			if(e == null || hasVisited(e))
-				continue;
-
-			AnnounceRequest anr = new AnnounceRequest(targetKey, port, e.getToken());
-			//System.out.println("sending announce to ID:"+e.getID()+" addr:"+e.getAddress());
-			anr.setDestination(e.getAddress());
-			anr.setSeed(isSeed);
-			if(rpcCall(anr,e.getID(),null))
-				visited(e);
-			else
-			{
-				synchronized (todo)
-				{
-					todo.add(e);
-				}
-			}
-				
-
-		}
+		exclusiveUpdate.run();
 
 	}
 	

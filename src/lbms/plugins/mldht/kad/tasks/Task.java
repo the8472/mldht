@@ -18,13 +18,13 @@ package lbms.plugins.mldht.kad.tasks;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.NavigableSet;
-import java.util.TreeSet;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -68,7 +68,6 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	private boolean						taskFinished;
 	private boolean						queued;
 	private List<TaskListener>			listeners;
-	private ScheduledFuture<?>			timeoutTimer;
 
 	/**
 	 * Create a task.
@@ -82,7 +81,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		this.rpc = rpc;
 		this.node = node;
 		queued = true;
-		todo = new TreeSet<KBucketEntry>(new KBucketEntry.DistanceOrder(targetKey));
+		todo = new ConcurrentSkipListSet<KBucketEntry>(new KBucketEntry.DistanceOrder(targetKey));
 		taskFinished = false;
 	}
 
@@ -102,7 +101,6 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		{
 			visited.add(e.getAddress().getAddress());
 			visited.add(e.getID());
-			
 		}
 	}
 	
@@ -123,6 +121,11 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	public int compareTo(Task o) {
 		return taskID - o.taskID;
 	}
+	
+	@Override
+	public int hashCode() {
+		return taskID;
+	}
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCCallListener#onResponse(lbms.plugins.mldht.kad.RPCCall, lbms.plugins.mldht.kad.messages.MessageBase)
@@ -137,12 +140,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		if (!isFinished()) {
 			callFinished(c, rsp);
 			
-			if(isDone())
-				finished();
-
-			if (canDoRequest() && !isFinished()) {
-				update();
-			}
+			runStuff();
 		}
 	}
 	
@@ -150,12 +148,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	{
 		outstandingRequestsExcludingStalled.decrementAndGet();
 		
-		if(isDone())
-			finished();
-		
-		if (canDoRequest() && !isFinished()) {
-			update();
-		}
+		runStuff();
 	}
 
 	/* (non-Javadoc)
@@ -172,12 +165,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		if (!isFinished())
 			callTimeout(c);
 
-		if(isDone())
-			finished();
-		
-		if (canDoRequest() && !isFinished()) {
-			update();
-		}
+		runStuff();
 	}
 
 	/**
@@ -187,15 +175,30 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		if (queued) {
 			DHT.logDebug("Starting Task taskID: " + toString());
 			queued = false;
-			startTimeout();
+			startTime = System.currentTimeMillis();
 			try
 			{
-				update();
+				runStuff();
 			} catch (Exception e)
 			{
 				DHT.log(e, LogLevel.Error);
 			}
 		}
+	}
+	
+	private void runStuff() {
+		if(isDone())
+			finished();
+		
+		if (canDoRequest() && !isFinished()) {
+			update();
+
+			// check again in case todo-queue has been drained by update()
+			if(isDone())
+				finished();
+		}
+		
+
 	}
 
 	/**
@@ -224,6 +227,8 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 */
 	boolean rpcCall (MessageBase req, Key expectedID, Consumer<RPCCall> modifyCallBeforeSubmit) {
 		if (!canDoRequest()) {
+			// if we reject a request we need something to wakeup the task later
+			rpc.onDeclog(this::runStuff);
 			return false;
 		}
 		
@@ -354,19 +359,6 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	}
 
 	/**
-	 * Starts the Timeout Timer
-	 */
-	private void startTimeout () {
-		startTime = System.currentTimeMillis();
-		timeoutTimer = DHT.getScheduler().schedule(() -> {
-			if (!taskFinished) {
-				DHT.logError("Task "+taskID+" was killed by Timeout: " + this);
-				kill();
-			}
-		}, DHTConstants.TASK_TIMEOUT, TimeUnit.MILLISECONDS);
-	}
-
-	/**
 	 * Add a node to the todo list
 	 * @param ip The ip or hostname of the node
 	 * @param port The port
@@ -394,9 +386,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 			finishTime = System.currentTimeMillis();
 		
 		DHT.logDebug("Task "+getTaskID()+" finished: " + toString());
-		if (timeoutTimer != null) {
-			timeoutTimer.cancel(false);
-		}
+
 		if (listeners != null) {
 			for (TaskListener tl : listeners) {
 				tl.finished(this);
@@ -422,8 +412,39 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		}
 	}
 	
+	public Duration age() {
+		return Duration.between(Instant.ofEpochMilli(startTime), Instant.now());
+	}
+	
 	@Override
 	public String toString() {
-		return this.getClass().getSimpleName() + " target:"+targetKey+" todo:"+todo.size()+" sent:"+sentReqs+" recv:"+recvResponses+" srv:"+rpc.getDerivedID()+ " name: "+info+"\n";
+		StringBuilder b = new StringBuilder(100);
+		b.append(this.getClass().getSimpleName());
+		b.append(" target:").append(targetKey);
+		b.append(" todo:").append(todo.size());
+		if(!queued) {
+			b.append(" sent:").append(sentReqs);
+			b.append(" recv:").append(recvResponses);
+			
+		}
+		b.append(" srv: ").append(rpc.getDerivedID());
+		
+		if(finishTime == -1) {
+			b.append(" killed");
+		}
+		if(taskFinished) {
+			b.append(" finished");
+		}
+		
+		if(startTime != 0) {
+			if(finishTime == 0)
+				b.append(" age:").append(age());
+			else if(finishTime > 0)
+				b.append(" time to finish:").append(Duration.between(Instant.ofEpochMilli(startTime), Instant.ofEpochMilli(finishTime)));
+		}
+		
+		b.append(" name:").append(info);
+		
+		return b.toString();
 	}
 }

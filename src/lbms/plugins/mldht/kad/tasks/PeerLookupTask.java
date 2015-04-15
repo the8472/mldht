@@ -16,14 +16,15 @@
  */
 package lbms.plugins.mldht.kad.tasks;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Queue;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
 import lbms.plugins.mldht.kad.AnnounceNodeCache;
@@ -46,6 +47,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.PackUtil;
+import the8472.utils.concurrent.GuardedExclusiveTaskExecutor;
 
 /**
  * @author Damokles
@@ -59,12 +61,14 @@ public class PeerLookupTask extends Task {
 	private boolean							fastTerminate;
 	
 	// nodes which have answered with tokens
-	private List<KBucketEntryAndToken>		announceCanidates;
+	private Queue<KBucketEntryAndToken>		announceCanidates;
 	private ScrapeResponseHandler			scrapeHandler;
 	Consumer<PeerAddressDBItem>				resultHandler = (x) -> {};
 
 	private Set<PeerAddressDBItem>			returnedItems;
+	
 	private SortedSet<KBucketEntryAndToken>	closestSet;
+	int responsesSinceLastClosestSetModification;
 	
 	AnnounceNodeCache						cache;
 
@@ -73,7 +77,7 @@ public class PeerLookupTask extends Task {
 	public PeerLookupTask (RPCServer rpc, Node node,
 			Key info_hash) {
 		super(info_hash, rpc, node);
-		announceCanidates = new ArrayList<KBucketEntryAndToken>(20);
+		announceCanidates = new ConcurrentLinkedQueue<KBucketEntryAndToken>();
 		returnedItems = Collections.newSetFromMap(new ConcurrentHashMap<PeerAddressDBItem, Boolean>());
 
 		this.closestSet = new TreeSet<KBucketEntryAndToken>(new KBucketEntry.DistanceOrder(targetKey));
@@ -83,7 +87,7 @@ public class PeerLookupTask extends Task {
 
 		DHT.logDebug("PeerLookupTask started: " + getTaskID());
 		
-		addListener(t -> done());
+		addListener(t -> updatePopulationEstimator());
 		
 	}
 
@@ -142,17 +146,13 @@ public class PeerLookupTask extends Task {
 			int nval = nodes.length / type.NODES_ENTRY_LENGTH;
 			if (type == rpc.getDHT().getType())
 			{
-				synchronized (this)
+				for (int i = 0; i < nval; i++)
 				{
-					for (int i = 0; i < nval; i++)
-					{
-						// add node to todo list
-						KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-						if(!AddressUtils.isBogon(e.getAddress()) && !node.isLocalId(e.getID()) && !hasVisited(e))
-							todo.add(e);
-					}
+					// add node to todo list
+					KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
+					if(!AddressUtils.isBogon(e.getAddress()) && !node.isLocalId(e.getID()) && !hasVisited(e))
+						todo.add(e);
 				}
-
 			} else
 			{
 				rpc.getDHT().getSiblings().stream().filter(sib -> sib.getType() == type).forEach(sib -> {
@@ -188,26 +188,33 @@ public class PeerLookupTask extends Task {
 		KBucketEntry entry = new KBucketEntry(rsp.getOrigin(), rsp.getID());
 		KBucketEntryAndToken toAdd = new KBucketEntryAndToken(entry, gpr.getToken());
 
-		synchronized (this)
-		{
-			// if someone has peers he might have filters, collect for scrape
-			if (!items.isEmpty() && scrapeHandler != null)
-				scrapeHandler.addGetPeersRespone(gpr);
-			
-			// add the peer who responded to the closest nodes list, so we can do an announce
-			if (gpr.getToken() != null)
-				announceCanidates.add(toAdd);
 
-			
-			// if we scrape we don't care about tokens.
-			// otherwise we're only done if we have found the closest nodes that also returned tokens
-			if (noAnnounce || gpr.getToken() != null)
-			{
+		// if someone has peers he might have filters, collect for scrape
+		if (!items.isEmpty() && scrapeHandler != null)
+			synchronized (scrapeHandler) {
+				scrapeHandler.addGetPeersRespone(gpr);
+			}
+
+
+		// add the peer who responded to the closest nodes list, so we can do an announce
+		if (gpr.getToken() != null)
+			announceCanidates.add(toAdd);
+
+
+		// if we scrape we don't care about tokens.
+		// otherwise we're only done if we have found the closest nodes that also returned tokens
+		if (noAnnounce || gpr.getToken() != null)
+		{
+			synchronized (this) {
 				closestSet.add(toAdd);
 				if (closestSet.size() > DHTConstants.MAX_ENTRIES_PER_BUCKET)
 				{
 					KBucketEntryAndToken last = closestSet.last();
 					closestSet.remove(last);
+					if(last == toAdd)
+						responsesSinceLastClosestSetModification++;
+					else
+						responsesSinceLastClosestSetModification = 0;
 				}
 			}
 		}
@@ -226,33 +233,19 @@ public class PeerLookupTask extends Task {
 			return getNumOutstandingRequestsExcludingStalled() < DHTConstants.MAX_CONCURRENT_REQUESTS_LOWPRIO;
 		return super.canDoRequest();
 	}
+	
+	// go over the todo list and send get_peers requests
+	// until we have nothing left
+	final Runnable exclusiveUpdate = GuardedExclusiveTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() && !isClosestSetStable(), () -> {
+		synchronized (this) {
+			KBucketEntry e = todo.first();
 
-	/* (non-Javadoc)
-	 * @see lbms.plugins.mldht.kad.Task#update()
-	 */
-	@Override
-	void update () {
-		// check if the cache has any closer nodes after the initial query
-		Collection<KBucketEntry> cacheResults = cache.get(targetKey, lowPriority ? DHTConstants.MAX_CONCURRENT_REQUESTS_LOWPRIO : DHTConstants.MAX_CONCURRENT_REQUESTS);
-		
-		synchronized (this)
-		{
-			todo.addAll(cacheResults);
-		}
-
-		// go over the todo list and send get_peers requests
-		// until we have nothing left
-		while (canDoRequest() && !isClosestSetStable()) {
-			KBucketEntry e;
-			synchronized (this)
-			{
-				e = todo.pollFirst();
+			if(hasVisited(e)) {
+				todo.remove(e);
+				return;
 			}
 
-			// only send a getPeers if we haven't already visited the node
-			if (e == null || hasVisited(e))
-				continue;
-			
+
 			// send a findNode to the node
 			GetPeersRequest gpr = new GetPeersRequest(targetKey);
 			gpr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV4_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
@@ -263,25 +256,40 @@ public class PeerLookupTask extends Task {
 			if(rpcCall(gpr, e.getID(), call -> {
 				call.addListener(cache.getRPCListener());
 				long rtt = e.getRTT();
-				if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX)
-					call.setExpectedRTT(rtt);
+				rtt = rtt + rtt / 2; // *1.5 since this is the average and not the 90th percentile like the timeout filter
+				if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX && rtt < rpc.getTimeoutFilter().getStallTimeout())
+					call.setExpectedRTT(rtt); // only set a node-specific timeout if it's better than what the server would apply anyway
 			})) {
+				todo.remove(e);
 				visited(e);
-			} else {
-				synchronized (this)
-				{
-					todo.add(e);
-				}
 			}
 		}
-		
+	});
 
+
+	@Override
+	void update () {
+		// check if the cache has any closer nodes after the initial query
+		Collection<KBucketEntry> cacheResults = cache.get(targetKey, lowPriority ? DHTConstants.MAX_CONCURRENT_REQUESTS_LOWPRIO : DHTConstants.MAX_CONCURRENT_REQUESTS);
+		
+		cacheResults.forEach(e -> {
+			if(!hasVisited(e))
+				todo.add(e);
+		});
+
+		exclusiveUpdate.run();
 	}
 	
-	private synchronized boolean isClosestSetStable() {
-		if(todo.isEmpty())
-			return true;
-		return closestSet.size() >= DHTConstants.MAX_ENTRIES_PER_BUCKET && targetKey.threeWayDistance(todo.first().getID(), closestSet.last().getID()) > 0;
+	private boolean isClosestSetStable() {
+		synchronized (this) {
+			if(closestSet.size() < DHTConstants.MAX_ENTRIES_PER_BUCKET)
+				return false;
+			if(responsesSinceLastClosestSetModification < DHTConstants.MAX_CONCURRENT_REQUESTS && !fastTerminate)
+				return false;
+			boolean haveBetterTodosForClosestSet = !todo.isEmpty() && targetKey.threeWayDistance(todo.first().getID(), closestSet.last().getID()) < 0;
+
+			return !haveBetterTodosForClosestSet;
+		}
 	}
 	
 	@Override
@@ -295,7 +303,7 @@ public class PeerLookupTask extends Task {
 		return waitingFor == 0 && isClosestSetStable();
 	}
 
-	private void done() {
+	private void updatePopulationEstimator() {
 
 		synchronized (this)
 		{
@@ -309,12 +317,10 @@ public class PeerLookupTask extends Task {
 			}
 			
 		}
-	
-		//System.out.println(returned_items);
-		//System.out.println("overall:"+returnedItems.size());
 	}
+
 	
-	public List<KBucketEntryAndToken> getAnnounceCanidates() {
+	public Collection<KBucketEntryAndToken> getAnnounceCanidates() {
 		if(fastTerminate || noAnnounce)
 			throw new IllegalStateException("cannot use fast lookups for announces");
 		return announceCanidates;

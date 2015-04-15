@@ -27,6 +27,7 @@ import lbms.plugins.mldht.kad.RPCCall;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.PingRequest;
+import the8472.utils.concurrent.GuardedExclusiveTaskExecutor;
 
 /**
  * @author Damokles
@@ -92,34 +93,34 @@ public class PingRefreshTask extends Task {
 			}
 		}
 	}
+	
+	
+	final Runnable exclusiveUpdate = GuardedExclusiveTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest(), () -> {
+		KBucketEntry e = todo.first();
+
+		if (e.isGood()) {
+			todo.remove(e);
+			return;
+		}
+
+		PingRequest pr = new PingRequest();
+		pr.setDestination(e.getAddress());
+		if (cleanOnTimeout) {
+			synchronized (lookupMap) {
+				lookupMap.put(pr, e);
+			}
+		}
+		if(rpcCall(pr,e.getID(),null))
+			todo.remove(e);
+	});
+	
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.Task#update()
 	 */
 	@Override
 	void update () {
-		// go over the todo list and send ping
-		// until we have nothing left
-		synchronized (todo) {
-			while (!todo.isEmpty() && canDoRequest()) {
-				KBucketEntry e = todo.first();
-				todo.remove(e);
-
-				if (e.isGood()) {
-					//Node responded in the meantime
-					continue;
-				}
-
-				PingRequest pr = new PingRequest();
-				pr.setDestination(e.getAddress());
-				if (cleanOnTimeout) {
-					synchronized (lookupMap) {
-						lookupMap.put(pr, e);
-					}
-				}
-				rpcCall(pr,e.getID(),null);
-			}
-		}
+		exclusiveUpdate.run();
 	}
 	
 	@Override

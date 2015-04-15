@@ -35,6 +35,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.PackUtil;
+import the8472.utils.concurrent.GuardedExclusiveTaskExecutor;
 
 /**
  * @author Damokles
@@ -51,51 +52,56 @@ public class NodeLookup extends Task {
 		this.closestSet = new TreeSet<Key>(new Key.DistanceOrder(targetKey));
 		addListener(t -> updatedPopulationEstimates());
 	}
+	
+	final Runnable exclusiveUpdate = GuardedExclusiveTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() && !isClosestSetStable(), () -> {
+		KBucketEntry e = todo.first();
+		
+		if(e == null)
+			return;
+		
+		// only send a findNode if we haven't already visited the node
+		if (hasVisited(e)) {
+			todo.remove(e);
+			return;
+		}
+			
+		// send a findNode to the node
+		FindNodeRequest fnr = new FindNodeRequest(targetKey);
+		fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV4_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
+		fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV6_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
+		fnr.setDestination(e.getAddress());
+		if(rpcCall(fnr,e.getID(), (call) -> {
+			long rtt = e.getRTT();
+			rtt = rtt + rtt / 2; // *1.5 since this is the average and not the 90th percentile like the timeout filter
+			if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX && rtt < rpc.getTimeoutFilter().getStallTimeout())
+				call.setExpectedRTT(rtt); // only set a node-specific timeout if it's better than what the server would apply anyway
+		})) {
+			visited(e);
+			todo.remove(e);
+		}
+	});
 
 	@Override
 	void update () {
-		// go over the todo list and send find node calls
-		// until we have nothing left
-		synchronized (todo) {
-
-			while (canDoRequest() && validReponsesSinceLastClosestSetModification < DHTConstants.MAX_CONCURRENT_REQUESTS) {
-				KBucketEntry e = todo.pollFirst();
-				
-				if(e == null)
-					break;
-				
-				// only send a findNode if we haven't already visited the node
-				if (hasVisited(e))
-					continue;
-				
-					
-				// send a findNode to the node
-				FindNodeRequest fnr = new FindNodeRequest(targetKey);
-				fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV4_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
-				fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV6_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
-				fnr.setDestination(e.getAddress());
-				if(rpcCall(fnr,e.getID(), (call) -> {
-					long rtt = e.getRTT();
-					if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX)
-						call.setExpectedRTT(rtt);
-				})) {
-					visited(e);
-				} else {
-					todo.add(e);
-				}
-					
-				
-			}
+		exclusiveUpdate.run();
+	}
+	
+	private boolean isClosestSetStable() {
+		synchronized (closestSet) {
+			if(closestSet.size() < DHTConstants.MAX_ENTRIES_PER_BUCKET)
+				return false;
+			if(validReponsesSinceLastClosestSetModification < DHTConstants.MAX_CONCURRENT_REQUESTS)
+				return false;
+			boolean haveBetterTodosForClosestSet = !todo.isEmpty() && targetKey.threeWayDistance(todo.first().getID(), closestSet.last()) < 0;
+			return !haveBetterTodosForClosestSet;
 		}
-
-
 	}
 	
 	@Override
 	protected boolean isDone() {
 		if (todo.size() == 0 && getNumOutstandingRequests() == 0 && !isFinished()) {
 			return true;
-		} else if (getNumOutstandingRequests() == 0 && validReponsesSinceLastClosestSetModification >= DHTConstants.MAX_CONCURRENT_REQUESTS) {
+		} else if (getNumOutstandingRequests() == 0 && isClosestSetStable()) {
 			return true; // quit after 10 nodes responsed
 		}
 		return false;
@@ -131,14 +137,11 @@ public class NodeLookup extends Task {
 				continue;
 			int nval = nodes.length / type.NODES_ENTRY_LENGTH;
 			if (type == rpc.getDHT().getType()) {
-				synchronized (todo)
+				for (int i = 0; i < nval; i++)
 				{
-					for (int i = 0; i < nval; i++)
-					{
-						KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
-						if (!AddressUtils.isBogon(e.getAddress()) && !node.isLocalId(e.getID()) && !todo.contains(e) && !hasVisited(e))
-							todo.add(e);
-					}
+					KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
+					if (!AddressUtils.isBogon(e.getAddress()) && !node.isLocalId(e.getID()) && !todo.contains(e) && !hasVisited(e))
+						todo.add(e);
 				}
 			} else {
 				rpc.getDHT().getSiblings().stream().filter(sib -> sib.getType() == type).forEach(sib -> {

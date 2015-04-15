@@ -1,25 +1,30 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad;
 
 import java.io.PrintWriter;
 import java.net.InetAddress;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -59,7 +64,7 @@ public class AnnounceNodeCache {
 	public void register(Key target, boolean isFastLookup)
 	{
 		CacheAnchorPoint anchor = new CacheAnchorPoint(target);
-		anchor.expirationTime = System.currentTimeMillis() + (isFastLookup ? DHTConstants.ANNOUNCE_CACHE_FAST_LOOKUP_AGE : DHTConstants.ANNOUNCE_CACHE_MAX_AGE); 
+		anchor.expirationTime = System.currentTimeMillis() + (isFastLookup ? DHTConstants.ANNOUNCE_CACHE_FAST_LOOKUP_AGE : DHTConstants.ANNOUNCE_CACHE_MAX_AGE);
 		anchors.put(target,anchor);
 	}
 	
@@ -129,7 +134,7 @@ public class AnnounceNodeCache {
 				size++;
 				if(e.getID().equals(entryToInsert.getID()))
 				{ // refresh timestamp, this is checked for removals
-					e.mergeInTimestamps(entryToInsert);	
+					e.mergeInTimestamps(entryToInsert);
 					break outer;
 				}
 			}
@@ -230,11 +235,14 @@ public class AnnounceNodeCache {
 			for(Iterator<KBucketEntry> it2 = b.entries.iterator();it2.hasNext();)
 			{
 				KBucketEntry kbe = it2.next();
-				if(seenIDs.contains(kbe.getID()) || seenIPs.contains(kbe.getAddress().getAddress()) || now - kbe.getLastSeen() > DHTConstants.ANNOUNCE_CACHE_MAX_AGE)
+				if(now - kbe.getLastSeen() > DHTConstants.ANNOUNCE_CACHE_MAX_AGE || seenIDs.contains(kbe.getID()) || seenIPs.contains(kbe.getAddress().getAddress()))
 					it2.remove();
 				seenIDs.add(kbe.getID());
 				seenIPs.add(kbe.getAddress().getAddress());
 			}
+			
+			// IDs go into the appropriate buckets. no need to check across buckets
+			seenIDs.clear();
 
 		}
 

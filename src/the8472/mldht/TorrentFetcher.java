@@ -136,14 +136,14 @@ public class TorrentFetcher {
 			}
 			
 			timer.schedule(this::connections, 1, TimeUnit.SECONDS);
-				
-			if(openConnections.get() > maxOpen || socketsIncludingHalfOpen.get() > maxSockets)
-				return;
-			
+
 			if(thingsBlockingCompletion.get() == 0 && canidates.isEmpty()) {
 				stop();
 				return;
 			}
+			
+			if(openConnections.get() > maxOpen || socketsIncludingHalfOpen.get() > maxSockets)
+				return;
 			
 			Stream.generate(canidates::poll).limit(5).filter(Objects::nonNull).forEach(addr -> {
 

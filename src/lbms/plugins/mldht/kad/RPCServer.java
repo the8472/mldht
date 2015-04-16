@@ -489,6 +489,7 @@ public class RPCServer {
 		StringBuilder b = new StringBuilder();
 		b.append(getDerivedID()).append("\t").append("bind: ").append(getBindAddress()).append(" consensus: ").append(consensusExternalAddress).append('\n');
 		b.append("rx: ").append(numReceived).append(" tx:").append(numSent).append(" active:").append(getNumActiveRPCCalls()).append(" baseRTT:").append(timeoutFilter.getStallTimeout()).append(" uptime:").append(Duration.between(startTime, Instant.now())).append('\n');
+		b.append("RTT stats (").append(timeoutFilter.getSampleCount()).append("samples) ").append(timeoutFilter.getCurrentStats());
 		return b.toString();
 	}
 	

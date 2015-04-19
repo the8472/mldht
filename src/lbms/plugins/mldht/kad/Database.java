@@ -211,6 +211,9 @@ public class Database {
 		
 		snapshot = keyEntry.snapshot();
 		
+		if(snapshot.length == 0)
+			return null;
+		
 		List<DBItem> peerlist = new ArrayList<DBItem>(max_entries);
 		
 		int offset = ThreadLocalRandom.current().nextInt(snapshot.length);

@@ -27,7 +27,7 @@ import lbms.plugins.mldht.kad.RPCCall;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.PingRequest;
-import the8472.utils.concurrent.GuardedExclusiveTaskExecutor;
+import the8472.utils.concurrent.SerializedTaskExecutor;
 
 /**
  * @author Damokles
@@ -95,7 +95,7 @@ public class PingRefreshTask extends Task {
 	}
 	
 	
-	final Runnable exclusiveUpdate = GuardedExclusiveTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest(), () -> {
+	final Runnable exclusiveUpdate = SerializedTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest(), () -> {
 		KBucketEntry e = todo.first();
 
 		if (e.isGood()) {

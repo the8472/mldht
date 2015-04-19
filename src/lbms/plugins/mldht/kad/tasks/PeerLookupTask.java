@@ -47,7 +47,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.PackUtil;
-import the8472.utils.concurrent.GuardedExclusiveTaskExecutor;
+import the8472.utils.concurrent.SerializedTaskExecutor;
 
 /**
  * @author Damokles
@@ -236,7 +236,7 @@ public class PeerLookupTask extends Task {
 	
 	// go over the todo list and send get_peers requests
 	// until we have nothing left
-	final Runnable exclusiveUpdate = GuardedExclusiveTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() && !isClosestSetStable(), () -> {
+	final Runnable exclusiveUpdate = SerializedTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() && !isClosestSetStable(), () -> {
 		synchronized (this) {
 			KBucketEntry e = todo.first();
 

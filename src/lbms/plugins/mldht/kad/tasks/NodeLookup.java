@@ -35,7 +35,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.PackUtil;
-import the8472.utils.concurrent.GuardedExclusiveTaskExecutor;
+import the8472.utils.concurrent.SerializedTaskExecutor;
 
 /**
  * @author Damokles
@@ -53,7 +53,7 @@ public class NodeLookup extends Task {
 		addListener(t -> updatedPopulationEstimates());
 	}
 	
-	final Runnable exclusiveUpdate = GuardedExclusiveTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() && !isClosestSetStable(), () -> {
+	final Runnable exclusiveUpdate = SerializedTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() && !isClosestSetStable(), () -> {
 		KBucketEntry e = todo.first();
 		
 		if(e == null)
@@ -99,7 +99,7 @@ public class NodeLookup extends Task {
 	
 	@Override
 	protected boolean isDone() {
-		if (todo.size() == 0 && getNumOutstandingRequests() == 0 && !isFinished()) {
+		if (getNumOutstandingRequests() == 0 && todo.isEmpty() && !isFinished()) {
 			return true;
 		} else if (getNumOutstandingRequests() == 0 && isClosestSetStable()) {
 			return true; // quit after 10 nodes responsed

@@ -37,7 +37,7 @@ public class Diagnostics {
 		this.dhts = dhts;
 		this.logDir = logDir;
 
-		DHT.getScheduler().scheduleWithFixedDelay(this::writeAll, 10, 30, TimeUnit.SECONDS);
+		dhts.stream().findAny().ifPresent(d -> d.getScheduler().scheduleWithFixedDelay(this::writeAll, 10, 30, TimeUnit.SECONDS));
 	}
 	
 	void writeAll() {

@@ -18,6 +18,7 @@ package lbms.plugins.mldht.kad;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -115,14 +116,17 @@ public class RPCCall {
 		return msg;
 	}
 	
+	ScheduledExecutorService scheduler;
 
-	void sent() {
+	void sent(RPCServer srv) {
 		awaitingResponse = true;
 		sentTime = System.currentTimeMillis();
 		
+		scheduler = srv.getDHT().getScheduler();
+		
 		// spread out the stalls by +- 1ms to reduce lock contention
 		int smear = ThreadLocalRandom.current().nextInt(-1000, 1000);
-		timeoutTimer = DHT.getScheduler().schedule(this::checkStallOrTimeout, expectedRTT*1000+smear, TimeUnit.MICROSECONDS);
+		timeoutTimer = scheduler.schedule(this::checkStallOrTimeout, expectedRTT*1000+smear, TimeUnit.MICROSECONDS);
 	}
 	
 	void checkStallOrTimeout() {
@@ -138,7 +142,7 @@ public class RPCCall {
 			{
 				onStall();
 				// re-schedule timer, we'll directly detect the timeout based on the stalled flag
-				timeoutTimer = DHT.getScheduler().schedule(this::checkStallOrTimeout, remaining, TimeUnit.MILLISECONDS);
+				timeoutTimer = scheduler.schedule(this::checkStallOrTimeout, remaining, TimeUnit.MILLISECONDS);
 			} else {
 				onCallTimeout();
 			}

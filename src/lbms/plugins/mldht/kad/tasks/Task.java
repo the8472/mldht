@@ -238,7 +238,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 			modifyCallBeforeSubmit.accept(call);
 
 		// asyncify since we're under a lock here
-		DHT.getScheduler().execute(() -> rpc.doCall(call)) ;
+		rpc.getDHT().getScheduler().execute(() -> rpc.doCall(call)) ;
 		outstandingRequestsExcludingStalled.incrementAndGet();
 		outstandingRequests.incrementAndGet();
 		

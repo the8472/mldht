@@ -15,10 +15,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.LinkedTransferQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TransferQueue;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -30,27 +29,10 @@ import lbms.plugins.mldht.kad.DHTLogger;
 import the8472.utils.ConfigReader;
 import the8472.utils.FilesystemNotifications;
 import the8472.utils.XMLUtils;
+import the8472.utils.concurrent.CombinedExecutor;
 import the8472.utils.io.NetMask;
 
 public class Launcher {
-	
-	private static final String BOOTSTRAP_KEY = "noRouterBootstrap";
-	private static final String PERSIST_ID = "persistId";
-	private static final String CACHE_PATH = "routingTableCachePath";
-	private static final String PORT = "port";
-	private static final String MULTIHOMING = "multihoming";
-	private static final String LOG_LEVEL = "logLevel";
-	
-	Map<String, Object> defaults = new HashMap<>();
-	
-	{
-		defaults.put(BOOTSTRAP_KEY , false);
-		defaults.put(PERSIST_ID, true);
-		defaults.put(CACHE_PATH, "./dht.cache");
-		defaults.put(PORT, 49001);
-		defaults.put(MULTIHOMING, true);
-		defaults.put(LOG_LEVEL, LogLevel.Verbose.name());
-	}
 	
 	Supplier<InputStream> configSchema = () -> Launcher.class.getResourceAsStream("config.xsd");
 	
@@ -58,11 +40,7 @@ public class Launcher {
 	
 	List<Component> components = new ArrayList<>();
 	
-	private ConfigReader configReader = new ConfigReader(Paths.get(".", "config.xml"), configDefaults, configSchema);
-	
-	{
-		configReader.read();
-	}
+	private ConfigReader configReader;
 
 	DHTConfiguration config = new DHTConfiguration() {
 		
@@ -100,8 +78,16 @@ public class Launcher {
 
 	Thread shutdownHook = new Thread(this::onVmShutdown, "shutdownHook");
 	
-	public Launcher() {
+	ScheduledExecutorService scheduler;
+	DHTLogger logger;
 	
+	public Launcher() {
+		configReader = new ConfigReader(Paths.get(".", "config.xml"), configDefaults, configSchema);
+		configReader.read();
+		
+		scheduler = new CombinedExecutor("mlDHT", (t, ex) ->  {
+			logger.log(ex, LogLevel.Fatal);
+		});
 	}
 
 	private void onVmShutdown() {
@@ -117,7 +103,10 @@ public class Launcher {
 			dhts.add(new DHT(type));
 		});
 		
-		dhts.forEach(d -> d.addSiblings(dhts));
+		dhts.forEach(d -> {
+			d.addSiblings(dhts);
+			d.setScheduler(scheduler);
+		});
 
 		
 		Path logDir = Paths.get("./logs/");
@@ -138,8 +127,8 @@ public class Launcher {
 				throw new RuntimeException(e1);
 			}
 		});
- 
-		DHT.setLogger(new DHTLogger() {
+		
+		logger = new DHTLogger() {
 
 			private String timeFormat(LogLevel level) {
 				return "[" + Instant.now().toString() + "][" + level.toString() + "] ";
@@ -178,7 +167,9 @@ public class Launcher {
 				exWriter.append(timeFormat(l));
 				e.printStackTrace(exWriter);
 			}
-		});
+		};
+ 
+		DHT.setLogger(logger);
 		
 		new Diagnostics().init(dhts, logDir);
 

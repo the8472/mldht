@@ -532,7 +532,7 @@ public class RPCServer {
 			if(key.isValid() && key.isWritable()) {
 				writeState.set(WRITE_STATE_IDLE);
 				connectionManager.interestOpsChanged(this);
-				DHT.getScheduler().execute(this::writeEvent);
+				dh_table.getScheduler().execute(this::writeEvent);
 			}
 			if(key.isValid() && key.isReadable())
 				readEvent();
@@ -564,7 +564,7 @@ public class RPCServer {
 				ByteBuffer buf = ByteBuffer.allocate(readBuffer.limit()).put(readBuffer);
 				buf.flip();
 				
-				DHT.getScheduler().execute(() -> {handlePacket(buf, soa);});
+				dh_table.getScheduler().execute(() -> {handlePacket(buf, soa);});
 				numReceived++;
 				stats.addReceivedBytes(buf.limit() + dh_table.getType().HEADER_LENGTH);
 			}
@@ -606,7 +606,7 @@ public class RPCServer {
 						}
 						
 						if(es.associatedCall != null)
-							es.associatedCall.sent();
+							es.associatedCall.sent(RPCServer.this);
 						
 						stats.addSentMessageToCount(es.toSend);
 						stats.addSentBytes(bytesSent + dh_table.getType().HEADER_LENGTH);
@@ -631,7 +631,7 @@ public class RPCServer {
 				// check if we might have to pick it up again due to races
 				// schedule async to avoid infinite stacks
 				if(pipeline.peek() != null)
-					DHT.getScheduler().execute(this::writeEvent);
+					dh_table.getScheduler().execute(this::writeEvent);
 
 			
 			}

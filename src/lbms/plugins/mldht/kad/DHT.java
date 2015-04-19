@@ -94,23 +94,10 @@ public class DHT implements DHTBase {
 	private static DHTLogger				logger;
 	private static LogLevel					logLevel	= LogLevel.Info;
 
-	private static ScheduledThreadPoolExecutor	scheduler;
+	private volatile static ScheduledThreadPoolExecutor	defaultScheduler;
 	private static ThreadGroup					executorGroup;
 	
 	static {
-		executorGroup = new ThreadGroup("mlDHT");
-		int threads = Math.max(Runtime.getRuntime().availableProcessors(),2);
-		scheduler = new ScheduledThreadPoolExecutor(threads, (ThreadFactory) r -> {
-			Thread t = new Thread(executorGroup, r, "mlDHT Scheduler");
-			
-			t.setUncaughtExceptionHandler((t1, e) -> DHT.log(e, LogLevel.Error));
-			t.setDaemon(true);
-			return t;
-		});
-		scheduler.setCorePoolSize(threads);
-		scheduler.setMaximumPoolSize(threads*2);
-		scheduler.setKeepAliveTime(20, TimeUnit.SECONDS);
-		scheduler.allowCoreThreadTimeOut(true);
 
 		logger = new DHTLogger() {
 			public void log (String message, LogLevel l) {
@@ -155,6 +142,7 @@ public class DHT implements DHTBase {
 	private final DHTtype					type;
 	private List<ScheduledFuture<?>>		scheduledActions = new ArrayList<ScheduledFuture<?>>();
 	private List<DHT>						siblingGroup = new ArrayList<>();
+	private ScheduledExecutorService		scheduler;
 	
 
 	public DHT(DHTtype type) {
@@ -169,6 +157,14 @@ public class DHT implements DHTBase {
 		estimator = new PopulationEstimator();
 	}
 	
+	public ScheduledExecutorService getScheduler() {
+		return scheduler;
+	}
+
+	public void setScheduler(ScheduledExecutorService scheduler) {
+		this.scheduler = scheduler;
+	}
+
 	public void addSiblings(List<DHT> toAdd) {
 		toAdd.forEach(s -> {
 			if(siblingGroup.contains(s))
@@ -508,7 +504,9 @@ public class DHT implements DHTBase {
 		if (running) {
 			return;
 		}
-
+		
+		if(this.scheduler == null)
+			this.scheduler = getDefaultScheduler();
 		this.config = config;
 		useRouterBootstrapping = !config.noRouterBootstrap();
 
@@ -720,7 +718,7 @@ public class DHT implements DHTBase {
 		
 		for(ScheduledFuture<?> future : scheduledActions)
 			future.cancel(false);
-		scheduler.getQueue().removeAll(scheduledActions);
+		// scheduler.getQueue().removeAll(scheduledActions);
 		scheduledActions.clear();
 
 		serverManager.destroy();
@@ -1068,9 +1066,38 @@ public class DHT implements DHTBase {
 	/**
 	 * @return the scheduler
 	 */
-	public static ScheduledExecutorService getScheduler () {
-		return scheduler;
+	private static ScheduledExecutorService getDefaultScheduler () {
+		ScheduledExecutorService service = defaultScheduler;
+		if(service == null) {
+			initDefaultScheduler();
+			service = defaultScheduler;
+		}
+			
+		return service;
 	}
+	
+	private static void initDefaultScheduler() {
+		synchronized (DHT.class) {
+			if(defaultScheduler == null) {
+				executorGroup = new ThreadGroup("mlDHT");
+				int threads = Math.max(Runtime.getRuntime().availableProcessors(),2);
+				defaultScheduler = new ScheduledThreadPoolExecutor(threads, (ThreadFactory) r -> {
+					Thread t = new Thread(executorGroup, r, "mlDHT Scheduler");
+					
+					t.setUncaughtExceptionHandler((t1, e) -> DHT.log(e, LogLevel.Error));
+					t.setDaemon(true);
+					return t;
+				});
+				defaultScheduler.setCorePoolSize(threads);
+				defaultScheduler.setMaximumPoolSize(threads*2);
+				defaultScheduler.setKeepAliveTime(20, TimeUnit.SECONDS);
+				defaultScheduler.allowCoreThreadTimeOut(true);
+			}
+		}
+	}
+	
+
+	
 
 	public static void log (String message, LogLevel level) {
 		if (level.compareTo(logLevel) < 1) { // <=

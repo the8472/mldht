@@ -25,7 +25,7 @@ import lbms.plugins.mldht.kad.RPCCall;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.AnnounceRequest;
 import lbms.plugins.mldht.kad.messages.MessageBase;
-import the8472.utils.concurrent.GuardedExclusiveTaskExecutor;
+import the8472.utils.concurrent.SerializedTaskExecutor;
 
 /**
  * @author Damokles
@@ -53,7 +53,7 @@ public class AnnounceTask extends Task {
 	@Override
 	void callTimeout (RPCCall c) {}
 	
-	final Runnable exclusiveUpdate = GuardedExclusiveTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() , () -> {
+	final Runnable exclusiveUpdate = SerializedTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() , () -> {
 		KBucketEntryAndToken e = (KBucketEntryAndToken) todo.first();
 
 		if(e == null)

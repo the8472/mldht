@@ -251,7 +251,7 @@ public class PeerLookupTask extends Task {
 			gpr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV4_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
 			gpr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV6_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
 			gpr.setDestination(e.getAddress());
-			gpr.setScrape(true);
+			gpr.setScrape(scrapeHandler != null);
 			gpr.setNoSeeds(noSeeds);
 			if(rpcCall(gpr, e.getID(), call -> {
 				call.addListener(cache.getRPCListener());

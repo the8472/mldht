@@ -5,6 +5,9 @@ import static the8472.bencode.Utils.str2buf;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.SortedMap;
+import java.util.stream.Stream;
 
 public class BEncoder {
 	
@@ -73,13 +76,19 @@ public class BEncoder {
 	
 	private void encodeList(List<Object> l) {
 		buf.put((byte) 'l');
-		l.stream().forEachOrdered(e -> encodeInternal(e));
+		l.forEach(e -> encodeInternal(e));
 		buf.put((byte) 'e');
 	}
 	
 	private void encodeMap(Map<String, Object> map) {
 		buf.put((byte) 'd');
-		map.entrySet().stream().sorted((a, b) -> a.getKey().compareTo(b.getKey())).forEachOrdered(e -> {
+		Stream<Entry<String,Object>> str;
+		if(map instanceof SortedMap<?, ?> && ((SortedMap<?, ?>) map).comparator() == null)
+			str = map.entrySet().stream();
+		else
+			str = map.entrySet().stream().sorted(Map.Entry.comparingByKey());
+		
+		str.forEachOrdered(e -> {
 			encodeInternal(e.getKey());
 			encodeInternal(e.getValue());
 		});

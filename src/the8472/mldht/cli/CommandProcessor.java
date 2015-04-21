@@ -22,6 +22,7 @@ import java.util.function.Consumer;
 
 import lbms.plugins.mldht.kad.DHT;
 import the8472.bencode.BEncoder;
+import the8472.mldht.cli.commands.Burst;
 import the8472.mldht.cli.commands.GetTorrent;
 import the8472.mldht.cli.commands.Help;
 import the8472.mldht.cli.commands.Ping;
@@ -29,7 +30,6 @@ import the8472.mldht.cli.commands.Ping;
 public abstract class CommandProcessor {
 	
 	protected Consumer<ByteBuffer> writer;
-	protected BEncoder encoder = new BEncoder();
 	protected Collection<DHT> dhts;
 	protected List<byte[]> arguments;
 	protected Path currentWorkDir = Paths.get("");
@@ -37,6 +37,7 @@ public abstract class CommandProcessor {
 	BooleanSupplier active = () -> true;
 	
 	static Map<String, Class<? extends CommandProcessor>> SUPPORTED_COMMANDS = tap(new HashMap<>(), m -> {
+		m.put("BURST", Burst.class);
 		m.put("PING", Ping.class);
 		m.put("HELP", Help.class);
 		m.put("GETTORRENT", GetTorrent.class);
@@ -67,15 +68,16 @@ public abstract class CommandProcessor {
 	protected void println(String str) {
 		Map<String, Object> map = new HashMap<>();
 		map.put("action", "sysout");
-		map.put("payload", (str + '\n').getBytes(StandardCharsets.UTF_8));
-		writer.accept(encoder.encode(map, str.length()*4 + 40));
+		byte[] bytes = (str + '\n').getBytes(StandardCharsets.UTF_8);
+		map.put("payload", bytes);
+		writer.accept(new BEncoder().encode(map, bytes.length + 40));
 	}
 
 	protected void printErr(String str) {
 		Map<String, Object> map = new HashMap<>();
 		map.put("action", "syserr");
 		map.put("payload", str.getBytes(StandardCharsets.UTF_8));
-		writer.accept(encoder.encode(map, str.length()*4 + 40));
+		writer.accept(new BEncoder().encode(map, str.length()*4 + 40));
 	}
 	
 	protected void exit(int code) {
@@ -83,7 +85,7 @@ public abstract class CommandProcessor {
 		Map<String, Object> map = new HashMap<>();
 		map.put("action", "exit");
 		map.put("exitCode", code);
-		writer.accept(encoder.encode(map, 64));
+		writer.accept(new BEncoder().encode(map, 64));
 	}
 	
 	protected boolean isRunning() {

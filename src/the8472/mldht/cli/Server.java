@@ -160,8 +160,10 @@ public class Server implements Component {
 					CommandProcessor processor = CommandProcessor.from(args, (b) -> {
 						ByteBuffer h = ByteBuffer.allocate(4);
 						h.putInt(0, b.remaining());
-						writes.add(h);
-						writes.add(b);
+						synchronized (writes) {
+							writes.add(h);
+							writes.add(b);
+						}
 						conMan.interestOpsChanged(this);
 					}, dhts);
 					processor.currentWorkDir = Paths.get(new String((byte[])map.get("cwd"), StandardCharsets.UTF_8));

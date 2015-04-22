@@ -29,7 +29,7 @@ import lbms.plugins.mldht.kad.DHTLogger;
 import the8472.utils.ConfigReader;
 import the8472.utils.FilesystemNotifications;
 import the8472.utils.XMLUtils;
-import the8472.utils.concurrent.CombinedExecutor;
+import the8472.utils.concurrent.NonblockingScheduledExecutor;
 import the8472.utils.io.NetMask;
 
 public class Launcher {
@@ -85,7 +85,7 @@ public class Launcher {
 		configReader = new ConfigReader(Paths.get(".", "config.xml"), configDefaults, configSchema);
 		configReader.read();
 		
-		scheduler = new CombinedExecutor("mlDHT", (t, ex) ->  {
+		scheduler = new NonblockingScheduledExecutor("mlDHT", Math.max(Runtime.getRuntime().availableProcessors(), 4), (t, ex) ->  {
 			logger.log(ex, LogLevel.Fatal);
 		});
 	}

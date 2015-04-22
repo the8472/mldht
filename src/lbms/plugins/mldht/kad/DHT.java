@@ -207,6 +207,7 @@ public class DHT implements DHTBase {
 		PingResponse rsp = new PingResponse(r.getMTID());
 		rsp.setDestination(r.getOrigin());
 		r.getServer().sendMessage(rsp);
+		
 		node.recieved(r);
 	}
 
@@ -220,9 +221,8 @@ public class DHT implements DHTBase {
 			return;
 		}
 
-		node.recieved(r);
+		
 		// find the K closest nodes and pack them
-
 		Optional<KClosestNodesSearch> kns4 = r.doesWant4() ? getSiblingByType(DHTtype.IPV4_DHT).map(sib -> {
 			KClosestNodesSearch kns = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, sib);
 			kns.fill(DHTtype.IPV4_DHT != type);
@@ -243,6 +243,8 @@ public class DHT implements DHTBase {
 			response = new UnknownTypeResponse(r.getMTID(), kns4.map(KClosestNodesSearch::pack).orElse(null) ,kns6.map(KClosestNodesSearch::pack).orElse(null));
 		response.setDestination(r.getOrigin());
 		r.getServer().sendMessage(response);
+
+		node.recieved(r);
 	}
 
 	public void response (MessageBase r) {
@@ -263,8 +265,6 @@ public class DHT implements DHTBase {
 			return;
 		}
 
-		node.recieved(r);
-		
 		BloomFilterBEP33 peerFilter = r.isScrape() ? db.createScrapeFilter(r.getInfoHash(), false) : null;
 		BloomFilterBEP33 seedFilter = r.isScrape() ? db.createScrapeFilter(r.getInfoHash(), true) : null;
 		
@@ -335,6 +335,8 @@ public class DHT implements DHTBase {
 		resp.setPeerItems(dbl);
 		resp.setDestination(r.getOrigin());
 		r.getServer().sendMessage(resp);
+
+		node.recieved(r);
 	}
 
 	public void announce (AnnounceRequest r) {
@@ -347,7 +349,6 @@ public class DHT implements DHTBase {
 			return;
 		}
 
-		node.recieved(r);
 		// first check if the token is OK
 		ByteWrapper token = new ByteWrapper(r.getToken());
 		if (!db.checkToken(token, r.getOrigin().getAddress(), r.getOrigin().getPort(), r.getInfoHash())) {
@@ -368,6 +369,8 @@ public class DHT implements DHTBase {
 		AnnounceResponse rsp = new AnnounceResponse(r.getMTID());
 		rsp.setDestination(r.getOrigin());
 		r.getServer().sendMessage(rsp);
+
+		node.recieved(r);
 	}
 
 	public void error (ErrorMessage r) {

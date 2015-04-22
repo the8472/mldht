@@ -33,6 +33,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.stream.Stream;
 
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
@@ -204,6 +205,10 @@ public class KBucket implements Externalizable {
 	 */
 	public List<KBucketEntry> getEntries () {
 		return new ArrayList<KBucketEntry>(entries);
+	}
+	
+	public Stream<KBucketEntry> entriesStream() {
+		return entries.stream();
 	}
 	
 	public List<KBucketEntry> getReplacementEntries() {

@@ -39,12 +39,15 @@ public class BEncoder {
 			return;
 		}
 		
-		if(o instanceof byte[]) {
-			o = ByteBuffer.wrap((byte[]) o);
-		}
 		
 		if(o instanceof String) {
-			o = str2buf((String)o);
+			encodeLong(((String) o).length(), ':');
+			str2buf((String)o, buf);
+			return;
+		}
+
+		if(o instanceof byte[]) {
+			o = ByteBuffer.wrap((byte[]) o);
 		}
 		
 		if(o instanceof ByteBuffer) {
@@ -96,7 +99,7 @@ public class BEncoder {
 	}
 	
 	private void encodeLong(long val, char terminator) {
-		buf.put(str2buf(Long.toString(val)));
+		str2buf(Long.toString(val), buf);
 		buf.put((byte) terminator);
 	}
 }

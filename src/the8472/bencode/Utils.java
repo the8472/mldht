@@ -1,5 +1,6 @@
 package the8472.bencode;
 
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
@@ -8,6 +9,23 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 public class Utils {
+	
+	/*
+	 * all byte[]/buffer/String conversions use ISO_8859_1 by default because it's round-trip compatible to unicode codepoints 0-255. i.e. it's suitable for binary data of unspecified encodings.
+	 * 
+	 * this will garble actual UTF-8 strings, decode those manually if it's meant to be human-readable
+	 */
+	
+	public static void str2buf(String in, ByteBuffer out) {
+		if(out.remaining() < in.length())
+			throw new BufferOverflowException();
+		for(int i=0;i<in.length();i++) {
+			char c = in.charAt(i);
+			if(c > 0xff)
+				throw new IllegalArgumentException("only strings with codepoints 0x00 - 0xff are supported. for proper unicode handling convert strings manually");
+			out.put((byte) c);
+		}
+	}
 	
 	public static ByteBuffer str2buf(String str) {
 		return ByteBuffer.wrap(str.getBytes(StandardCharsets.ISO_8859_1));

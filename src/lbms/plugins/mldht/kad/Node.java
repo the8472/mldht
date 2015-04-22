@@ -31,14 +31,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -241,7 +242,7 @@ public class Node {
 		KBucketEntry toRemove = null;
 		
 		if(isTrusted) {
-			toRemove = tableEntry.bucket.getEntries().stream().filter(e -> trustedNodes.stream().noneMatch(mask -> mask.contains(e.getAddress().getAddress()))).collect(Collectors.maxBy(KBucketEntry.AGE_ORDER)).orElse(null);
+			toRemove = tableEntry.bucket.getEntries().stream().filter(e -> trustedNodes.stream().noneMatch(mask -> mask.contains(e.getAddress().getAddress()))).max(KBucketEntry.AGE_ORDER).orElse(null);
 		}
 		
 		if(internalInsert || isTrusted)
@@ -261,7 +262,9 @@ public class Node {
 		if(!relaxedSplitting)
 			return false;
 		
-		Key closestLocalId = Arrays.stream(usedIDs.getSnapshot()).collect(Collectors.minBy((a,b) -> toInsert.getID().threeWayDistance(a, b))).orElseThrow(() -> new IllegalStateException("expected to find a local ID"));
+		Comparator<Key> comp = new Key.DistanceOrder(toInsert.getID());
+		
+		Key closestLocalId = Arrays.stream(usedIDs.getSnapshot()).min(comp).orElseThrow(() -> new IllegalStateException("expected to find a local ID"));
 		
 		List<RoutingTableEntry> table = routingTableCOW;
 		
@@ -270,10 +273,10 @@ public class Node {
 		int center = findIdxForId(table, closestLocalId);
 		
 		for(int i=center;i<table.size();i++) {
-			Collection<KBucketEntry> entries = table.get(i).bucket.getEntries();
-			if(entries.size() == 0)
+			KBucket bucket = table.get(i).bucket;
+			if(bucket.getNumEntries() == 0)
 				continue;
-			int found = entries.stream().filter(e -> closestLocalId.threeWayDistance(e.getID(), toInsert.getID()) < 0).collect(Collectors.counting()).intValue();
+			int found = (int) bucket.entriesStream().filter(e -> closestLocalId.threeWayDistance(e.getID(), toInsert.getID()) < 0).count();
 			if(found == 0)
 				break;
 			closer+=found;
@@ -282,10 +285,10 @@ public class Node {
 		}
 		
 		for(int i=center-1;i>=0;i--) {
-			Collection<KBucketEntry> entries = table.get(i).bucket.getEntries();
-			if(entries.size() == 0)
+			KBucket bucket = table.get(i).bucket;
+			if(bucket.getNumEntries() == 0)
 				continue;
-			int found = entries.stream().filter(e -> closestLocalId.threeWayDistance(e.getID(), toInsert.getID()) < 0).collect(Collectors.counting()).intValue();
+			int found = (int) bucket.entriesStream().filter(e -> closestLocalId.threeWayDistance(e.getID(), toInsert.getID()) < 0).count();
 			if(found == 0)
 				break;
 			closer+=found;
@@ -553,9 +556,10 @@ public class Node {
 		for(int i=0,n=table.size();i<n;i++)
 		{
 			RoutingTableEntry entry = table.get(i);
-			List<KBucketEntry> entries = entry.bucket.getEntries();
-			for(int j=0,m=entries.size();j<m;j++)
-				newKnownMap.put(entries.get(j).getAddress().getAddress(), entry);
+			Stream<KBucketEntry> entries = entry.bucket.entriesStream();
+			entries.forEach(e -> {
+				newKnownMap.put(e.getAddress().getAddress(), entry);
+			});
 		}
 		
 		knownNodes = newKnownMap;

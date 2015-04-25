@@ -22,7 +22,7 @@ public class Utils {
 		for(int i=0;i<in.length();i++) {
 			char c = in.charAt(i);
 			if(c > 0xff)
-				throw new IllegalArgumentException("only strings with codepoints 0x00 - 0xff are supported. for proper unicode handling convert strings manually");
+				throw new IllegalArgumentException("only strings with codepoints 0x00 - 0xff are supported. for proper unicode handling convert strings manually. attempted to encode: "+in);
 			out.put((byte) c);
 		}
 	}

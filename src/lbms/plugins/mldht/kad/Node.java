@@ -16,6 +16,7 @@
  */
 package lbms.plugins.mldht.kad;
 
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -27,6 +28,7 @@ import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -600,7 +602,7 @@ public class Node {
 		
 		Path tempFile = Files.createTempFile(saveTo.getParent(), "saveTable", "tmp");
 		
-		try(ObjectOutputStream oos = new ObjectOutputStream(Files.newOutputStream(tempFile))) {
+		try(ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(Files.newOutputStream(tempFile, StandardOpenOption.WRITE, StandardOpenOption.SYNC), 512*1024))) {
 			HashMap<String,Serializable> tableMap = new HashMap<String, Serializable>();
 			
 			dataStore.put("table"+dht.getType().name(), tableMap);

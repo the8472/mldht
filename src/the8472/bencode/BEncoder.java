@@ -41,28 +41,27 @@ public class BEncoder {
 		
 		
 		if(o instanceof String) {
-			encodeLong(((String) o).length(), ':');
-			str2buf((String)o, buf);
+			encodeString((String) o);
 			return;
 		}
 
 		if(o instanceof byte[]) {
 			byte[] b = (byte[]) o;
-			encodeLong(b.length, ':');
+			encodeInt(b.length, (byte) ':');
 			buf.put(b);
 			return;
 		}
 		
 		if(o instanceof ByteBuffer) {
 			ByteBuffer clone = ((ByteBuffer) o).slice();
-			encodeLong(clone.remaining(), ':');
+			encodeInt(clone.remaining(), (byte) ':');
 			buf.put(clone);
 			return;
 		}
 		
 		if(o instanceof Integer) {
 			buf.put((byte) 'i');
-			encodeLong(((Integer) o).longValue(),'e');
+			encodeInt(((Integer) o).intValue(),(byte) 'e');
 			return;
 		}
 		
@@ -82,8 +81,13 @@ public class BEncoder {
 	
 	private void encodeList(List<Object> l) {
 		buf.put((byte) 'l');
-		l.forEach(e -> encodeInternal(e));
+		l.forEach(this::encodeInternal);
 		buf.put((byte) 'e');
+	}
+	
+	private void encodeString(String str) {
+		encodeInt(str.length(), (byte) ':');
+		str2buf(str, buf);
 	}
 	
 	private void encodeMap(Map<String, Object> map) {
@@ -95,10 +99,46 @@ public class BEncoder {
 			str = map.entrySet().stream().sorted(Map.Entry.comparingByKey());
 		
 		str.forEachOrdered(e -> {
-			encodeInternal(e.getKey());
+			encodeString(e.getKey());
 			encodeInternal(e.getValue());
 		});
 		buf.put((byte) 'e');
+	}
+	
+	private final static byte[] MIN_INT = str2buf(Integer.toString(Integer.MIN_VALUE)).array();
+	
+	private void encodeInt(int val, byte terminator) {
+		if(val == Integer.MIN_VALUE)
+			buf.put(MIN_INT);
+		else {
+			if(val < 0) {
+				buf.put((byte) '-');
+				val = -val;
+			}
+			
+			int numChars = 10;
+			int probe = 10;
+	        for (int i=1; i<10; i++) {
+	            if (val < probe) {
+	            	numChars = i;
+	            	break;
+	            }
+	            probe = 10*probe;
+	        }
+	        
+	        int pos = buf.position() + numChars;
+	        
+	        buf.position(pos);
+	        
+	        for(int i=1; i <= numChars; i++) {
+	        	int reduced = val / 10;
+	        	int remainder = val - (reduced * 10);
+	        	buf.put(pos - i, (byte) ('0' + remainder));
+	        	val = reduced;
+	        }
+	        
+		}
+		buf.put(terminator);
 	}
 	
 	private void encodeLong(long val, char terminator) {

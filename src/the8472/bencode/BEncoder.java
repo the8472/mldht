@@ -47,7 +47,10 @@ public class BEncoder {
 		}
 
 		if(o instanceof byte[]) {
-			o = ByteBuffer.wrap((byte[]) o);
+			byte[] b = (byte[]) o;
+			encodeLong(b.length, ':');
+			buf.put(b);
+			return;
 		}
 		
 		if(o instanceof ByteBuffer) {

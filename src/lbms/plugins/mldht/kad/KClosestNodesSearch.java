@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.utils.PackUtil;
@@ -75,13 +76,15 @@ public class KClosestNodesSearch {
 	private boolean insertBucket(KBucket bucket) {
 		if(bucket.getNumEntries() == 0)
 			return false;
-		Key farthest = entries.size() > 0 ? entries.get(entries.size()-1).getID() : null;
+		Optional<Key> farthest = entries.size() >= max_entries ? entries.stream().max(comp).map(KBucketEntry::getID) : Optional.empty();
 		bucket.entriesStream().filter(e -> !e.isBad()).forEach(entries::add);
-		Collections.sort(entries,comp);
-		for(int i=entries.size()-1;i>=max_entries;i--)
-			entries.remove(i);
-		if(entries.size() > 0 && farthest == entries.get(entries.size()-1).getID())
-			return true;
+		if(entries.size() >= max_entries) {
+			Collections.sort(entries,comp);
+			for(int i=entries.size()-1;i>=max_entries;i--)
+				entries.remove(i);
+			if(farthest.isPresent() && farthest.get().equals(entries.get(entries.size()-1).getID()))
+				return true;
+		}
 		return false;
 		
 	}

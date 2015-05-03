@@ -259,7 +259,7 @@ public class MessageDecoder {
 
 		MessageBase msg = null;
 
-		String requestMethod = getStringFromBytes((byte[]) rawRequestMethod);
+		String requestMethod = getStringFromBytes((byte[]) rawRequestMethod, true);
 		if (Method.PING.getRPCName().equals(requestMethod)) {
 			msg = new PingRequest();
 		} else if (Method.FIND_NODE.getRPCName().equals(requestMethod) || Method.GET_PEERS.getRPCName().equals(requestMethod)) {

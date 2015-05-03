@@ -594,10 +594,11 @@ public class RPCServer {
 						if(bytesSent == 0)
 						{
 							pipeline.add(es);
+
+							writeState.set(WRITE_STATE_AWAITING_NIO_NOTIFICATION);
 							// wakeup -> updates selections -> will wait for write OP
 							connectionManager.interestOpsChanged(this);
 							
-							writeState.set(WRITE_STATE_AWAITING_NIO_NOTIFICATION);
 							return;
 						}
 						
@@ -614,6 +615,15 @@ public class RPCServer {
 							DHT.logDebug("RPC send message to " + es.toSend.getDestination() + " | "+ es.toSend.toString() + " | length: " +bytesSent);
 					} catch (IOException e)
 					{
+						// BSD variants may throw an exception (ENOBUFS) instead of just signaling 0 bytes sent when network queues are full -> back off just like we would in the 0 bytes case.
+						if(e.getMessage().equals("No buffer space available")) {
+							pipeline.add(es);
+							writeState.set(WRITE_STATE_AWAITING_NIO_NOTIFICATION);
+							connectionManager.interestOpsChanged(this);
+
+							return;
+						}
+
 						DHT.log(new IOException(addr+" -> "+es.toSend.getDestination(), e), LogLevel.Error);
 						if(es.associatedCall != null)
 						{ // need to notify listeners

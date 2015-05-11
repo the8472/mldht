@@ -8,13 +8,16 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.LinkedTransferQueue;
-import java.util.concurrent.TransferQueue;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.Key;
@@ -22,40 +25,49 @@ import lbms.plugins.mldht.kad.messages.GetPeersRequest;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
+import lbms.plugins.mldht.utils.NIOConnectionManager;
+import lbms.plugins.mldht.utils.Selectable;
 import the8472.utils.ConfigReader;
 import the8472.utils.XMLUtils;
+import the8472.utils.concurrent.SerializedTaskExecutor;
 
 public class PassiveRedisIndexer implements Component {
 	
-	private TransferQueue<ByteBuffer> writeQueue = new LinkedTransferQueue<>();
+	private Queue<ByteBuffer> writeQueue = new ConcurrentLinkedQueue<>();
 	
-	Thread r = new Thread(this::read, "redis-reader");
-	Thread w = new Thread(this::write, "redis-writer");
-	SocketChannel chan;
 	private volatile boolean running = true;
 	
 	ConfigReader config;
 	
+	AtomicReference<SocketHandler> ref = new AtomicReference<>();
+	
+	NIOConnectionManager conMan;
+	
 	public void start(Collection<DHT> dhts, ConfigReader config)  {
 		this.config = config;
+		
+		conMan = new NIOConnectionManager("redis selector");
 		
 		dhts.forEach((dht) -> {
 			dht.addIncomingMessageListener(this::incomingMessage);
 		});
 		
-		try {
-			chan = SocketChannel.open();
-		} catch (IOException e) {
-			throw new RuntimeException(e);
+	}
+	
+	
+	SocketHandler ensureOpen() {
+		SocketHandler handler = ref.get();
+		if(handler == null) {
+			handler = new SocketHandler();
+			if(ref.compareAndSet(null, handler)) {
+				handler.open();
+			}
 		}
 		
-		w.setDaemon(true);
-		w.start();
-		
+		return handler;
 	}
 	
 	public void stop() {
-		// TODO Auto-generated method stub
 		running = false;
 	}
 	
@@ -106,9 +118,11 @@ public class PassiveRedisIndexer implements Component {
 			b.append('$').append(TTL.length()).append("\r\n");
 			b.append(TTL).append("\r\n");
 			
-			
 			writeQueue.add(str2buf(b.toString()));
 			
+			ensureOpen().tryWrite.run();
+			
+						
 		}
 	}
 	
@@ -118,41 +132,133 @@ public class PassiveRedisIndexer implements Component {
 	private InetAddress getAddress() {
 		return config.get(XMLUtils.buildXPath("//components/component[@xsi:type='mldht:redisIndexerType']/address",namespaces)).flatMap(unchecked(str -> Optional.of(InetAddress.getByName(str)))).get();
 	}
-	
-	private void write() {
-		try {
-			ByteBuffer current = writeQueue.take();
-			
-			chan.connect(new InetSocketAddress(getAddress(),6379));
 
-			r.setDaemon(true);
-			r.start();
-
-			
-			while(running) {
-				if(current.remaining() == 0)
-					current = writeQueue.take();
-				chan.write(current);
+	class SocketHandler implements Selectable {
+		
+		SocketChannel chan;
+		
+		void open() {
+			try {
+				chan = SocketChannel.open();
+				chan.configureBlocking(false);
+				chan.connect(new InetSocketAddress(getAddress(),6379));
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
 			}
-		} catch (IOException | InterruptedException e) {
-			e.printStackTrace();
+			
+			conMan.register(this);
+			
 		}
+		
+		void close() {
+			ref.compareAndSet(this, null);
+			try {
+				chan.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+		}
+	
+		@Override
+		public SelectableChannel getChannel() {
+			return chan;
+		}
+	
+		@Override
+		public void registrationEvent(NIOConnectionManager manager, SelectionKey key) throws IOException {
+			
+			// TODO Auto-generated method stub
+			
+		}
+		
+		
+	
+		@Override
+		public void selectionEvent(SelectionKey key) throws IOException {
+			if(key.isValid() && key.isConnectable()) {
+				chan.finishConnect();
+				conMan.interestOpsChanged(this);
+			}
+				
+			if(key.isValid() && key.isReadable())
+				read();
+			if(key.isValid() && key.isWritable()) {
+				awaitingWriteNotification = false;
+				tryWrite.run();
+				conMan.interestOpsChanged(this);
+			}
+				
+			
+		}
+		
+		volatile boolean awaitingWriteNotification = true;
+		ByteBuffer toWrite;
+		
+		Runnable tryWrite = SerializedTaskExecutor.whileTrue(() -> !awaitingWriteNotification && !writeQueue.isEmpty(), () -> {
+			if(toWrite == null)
+				toWrite = writeQueue.poll();
+			if(toWrite == null)
+				return;
+			
+			int written = 0;
+			try {
+				chan.write(toWrite);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			
+			if(written < 0) {
+				awaitingWriteNotification = true;
+				close();
+				return;
+			}
+			
+			if(toWrite.remaining() > 0) {
+				awaitingWriteNotification = true;
+				conMan.interestOpsChanged(this);
+			} else {
+				toWrite = null;
+			}
+		});
+		
+		ByteBuffer oblivion = ByteBuffer.allocateDirect(4*1024);
+		
+		void read() throws IOException {
+			while(true) {
+				oblivion.clear();
+				int read = chan.read(oblivion);
+				if(read < 0)
+					close();
+				if(read <= 0)
+					break;
+			}
+		}
+	
+		@Override
+		public void doStateChecks(long now) throws IOException {
+			if(!chan.isOpen()) {
+				close();
+				conMan.deRegister(this);
+			}
+				
+		}
+	
+		@Override
+		public int calcInterestOps() {
+			int ops = SelectionKey.OP_READ;
+			
+			if(chan.isConnectionPending())
+				ops |= SelectionKey.OP_CONNECT;
+			
+			if(awaitingWriteNotification)
+				ops |= SelectionKey.OP_WRITE;
+				
+			return ops;
+		}
+		
 	}
-	
-	private void read() {
-		ByteBuffer current = ByteBuffer.allocateDirect(4096);
-		
-		try {
-			while(running) {
-				// we just dump reads into oblivion
-				current.clear();
-				chan.read(current);
-			}
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		
-		
-	};
 
 }

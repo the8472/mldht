@@ -21,6 +21,9 @@
       <className>the8472.mldht.PassiveRedisIndexer</className>
       <address>127.0.0.1</address>
     </component>
+    <component>
+      <className>the8472.mldht.cli.Server</className>
+    </component>
   </components>
   -->
 </mldht:config>

@@ -12,9 +12,9 @@ Originally developed as [DHT plugin](http://azsmrc.sourceforge.net/index.php?act
 - DHT security ([BEP42](http://bittorrent.org/beps/bep_0042.html)), partial: IP headers are implemented, node ID restrictions are not
 - metadata exchange ([BEP9](http://bittorrent.org/beps/bep_0009.html)), fetch-only
 - the following [libtorrent DHT extensions](http://www.libtorrent.org/dht_extensions.html): "get_peers response", "forward compatibility", "client identification"
-- multihoming mode: separate IDs for each socket, shared routing table, automatically utilizes all available global unicast addresses available on the machine
+- optional multihoming mode: separate IDs for each socket, shared routing table, automatically utilizes all available global unicast addresses available on the machine
 - high-performance implementation without compromising correctness, i.e. the node will be a good citizen
- - 20k packets per second on a single Xeon core
+ - can process 20k packets per second on a single Xeon core
 - low latency lookups by using adaptive timeouts and a secondary routing table/cache tuned for RTT instead of stability
 - export of passively observed \<infohash, ip\> tuples to redis to survey torrent activity
 
@@ -56,6 +56,8 @@ Consider the Launcher as an example-case how to instantiate DHT nodes.
 * nat/firewall rules should not assume any particular remote port, as other DHT nodes are free to chose their own.
 * If no publicly routable IPv6 address is available then IPv6 should be disabled
 * If only NATed IPv4 addresses are available then multihoming mode should be disabled
+* The length of network interface send queues should be increased when the DHT node is operated in multihoming mode on a server with many public IPs.<br>This is necessary because UDP sends may be silently dropped when the send queue is full and DHT traffic can be very bursty, easily saturating too-small queues<br>Check system logs or netstat statistics to see if outgoing packets are dropped.
+* For similar reasons the maximum socket receive buffer size should be set to at least 2MB, which is the amount this implementation will request when configuring its sockets
 
 ## launch with redis export
 

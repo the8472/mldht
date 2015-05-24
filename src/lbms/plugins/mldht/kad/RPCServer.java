@@ -62,6 +62,8 @@ import the8472.bencode.Utils;
  */
 public class RPCServer {
 	
+	private static final int MTID_LENGTH = 6;
+	
 	private InetAddress								addr;
 	private DHT										dh_table;
 	private RPCServerManager						manager;
@@ -178,7 +180,7 @@ public class RPCServer {
 				call_queue.add(c);
 				break;
 			}
-			byte[] mtid = new byte[6];
+			byte[] mtid = new byte[MTID_LENGTH];
 			ThreadLocalUtils.getThreadLocalRandom().nextBytes(mtid);
 			if(calls.putIfAbsent(new ByteWrapper(mtid),c) == null)
 			{
@@ -291,7 +293,7 @@ public class RPCServer {
 			}
 		} catch(Exception e) {
 			p.rewind();
-			DHT.logError("failed to decode message  " + Utils.stripToAscii(p) + " (length:"+p.remaining()+") from: " + source);
+			DHT.logError("failed to decode message  " + Utils.stripToAscii(p) + " (length:"+p.remaining()+") from: " + source + " reason:" + e.getMessage());
 			DHT.log(e, LogLevel.Debug);
 			MessageBase err = new ErrorMessage(new byte[] {0,0,0,0}, ErrorCode.ProtocolError.code,"invalid bencoding: "+e.getMessage());
 			err.setDestination(source);
@@ -327,6 +329,16 @@ public class RPCServer {
 		// just respond to incoming requests, no need to match them to pending requests
 		if(msg.getType() == Type.REQ_MSG) {
 			handleMessage(msg);
+			return;
+		}
+		
+		
+		if(msg.getType() == Type.RSP_MSG && msg.getMTID().length != MTID_LENGTH) {
+			byte[] mtid = msg.getMTID();
+			DHT.logDebug("response with invalid mtid length received: "+ Utils.prettyPrint(mtid));
+			ErrorMessage err = new ErrorMessage(mtid, ErrorCode.ServerError.code, "received a response with a transaction id length of "+mtid.length+" bytes, expected [implementation-specific]: "+MTID_LENGTH+" bytes");
+			err.setDestination(msg.getOrigin());
+			sendMessage(err);
 			return;
 		}
 		

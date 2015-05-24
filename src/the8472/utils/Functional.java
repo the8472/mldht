@@ -53,5 +53,28 @@ public class Functional {
 		});
 		
 	}
+	
+	public static <IN, OUT, EX extends Throwable> Function<IN, OUT> castOrThrow(Class<OUT> type, Function<IN, EX> ex) {
+		return (in) -> {
+			if(!type.isInstance(in))
+				throwAsUnchecked(ex.apply(in));
+			return type.cast(in);
+		};
+	}
+
+	
+	
+	public static void throwAsUnchecked(Throwable t) {
+	    Thrower.asUnchecked(t);
+	}
+	
+	private static class Thrower {
+
+		@SuppressWarnings("unchecked")
+		static private <T extends Throwable> void asUnchecked(Throwable t) throws T {
+		    throw (T) t;
+		}
+	}
+
 
 }

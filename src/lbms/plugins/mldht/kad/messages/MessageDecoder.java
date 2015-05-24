@@ -17,11 +17,13 @@
 package lbms.plugins.mldht.kad.messages;
 
 import static the8472.bencode.Utils.prettyPrint;
+import static the8472.utils.Functional.castOrThrow;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -149,10 +151,12 @@ public class MessageDecoder {
 			throw new MessageException("response did not contain a body",ErrorCode.ProtocolError);
 		}
 
-		byte[] hash = (byte[]) args.get("id");
+		byte[] hash = Optional.of(args.get("id"))
+				.map(castOrThrow(byte[].class, (o) -> new MessageException("expected parameter 'id' to be a byte-string, got "+o.getClass(), ErrorCode.ProtocolError)))
+				.orElseThrow(() -> new MessageException("mandatory parameter 'id' missing", ErrorCode.ProtocolError));
 		byte[] ip = (byte[]) map.get(MessageBase.EXTERNAL_IP_KEY);
 
-		if (hash == null || hash.length != Key.SHA1_HASH_LENGTH) {
+		if (hash.length != Key.SHA1_HASH_LENGTH) {
 			throw new MessageException("invalid or missing origin ID",ErrorCode.ProtocolError);
 		}
 
@@ -181,22 +185,21 @@ public class MessageDecoder {
 
 			
 			List<DBItem> dbl = null;
-			Object rawVals = args.get("values");
-			if(rawVals != null)
+			
+			@SuppressWarnings("unchecked")
+			List<byte[]> vals = Optional.of(args.get("values"))
+				.map(castOrThrow(List.class, val -> new MessageException("expected 'values' field in get_peers to be list of strings, got "+val.getClass(), ErrorCode.ProtocolError)))
+				.orElse(Collections.EMPTY_LIST);
+
+			if(vals.size() > 0)
 			{
-				if(!(rawVals instanceof List))
-					throw new MessageException("values field in get_peers response was a string, expected a list of strings", ErrorCode.ProtocolError);
-				List<byte[]> vals = (List<byte[]>) rawVals;
-				if(vals.size() > 0)
+				dbl = new ArrayList<DBItem>(vals.size());
+				for (int i = 0; i < vals.size(); i++)
 				{
-					dbl = new ArrayList<DBItem>(vals.size());
-					for (int i = 0; i < vals.size(); i++)
-					{
-						// only accept ipv4 or ipv6 for now
-						if (vals.get(i).length != DHTtype.IPV4_DHT.ADDRESS_ENTRY_LENGTH && vals.get(i).length != DHTtype.IPV6_DHT.ADDRESS_ENTRY_LENGTH)
-							continue;
-						dbl.add(new PeerAddressDBItem(vals.get(i), false));
-					}
+					// only accept ipv4 or ipv6 for now
+					if (vals.get(i).length != DHTtype.IPV4_DHT.ADDRESS_ENTRY_LENGTH && vals.get(i).length != DHTtype.IPV6_DHT.ADDRESS_ENTRY_LENGTH)
+						continue;
+					dbl.add(new PeerAddressDBItem(vals.get(i), false));
 				}
 			}
 			

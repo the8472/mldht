@@ -35,7 +35,7 @@ public class Burst extends CommandProcessor {
 				Optional.ofNullable(dht.getServerManager().getRandomActiveServer(false)).ifPresent(rpc -> {
 					NodeLookup task = new NodeLookup(Key.createRandomKey(), rpc, dht.getNode(), false);
 					task.addListener((finishedTask) -> {
-						println("done: "+finishedTask);
+						println("done: "+finishedTask+" ["+dht.getType()+"]");
 						future.complete(null);
 					});
 					dht.getTaskManager().addTask(task);

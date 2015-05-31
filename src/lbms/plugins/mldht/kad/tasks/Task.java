@@ -131,17 +131,19 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 * @see lbms.plugins.mldht.kad.RPCCallListener#onResponse(lbms.plugins.mldht.kad.RPCCall, lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
 	public void onResponse (RPCCall c, MessageBase rsp) {
+		if (!isFinished())
+			callFinished(c, rsp);
+
+		// only decrement counters after we have processed message payloads
 		if(!c.wasStalled())
 			outstandingRequestsExcludingStalled.decrementAndGet();
 		outstandingRequests.decrementAndGet();
 
 		recvResponses++;
 
-		if (!isFinished()) {
-			callFinished(c, rsp);
+
 			
-			runStuff();
-		}
+		runStuff();
 	}
 	
 	public void onStall(RPCCall c)
@@ -237,10 +239,12 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		if(modifyCallBeforeSubmit != null)
 			modifyCallBeforeSubmit.accept(call);
 
-		// asyncify since we're under a lock here
-		rpc.getDHT().getScheduler().execute(() -> rpc.doCall(call)) ;
 		outstandingRequestsExcludingStalled.incrementAndGet();
 		outstandingRequests.incrementAndGet();
+		
+		// asyncify since we're under a lock here
+		rpc.getDHT().getScheduler().execute(() -> rpc.doCall(call)) ;
+
 		
 		sentReqs++;
 		return true;

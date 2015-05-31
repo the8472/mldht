@@ -151,8 +151,8 @@ public class MessageDecoder {
 			throw new MessageException("response did not contain a body",ErrorCode.ProtocolError);
 		}
 
-		byte[] hash = Optional.of(args.get("id"))
-				.map(castOrThrow(byte[].class, (o) -> new MessageException("expected parameter 'id' to be a byte-string, got "+o.getClass(), ErrorCode.ProtocolError)))
+		byte[] hash = Optional.ofNullable(args.get("id"))
+				.map(castOrThrow(byte[].class, (o) -> new MessageException("expected parameter 'id' to be a byte-string, got "+o.getClass().getSimpleName(), ErrorCode.ProtocolError)))
 				.orElseThrow(() -> new MessageException("mandatory parameter 'id' missing", ErrorCode.ProtocolError));
 		byte[] ip = (byte[]) map.get(MessageBase.EXTERNAL_IP_KEY);
 
@@ -187,7 +187,7 @@ public class MessageDecoder {
 			List<DBItem> dbl = null;
 			
 			@SuppressWarnings("unchecked")
-			List<byte[]> vals = Optional.of(args.get("values"))
+			List<byte[]> vals = Optional.ofNullable(args.get("values"))
 				.map(castOrThrow(List.class, val -> new MessageException("expected 'values' field in get_peers to be list of strings, got "+val.getClass(), ErrorCode.ProtocolError)))
 				.orElse(Collections.EMPTY_LIST);
 
@@ -273,7 +273,8 @@ public class MessageDecoder {
 				throw new MessageException("missing/invalid hash in request",ErrorCode.ProtocolError);
 			AbstractLookupRequest req = Method.FIND_NODE.getRPCName().equals(requestMethod) ? new FindNodeRequest(new Key(hash)) : new GetPeersRequest(new Key(hash));
 			
-			List<byte[]> explicitWants = (List<byte[]>) args.get("want");
+			@SuppressWarnings("unchecked")
+			List<byte[]> explicitWants = Optional.ofNullable(args.get("want")).map(castOrThrow(List.class, w -> new MessageException("invalid 'want' parameter, expected a list of byte-strings"))).orElse(null);
 					
 			if(explicitWants != null)
 				req.decodeWant(explicitWants);

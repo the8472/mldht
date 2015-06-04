@@ -117,7 +117,7 @@ public class Node {
 		Key id = msg.getID();
 		
 		Optional<RPCCall> associatedCall = Optional.ofNullable(msg.getAssociatedCall());
-		Optional<Key> expectedId = associatedCall .map(RPCCall::getExpectedID);
+		Optional<Key> expectedId = associatedCall.map(RPCCall::getExpectedID);
 		Optional<Pair<KBucket, KBucketEntry>> entryByIp = bucketForIP(ip);
 		
 		if(entryByIp.isPresent()) {
@@ -139,6 +139,7 @@ public class Node {
 					 *  In either case we don't want it in our routing table
 					 */
 					
+					DHT.logInfo("force-removing routing table entry "+entry+" because ID-change was detected");
 					bucket.removeEntryIfBad(entry, true);
 				}
 				
@@ -150,7 +151,7 @@ public class Node {
 		}
 		
 		KBucket bucketById = findBucketForId(id).bucket;
-		Optional<KBucketEntry> entryById = Optional.of(bucketById).flatMap(bucket -> bucket.findByIPorID(null, id));
+		Optional<KBucketEntry> entryById = bucketById.findByIPorID(null, id);
 		
 		// entry is claiming the same ID as entry with different IP in our routing table -> ignore
 		if(entryById.isPresent() && !entryById.get().getAddress().getAddress().equals(ip))

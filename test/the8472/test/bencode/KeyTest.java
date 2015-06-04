@@ -1,6 +1,7 @@
 package the8472.test.bencode;
 
 import static org.junit.Assert.assertEquals;
+import static the8472.utils.Functional.tap;
 
 import java.util.stream.IntStream;
 
@@ -11,10 +12,30 @@ import lbms.plugins.mldht.kad.Key;
 public class KeyTest {
 
 	@Test
-	public void test() {
+	public void testCompareTo() {
 		assertEquals(Key.MIN_KEY.compareTo(Key.MAX_KEY), -1);
 		assertEquals(Key.MAX_KEY.compareTo(Key.MIN_KEY), 1);
 		assertEquals(Key.MAX_KEY.compareTo(Key.MAX_KEY), 0);
+		assertEquals(Key.MIN_KEY.compareTo(Key.createRandomKey()), -1);
+	}
+		
+	@Test
+	public void testThreeWayDistance() {
+		Key rnd = Key.createRandomKey();
+		Key neighbor = new Key(tap(rnd.getHash(), b -> b[15] ^= 0x5a));
+		Key far = new Key(tap(rnd.getHash(), b -> b[13] ^= 0x01));
+		
+		
+		assertEquals(rnd.threeWayDistance(neighbor, far) , -1);
+		assertEquals(rnd.threeWayDistance(far, neighbor) , 1);
+		assertEquals(rnd.threeWayDistance(far, far) , 0);
+		assertEquals(rnd.threeWayDistance(neighbor, Key.MAX_KEY) , -1);
+		assertEquals(rnd.threeWayDistance(neighbor, Key.MIN_KEY) , -1);
+		assertEquals(rnd.threeWayDistance(far, Key.MAX_KEY) , -1);
+		assertEquals(rnd.threeWayDistance(far, Key.MIN_KEY) , -1);
+		assertEquals(rnd.threeWayDistance(Key.createRandomKey(), far) , 1);
+		assertEquals(rnd.threeWayDistance(Key.createRandomKey(), neighbor) , 1);
+
 	}
 	
 	@Test

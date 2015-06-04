@@ -21,6 +21,7 @@ import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.NavigableSet;
@@ -48,6 +49,9 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
 public abstract class Task implements RPCCallListener, Comparable<Task> {
 
 	protected NavigableSet<KBucketEntry>	todo;			// nodes todo
+	protected NavigableSet<Key>			inFlight;
+	protected NavigableSet<Key>			stalled;
+	
 	protected Node						node;
 
 	protected Key						targetKey;
@@ -81,7 +85,16 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		this.rpc = rpc;
 		this.node = node;
 		queued = true;
+		
+	
 		todo = new ConcurrentSkipListSet<KBucketEntry>(new KBucketEntry.DistanceOrder(targetKey));
+		
+		
+		Comparator<Key> distanceOrder = new Key.DistanceOrder(targetKey);
+		
+		inFlight = new ConcurrentSkipListSet<>(distanceOrder);
+		stalled = new ConcurrentSkipListSet<>(distanceOrder);
+		
 		taskFinished = false;
 	}
 
@@ -133,7 +146,10 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	public void onResponse (RPCCall c, MessageBase rsp) {
 		if (!isFinished())
 			callFinished(c, rsp);
-
+		
+		stalled.remove(c.getExpectedID());
+		inFlight.remove(c.getExpectedID());
+		
 		// only decrement counters after we have processed message payloads
 		if(!c.wasStalled())
 			outstandingRequestsExcludingStalled.decrementAndGet();
@@ -148,6 +164,8 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	
 	public void onStall(RPCCall c)
 	{
+		stalled.add(c.getExpectedID());
+		inFlight.remove(c.getExpectedID());
 		outstandingRequestsExcludingStalled.decrementAndGet();
 		
 		runStuff();
@@ -157,6 +175,9 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 * @see lbms.plugins.mldht.kad.RPCCallListener#onTimeout(lbms.plugins.mldht.kad.RPCCall)
 	 */
 	public void onTimeout (RPCCall c) {
+		
+		stalled.remove(c.getExpectedID());
+		inFlight.remove(c.getExpectedID());
 		
 		if(!c.wasStalled())
 			outstandingRequestsExcludingStalled.decrementAndGet();
@@ -239,6 +260,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		if(modifyCallBeforeSubmit != null)
 			modifyCallBeforeSubmit.accept(call);
 
+		inFlight.add(expectedID);
 		outstandingRequestsExcludingStalled.incrementAndGet();
 		outstandingRequests.incrementAndGet();
 		

@@ -34,6 +34,12 @@ public class Functional {
 		}
 	}
 	
+	public static <IN, OUT> OUT sync(IN obj, Function<IN, OUT> supp) {
+		synchronized(obj) {
+			return supp.apply(obj);
+		}
+	}
+	
 	public static <R,T> Function<T,R> unchecked(ThrowingFunction<R,T,?> f) {
 		return (arg) -> {
 			try {

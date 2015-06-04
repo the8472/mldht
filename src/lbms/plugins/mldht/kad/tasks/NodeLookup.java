@@ -17,6 +17,9 @@
 package lbms.plugins.mldht.kad.tasks;
 
 
+import static the8472.utils.Functional.sync;
+
+import java.util.NoSuchElementException;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
@@ -53,7 +56,7 @@ public class NodeLookup extends Task {
 		addListener(t -> updatedPopulationEstimates());
 	}
 	
-	final Runnable exclusiveUpdate = SerializedTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() && !isClosestSetStable(), () -> {
+	final Runnable exclusiveUpdate = SerializedTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() && !isClosestSetStable() && !nextTodoUseless(), () -> {
 		KBucketEntry e = todo.first();
 		
 		if(e == null)
@@ -84,6 +87,39 @@ public class NodeLookup extends Task {
 	@Override
 	void update () {
 		exclusiveUpdate.run();
+	}
+	
+	/**
+	 * avoid backtracking if the next request would be due to stall detection
+	 */
+	private boolean nextTodoUseless() {
+		if(getNumOutstandingRequests() < DHTConstants.MAX_CONCURRENT_REQUESTS)
+			return false;
+		
+		
+		
+		Key nextTodo = null;
+		
+		try {
+			nextTodo = todo.first().getID();
+		} catch(NoSuchElementException ex) {
+			return true;
+		}
+		
+		Key furthestFromTarget = targetKey.distance(Key.MAX_KEY);
+		
+		Key closest = sync(closestSet, s -> s.isEmpty() ? furthestFromTarget : s.first());
+		Key furthest = sync(closestSet, s -> s.isEmpty() ? furthestFromTarget : s.last());
+	
+		// all in-flight requests stalled -> try anything that might improve the closest set
+		// TODO: faster backtracking strategy for closest set stabilization. currently relies on full timeouts (track front and tail stability of closest set?)
+		if(getNumOutstandingRequestsExcludingStalled() == 0 && targetKey.threeWayDistance(nextTodo, furthest) < 0)
+			return false;
+		// immediately try things that are closer to the target than anything we've seen
+		if(targetKey.threeWayDistance(nextTodo, closest) < 0)
+			return false;
+
+		return true;
 	}
 	
 	private boolean isClosestSetStable() {

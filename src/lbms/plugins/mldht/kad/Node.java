@@ -123,27 +123,34 @@ public class Node {
 		if(entryByIp.isPresent()) {
 			KBucket bucket = entryByIp.get().a;
 			KBucketEntry entry = entryByIp.get().b;
+			
+			// this might happen if
+			// a) multiple nodes on a single IP -> ignore anything but the node we already have in the table
+			// b) one node changes ports (broken NAT?) -> ignore until routing table entry times out
+			if(entry.getAddress().getPort() != msg.getOrigin().getPort())
+				return;
 				
 			
-			if(!entryByIp.get().b.getID().equals(id)) {
+			if(!entry.getID().equals(id)) {
 				// ID mismatch
 				
 				if(msg.getAssociatedCall() != null) {
 					/*
 					 *  we are here because:
 					 *  a) a node with that IP is in our routing table
-					 *  b) the message is a response (mtid-verified)
-					 *  c) the ID does not match our routing table entry
+					 *  b) port matches too
+					 *  c) the message is a response (mtid-verified)
+					 *  d) the ID does not match our routing table entry
 					 * 
 					 *  That means we are certain that the node either changed its node ID or does some ID-spoofing.
 					 *  In either case we don't want it in our routing table
 					 */
 					
-					DHT.logInfo("force-removing routing table entry "+entry+" because ID-change was detected");
+					DHT.logInfo("force-removing routing table entry "+entry+" because ID-change was detected; new ID:" + msg.getID());
 					bucket.removeEntryIfBad(entry, true);
 				}
 				
-				// even if this is not a response we don't want to account for this response, it's an ID mismatch after all
+				// even if this is not a response we don't want inmsert this in the routing table, it's an ID mismatch after all
 				return;
 			}
 			

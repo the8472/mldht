@@ -1,19 +1,24 @@
 package the8472.utils;
 
+import static java.util.Collections.emptyList;
+import static java.util.concurrent.CompletableFuture.completedFuture;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class Functional {
 	
-	public static <T> T tap(T obj, Consumer<T> c) {
+	public static <T, E extends Throwable> T tap(T obj, ThrowingConsumer<T, E> c) throws E  {
 		c.accept(obj);
 		return obj;
+	}
+	
+	public static interface ThrowingConsumer<T,E extends Throwable> {
+		void accept(T arg) throws E;
 	}
 	
 	@FunctionalInterface
@@ -52,12 +57,7 @@ public class Functional {
 	
 	
 	public static <T> CompletionStage<List<T>> awaitAll(Collection<CompletionStage<T>> stages) {
-		return stages.stream().map(st -> st.thenApply(t -> Collections.singletonList(t))).reduce(CompletableFuture.<List<T>>completedFuture(Collections.emptyList()), (f1, f2) -> {
-			return f1.thenCombine(f2, (a, b) -> {
-				return tap(new ArrayList<>(a), l -> l.addAll(b));
-			});
-		});
-		
+		return stages.stream().map(st -> st.thenApply(Collections::singletonList)).reduce(completedFuture(emptyList()), (f1, f2) -> f1.thenCombine(f2, (a, b) -> tap(new ArrayList<>(a), l -> l.addAll(b))));
 	}
 	
 	public static <IN, OUT, EX extends Throwable> Function<IN, OUT> castOrThrow(Class<OUT> type, Function<IN, EX> ex) {

@@ -78,7 +78,7 @@ public class Ping extends CommandProcessor {
 			
 			@Override
 			public void onResponse(RPCCall c, MessageBase rsp) {
-				println("#"+counter+" response time=" + c.getRTT() + "ms");
+				println("#"+counter+" response time=" + c.getRTT() + "ms " + rsp.getID());
 				timer.schedule(Ping.this::doPing, 1, TimeUnit.SECONDS);
 				
 			}

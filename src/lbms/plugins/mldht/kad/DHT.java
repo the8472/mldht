@@ -24,6 +24,7 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -37,8 +38,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import lbms.plugins.mldht.DHTConfiguration;
+import lbms.plugins.mldht.kad.GenericStorage.StorageItem;
+import lbms.plugins.mldht.kad.GenericStorage.UpdateResult;
 import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.messages.AbstractLookupRequest;
+import lbms.plugins.mldht.kad.messages.AbstractLookupResponse;
 import lbms.plugins.mldht.kad.messages.AnnounceRequest;
 import lbms.plugins.mldht.kad.messages.AnnounceResponse;
 import lbms.plugins.mldht.kad.messages.ErrorMessage;
@@ -47,9 +51,13 @@ import lbms.plugins.mldht.kad.messages.FindNodeRequest;
 import lbms.plugins.mldht.kad.messages.FindNodeResponse;
 import lbms.plugins.mldht.kad.messages.GetPeersRequest;
 import lbms.plugins.mldht.kad.messages.GetPeersResponse;
+import lbms.plugins.mldht.kad.messages.GetRequest;
+import lbms.plugins.mldht.kad.messages.GetResponse;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.PingRequest;
 import lbms.plugins.mldht.kad.messages.PingResponse;
+import lbms.plugins.mldht.kad.messages.PutRequest;
+import lbms.plugins.mldht.kad.messages.PutResponse;
 import lbms.plugins.mldht.kad.messages.UnknownTypeResponse;
 import lbms.plugins.mldht.kad.tasks.AnnounceTask;
 import lbms.plugins.mldht.kad.tasks.NodeLookup;
@@ -123,6 +131,7 @@ public class DHT implements DHTBase {
 	DHTConfiguration						config;
 	private Node							node;
 	private RPCServerManager				serverManager;
+	private GenericStorage					storage;
 	private Database						db;
 	private TaskManager						tman;
 	private File							table_file;
@@ -211,7 +220,7 @@ public class DHT implements DHTBase {
 		node.recieved(r);
 	}
 
-	public void findNode (AbstractLookupRequest r) {
+	public void findNode(AbstractLookupRequest r) {
 		if (!isRunning()) {
 			return;
 		}
@@ -221,30 +230,36 @@ public class DHT implements DHTBase {
 			return;
 		}
 
-		
-		// find the K closest nodes and pack them
-		Optional<KClosestNodesSearch> kns4 = r.doesWant4() ? getSiblingByType(DHTtype.IPV4_DHT).map(sib -> {
-			KClosestNodesSearch kns = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, sib);
-			kns.fill(DHTtype.IPV4_DHT != type);
-			return kns;
-		}) : Optional.empty();
-		
-		Optional<KClosestNodesSearch> kns6 = r.doesWant6() ? getSiblingByType(DHTtype.IPV6_DHT).map(sib -> {
-			KClosestNodesSearch kns = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, sib);
-			kns.fill(DHTtype.IPV6_DHT != type);
-			return kns;
-		}) : Optional.empty();
-
-		
-		FindNodeResponse response;
+		AbstractLookupResponse response;
 		if(r instanceof FindNodeRequest)
-			response = new FindNodeResponse(r.getMTID(), kns4.map(KClosestNodesSearch::pack).orElse(null) ,kns6.map(KClosestNodesSearch::pack).orElse(null));
+			response = new FindNodeResponse(r.getMTID());
 		else
-			response = new UnknownTypeResponse(r.getMTID(), kns4.map(KClosestNodesSearch::pack).orElse(null) ,kns6.map(KClosestNodesSearch::pack).orElse(null));
+			response = new UnknownTypeResponse(r.getMTID());
+		
+		populateResponse(r.getTarget(), response, r.doesWant4() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0, r.doesWant6() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0);
+		
 		response.setDestination(r.getOrigin());
 		r.getServer().sendMessage(response);
 
 		node.recieved(r);
+	}
+	
+	void populateResponse(Key target, AbstractLookupResponse rsp, int v4, int v6) {
+		if(v4 > 0) {
+			getSiblingByType(DHTtype.IPV4_DHT).ifPresent(sib -> {
+				KClosestNodesSearch kns = new KClosestNodesSearch(target, v4, sib);
+				kns.fill(DHTtype.IPV4_DHT != type);
+				rsp.setNodes(kns.pack());
+			});
+		}
+		
+		if(v6 > 0) {
+			getSiblingByType(DHTtype.IPV6_DHT).ifPresent(sib -> {
+				KClosestNodesSearch kns = new KClosestNodesSearch(target, v6, sib);
+				kns.fill(DHTtype.IPV6_DHT != type);
+				rsp.setNodes6(kns.pack());
+			});
+		}
 	}
 
 	public void response (MessageBase r) {
@@ -253,6 +268,71 @@ public class DHT implements DHTBase {
 		}
 
 		node.recieved(r);
+	}
+	
+	public void get(GetRequest req) {
+		if (!isRunning()) {
+			return;
+		}
+		
+		GetResponse rsp = new GetResponse(req.getMTID());
+		
+		populateResponse(req.getTarget(), rsp, req.doesWant4() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0, req.doesWant6() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0);
+		
+		Key k = req.getTarget();
+		
+		
+		Optional.ofNullable(db.genToken(req.getOrigin().getAddress(), req.getOrigin().getPort(), k)).ifPresent(token -> {
+			rsp.setToken(token.arr);
+		});
+		
+		storage.get(k).ifPresent(item -> {
+			rsp.setRawValue(ByteBuffer.wrap(item.value));
+			rsp.setKey(item.pubkey);
+			rsp.setSignature(item.signature);
+			if(item.sequenceNumber >= 0)
+				rsp.setSequenceNumber(item.sequenceNumber);
+		});
+		
+		rsp.setDestination(req.getOrigin());
+		
+		
+		req.getServer().sendMessage(rsp);
+		
+		node.recieved(req);
+	}
+	
+	public void put(PutRequest req) {
+		
+		Key k = req.deriveTargetKey();
+		
+		if(!db.checkToken(new ByteWrapper(req.getToken()), req.getOrigin().getAddress(), req.getOrigin().getPort(), k)) {
+			sendError(req, ErrorCode.ProtocolError.code, "received invalid or expired token for PUT request");
+			return;
+		}
+		
+		UpdateResult result = storage.putOrUpdate(k, new StorageItem(req));
+		
+		switch(result) {
+			case CAS_FAIL:
+				sendError(req, ErrorCode.CasFail.code, "CAS failure");
+				return;
+			case SIG_FAIL:
+				sendError(req, ErrorCode.InvalidSignature.code, "signature validation failed");
+				return;
+			case SEQ_FAIL:
+				sendError(req, ErrorCode.CasNotMonotonic.code, "sequence number less than current");
+				return;
+			default:
+				break;
+		}
+			
+		PutResponse rsp = new PutResponse(req.getMTID());
+		rsp.setDestination(req.getOrigin());
+		
+		req.getServer().sendMessage(rsp);
+		
+		node.recieved(req);
 	}
 
 	public void getPeers (GetPeersRequest r) {
@@ -325,9 +405,10 @@ public class DHT implements DHTBase {
 		
 		GetPeersResponse resp = new GetPeersResponse(r.getMTID(),
 			kns4.map(KClosestNodesSearch::pack).orElse(null),
-			kns6.map(KClosestNodesSearch::pack).orElse(null),
-			token != null ? token.arr : null);
+			kns6.map(KClosestNodesSearch::pack).orElse(null)
+		);
 		
+		resp.setToken(token != null ? token.arr : null);
 		resp.setScrapePeers(peerFilter);
 		resp.setScrapeSeeds(seedFilter);
 
@@ -534,6 +615,7 @@ public class DHT implements DHTBase {
 		stats.setDbStats(db.getStats());
 		tman = new TaskManager(this);
 		running = true;
+		storage = new GenericStorage();
 		
 		// these checks are fairly expensive on large servers (network interface enumeration)
 		// schedule them separately
@@ -642,8 +724,6 @@ public class DHT implements DHTBase {
 			tman.addTask(t);
 		}*/
 			
-		
-		
 		scheduledActions.add(scheduler.scheduleWithFixedDelay(() -> {
 			try {
 				update();
@@ -660,6 +740,7 @@ public class DHT implements DHTBase {
 
 				db.expire(now);
 				cache.cleanup(now);
+				storage.cleanup();
 			} catch (Exception e)
 			{
 				log(e, LogLevel.Fatal);

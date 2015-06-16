@@ -18,6 +18,7 @@ package lbms.plugins.mldht.kad.messages;
 
 import static the8472.bencode.Utils.prettyPrint;
 import static the8472.utils.Functional.castOrThrow;
+import static the8472.utils.Functional.tap;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -27,6 +28,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import lbms.plugins.mldht.kad.BloomFilterBEP33;
 import lbms.plugins.mldht.kad.DBItem;
@@ -176,12 +178,15 @@ public class MessageDecoder {
 				throw new MessageException("received response to find_node request with neither 'nodes' nor 'nodes6' entry", ErrorCode.ProtocolError);
 				//return null;
 			
-			msg = new FindNodeResponse(mtid, (byte[]) args.get("nodes"),(byte[])args.get("nodes6"));
+			msg = tap(new FindNodeResponse(mtid), (m) -> {
+				m.setNodes((byte[]) args.get("nodes"));
+				m.setNodes6((byte[])args.get("nodes6"));
+			});
 			break;
 		case GET_PEERS:
-			byte[] token = (byte[]) args.get("token");
-			byte[] nodes = (byte[]) args.get("nodes");
-			byte[] nodes6 = (byte[]) args.get("nodes6");
+			byte[] token = typedGet(args, "token", byte[].class).orElse(null);
+			byte[] nodes = typedGet(args, "nodes", byte[].class).orElse(null);
+			byte[] nodes6 = typedGet(args, "nodes6", byte[].class).orElse(null);
 
 			
 			List<DBItem> dbl = null;
@@ -211,8 +216,9 @@ public class MessageDecoder {
 			
 			if (dbl != null || nodes != null || nodes6 != null)
 			{
-				GetPeersResponse resp = new GetPeersResponse(mtid, nodes, nodes6, token);
+				GetPeersResponse resp = new GetPeersResponse(mtid, nodes, nodes6);
 				resp.setPeerItems(dbl);
+				resp.setToken(token);
 				resp.setScrapePeers(peerFilter);
 				resp.setScrapeSeeds(seedFilter);
 				msg = resp;
@@ -221,7 +227,7 @@ public class MessageDecoder {
 			
 			throw new MessageException("Neither nodes nor values in get_peers response",ErrorCode.ProtocolError);
 		case UNKNOWN:
-			msg = new UnknownTypeResponse(mtid, null, null);
+			msg = new UnknownTypeResponse(mtid);
 			break;
  		default:
 			throw new RuntimeException("should not happen!!!");
@@ -238,6 +244,10 @@ public class MessageDecoder {
 		
 		return msg;
 	}
+	
+	static <K, T> Optional<T> typedGet(Map<K, ?> map, K key, Class<T> clazz) {
+		return Optional.ofNullable(map.get(key)).filter(clazz::isInstance).map(clazz::cast);
+	}
 
 	/**
 	 * @param map
@@ -250,77 +260,58 @@ public class MessageDecoder {
 		if (rawRequestMethod == null || args == null)
 			return null;
 
-		byte[] mtid = (byte[])map.get(MessageBase.TRANSACTION_KEY);
-		byte[] hash = (byte[]) args.get("id");
+		byte[] mtid = typedGet(map, MessageBase.TRANSACTION_KEY, byte[].class).filter(tid -> tid.length > 0).orElseThrow(() -> new MessageException("missing or zero-length transaction ID in response", ErrorCode.ProtocolError));
+		byte[] hash = typedGet(args,"id", byte[].class).filter(id -> id.length == Key.SHA1_HASH_LENGTH).orElseThrow(() -> new MessageException("missing or invalid node ID", ErrorCode.ProtocolError));
 		
-		if(hash == null || hash.length != Key.SHA1_HASH_LENGTH)
-			throw new MessageException("missing or invalid node ID", ErrorCode.ProtocolError);
-		if(mtid == null || mtid.length < 1)
-			throw new MessageException("missing or zero-length transaction ID in response", ErrorCode.ProtocolError);
-
 		Key id = new Key(hash);
 
 		MessageBase msg = null;
 
 		String requestMethod = getStringFromBytes((byte[]) rawRequestMethod, true);
-		if (Method.PING.getRPCName().equals(requestMethod)) {
-			msg = new PingRequest();
-		} else if (Method.FIND_NODE.getRPCName().equals(requestMethod) || Method.GET_PEERS.getRPCName().equals(requestMethod)) {
-			hash = (byte[]) args.get("target");
-			if (hash == null)
-				hash = (byte[]) args.get("info_hash");
-			if (hash == null || hash.length != Key.SHA1_HASH_LENGTH)
-				throw new MessageException("missing/invalid hash in request",ErrorCode.ProtocolError);
-			AbstractLookupRequest req = Method.FIND_NODE.getRPCName().equals(requestMethod) ? new FindNodeRequest(new Key(hash)) : new GetPeersRequest(new Key(hash));
-			
-			@SuppressWarnings("unchecked")
-			List<byte[]> explicitWants = Optional.ofNullable(args.get("want")).map(castOrThrow(List.class, w -> new MessageException("invalid 'want' parameter, expected a list of byte-strings"))).orElse(null);
+		
+		
+		Method method = Optional.ofNullable(MessageBase.messageMethod.get(requestMethod)).orElse(Method.UNKNOWN);
+		
+		switch(method) {
+			case PING:
+				msg = new PingRequest();
+				break;
+			case FIND_NODE:
+			case GET_PEERS:
+			case GET:
+			case UNKNOWN:
+				
+				hash = Stream.of(args.get("target"), args.get("info_hash")).filter(byte[].class::isInstance).findFirst().map(byte[].class::cast).orElseThrow(() -> {
+					if(method == Method.UNKNOWN)
+						return new MessageException("Received unknown Message Type: " + requestMethod,ErrorCode.MethodUnknown);
+					return new MessageException("missing/invalid target key in request",ErrorCode.ProtocolError);
+				});
+				
+				if (hash.length != Key.SHA1_HASH_LENGTH) {
+					throw new MessageException("invalid target key in request",ErrorCode.ProtocolError);
+				}
 					
-			if(explicitWants != null)
-				req.decodeWant(explicitWants);
-			else {
-				req.setWant4(srv.getDHT().getType() == DHTtype.IPV4_DHT);
-				req.setWant6(srv.getDHT().getType() == DHTtype.IPV6_DHT);
-			}
-			
-			
-			if (req instanceof GetPeersRequest)
-			{
-				GetPeersRequest peerReq = (GetPeersRequest) req;
-				peerReq.setNoSeeds(Long.valueOf(1).equals(args.get("noseed")));
-				peerReq.setScrape(Long.valueOf(1).equals(args.get("scrape")));
-			}
-			msg = req;
-		} else if (Method.ANNOUNCE_PEER.getRPCName().equals(requestMethod)) {
-			if (args.containsKey("info_hash") && args.containsKey("port") && args.containsKey("token")) {
-				hash = (byte[]) args.get("info_hash");
-				if (hash == null || hash.length != Key.SHA1_HASH_LENGTH)
-					throw new MessageException("invalid hash in request",ErrorCode.ProtocolError);
-				Key infoHash = new Key(hash);
-
-				byte[] token = (byte[]) args.get("token");
-				if(token.length == 0)
-					throw new MessageException("zero-length token in announce_peer request. see BEP33 for reasons why tokens might not have been issued by get_peers response", ErrorCode.ProtocolError);
+				Key target = new Key(hash);
 				
-				AnnounceRequest ann = new AnnounceRequest(infoHash, ((Long) args.get("port")).intValue(), token);
-				ann.setSeed(Long.valueOf(1).equals(args.get("seed")));
-
-				msg = ann;
-			} else {
-				throw new MessageException("missing arguments for announce",ErrorCode.ProtocolError);
-			}
+				AbstractLookupRequest req;
 				
-		} else {
-			// we don't know what request type this is. check for a target being present
-			Object target = args.get("info_hash");
-			if(target == null || !(target instanceof byte[]))
-				target = args.get("target");
-			if(target != null && target instanceof byte[] && ((byte[])target).length == Key.SHA1_HASH_LENGTH)
-			{
-				AbstractLookupRequest req = new UnknownTypeRequest(new Key((byte[])target));
+				switch(method) {
+					case FIND_NODE:
+						req = new FindNodeRequest(target);
+						break;
+					case GET_PEERS:
+						req = new GetPeersRequest(target);
+						break;
+					case GET:
+						req = new GetRequest(target);
+						break;
+					default:
+						req = new UnknownTypeRequest(target);
+				}
 				
-				List<byte[]> explicitWants = (List<byte[]>) args.get("want");
-				
+				@SuppressWarnings("unchecked")
+				List<byte[]> explicitWants = Optional.ofNullable(args.get("want")).map(castOrThrow(List.class, w -> new MessageException("invalid 'want' parameter, expected a list of byte-strings"))).orElse(null);
+						
 				if(explicitWants != null)
 					req.decodeWant(explicitWants);
 				else {
@@ -328,14 +319,49 @@ public class MessageDecoder {
 					req.setWant6(srv.getDHT().getType() == DHTtype.IPV6_DHT);
 				}
 				
+				
+				if (req instanceof GetPeersRequest)
+				{
+					GetPeersRequest peerReq = (GetPeersRequest) req;
+					peerReq.setNoSeeds(Long.valueOf(1).equals(args.get("noseed")));
+					peerReq.setScrape(Long.valueOf(1).equals(args.get("scrape")));
+				}
 				msg = req;
-			} else
-			{
-				throw new MessageException("Received unknown Message Type: " + requestMethod,ErrorCode.MethodUnknown);
-			}
-			
-		}
+				
+				break;
+			case PUT:
+				
+				msg = tap(new PutRequest(), put -> {
+					put.value = args.get("v");
+					put.pubkey = typedGet(args, "k", byte[].class).orElse(null);
+					put.sequenceNumber = typedGet(args, "seq", Long.class).orElse(-1L);
+					put.expectedSequenceNumber = typedGet(args, "cas", Long.class).orElse(-1L);
+					put.salt = typedGet(args, "salt", byte[].class).orElse(null);
+					put.signature = typedGet(args, "sig", byte[].class).orElse(null);
+					put.token = typedGet(args, "token", byte[].class).filter(b -> b.length > 0).orElseThrow(() -> new MessageException("missing or invalid token in PUT request"));
+					put.validate();
+				});
+				break;
+			case ANNOUNCE_PEER:
+				
+				hash = typedGet(args, "info_hash", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).orElse(null);
+				int port = typedGet(args, "port", Long.class).filter(p -> p > 0 && p <= 65535).orElse(0L).intValue();
+				byte[] token = typedGet(args, "token", byte[].class).orElse(null);
+				boolean isSeed = Long.valueOf(1).equals(args.get("seed"));
+				
+				if(hash == null || token == null || port == 0)
+					throw new MessageException("missing or invalid arguments for announce", ErrorCode.ProtocolError);
+				if(token.length == 0)
+					throw new MessageException("zero-length token in announce_peer request. see BEP33 for reasons why tokens might not have been issued by get_peers response", ErrorCode.ProtocolError);
 
+				Key infoHash = new Key(hash);
+
+				msg = tap(new AnnounceRequest(infoHash, port, token), ar -> ar.setSeed(isSeed));
+
+				break;
+		}
+		
+		
 		if (msg != null) {
 			msg.setMTID(mtid);
 			msg.setID(id);

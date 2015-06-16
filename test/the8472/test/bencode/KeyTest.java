@@ -41,7 +41,7 @@ public class KeyTest {
 	@Test
 	public void testHashCode() {
 		
-		int hammingWeights[] = IntStream.range(0, 256).map(i -> Integer.bitCount(Key.createRandomKey().hashCode())).sorted().toArray();
+		int hammingWeights[] = IntStream.range(0, 512).map(i -> Integer.bitCount(Key.createRandomKey().hashCode())).sorted().toArray();
 		int median = hammingWeights[hammingWeights.length/2];
 		
 		assertEquals(median, 16);

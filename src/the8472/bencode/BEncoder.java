@@ -28,6 +28,13 @@ public class BEncoder {
 		return buf;
 	}
 	
+	public ByteBuffer encode(Object toEnc, int maxSize) {
+		buf = ByteBuffer.allocate(maxSize);
+		encodeInternal(toEnc);
+		buf.flip();
+		return buf;
+	}
+	
 	private void encodeInternal(Object o) {
 		if(o instanceof Map) {
 			encodeMap((Map<String, Object>) o);

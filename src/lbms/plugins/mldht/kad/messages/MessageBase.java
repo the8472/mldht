@@ -1,26 +1,29 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad.messages;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
@@ -69,8 +72,7 @@ public abstract class MessageBase {
 	 * The message should then call the appropriate DHT function (double dispatch)
 	 * @param dh_table Pointer to DHT
 	 */
-	public void apply (DHT dh_table) {
-	}
+	public abstract void apply (DHT dh_table);
 
 	/**
 	 * BEncode the message.
@@ -203,13 +205,19 @@ public abstract class MessageBase {
 
 	public static enum Type {
 		REQ_MSG {
+			@Override
 			String innerKey() {	return "a";	}
+			@Override
 			String getRPCTypeName() { return "q"; }
 		}, RSP_MSG {
+			@Override
 			String innerKey() {	return "r";	}
+			@Override
 			String getRPCTypeName() { return "r"; }
 		}, ERR_MSG {
+			@Override
 			String getRPCTypeName() { return "e"; }
+			@Override
 			String innerKey() {	return "e";	}
 		}, INVALID;
 		
@@ -225,10 +233,13 @@ public abstract class MessageBase {
 	};
 
 	public static enum Method {
-		PING, FIND_NODE, GET_PEERS, ANNOUNCE_PEER, UNKNOWN;
+		PING, FIND_NODE, GET_PEERS, ANNOUNCE_PEER, GET, PUT, UNKNOWN;
 		
 		String getRPCName()	{
-			return name().toLowerCase();						
+			return name().toLowerCase();
 		}
 	};
+	
+	public static final Map<String, Method> messageMethod = Arrays.stream(Method.values()).filter(e -> e != Method.UNKNOWN).collect(Collectors.toMap(Method::getRPCName, Function.identity()));
+	
 }

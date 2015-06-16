@@ -1,29 +1,26 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad.messages;
 
-import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import lbms.plugins.mldht.kad.DHT;
-import lbms.plugins.mldht.kad.DHTConstants;
 
 /**
  * @author Damokles
@@ -84,7 +81,23 @@ public class ErrorMessage extends MessageBase {
 		GenericError(201),
 		ServerError(202),
 		ProtocolError(203), //such as a malformed packet, invalid arguments, or bad token
-		MethodUnknown(204);
+		MethodUnknown(204),
+
+		/*
+		BEP44:
+		205	message (v field) too big.
+		206	invalid signature
+		207	salt (salt field) too big.
+		301	the CAS hash mismatched, re-read value and try again.
+		302	sequence number less than current.
+		*/
+		PutMessageTooBig(205),
+		InvalidSignature(206),
+		SaltTooBig(207),
+		CasFail(301),
+		CasNotMonotonic(302);
+		
+		
 
 		public final int code;
 

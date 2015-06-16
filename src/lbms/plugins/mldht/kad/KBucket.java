@@ -92,7 +92,7 @@ public class KBucket implements Externalizable {
 		List<KBucketEntry> entriesRef = entries;
 		
 		for(KBucketEntry existing : entriesRef) {
-			if(existing.equals(newEntry)) {
+			if(existing.equals(newEntry) && newEntry.getAddress().getPort() == existing.getAddress().getPort()) {
 				existing.mergeInTimestamps(newEntry);
 				adjustTimerOnInsert(existing);
 				return;

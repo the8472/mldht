@@ -3,7 +3,7 @@ package the8472.utils.concurrent;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BooleanSupplier;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -49,28 +49,28 @@ public class SerializedTaskExecutor {
 		};
 	}
 	
-	public static Runnable whileTrue(BooleanSupplier whileCondition, Runnable loopBody) {
-		AtomicBoolean lock = new AtomicBoolean();
+	public static Runnable onceMore(Runnable loopBody) {
+		AtomicInteger lock = new AtomicInteger();
 		
 		return () -> {
-			// try acquire lock
-			// if acquisition fails -> some other thread is stealing our work
-			while(lock.compareAndSet(false, true)) {
-				try {
-					while(whileCondition.getAsBoolean())
-						loopBody.run();
-					
-				} finally {
-					// release lock
-					// allow other thread to steal
-					lock.set(false);
+
+			// request execution of the runnable
+			int current = lock.incrementAndGet();
+			
+			// another thread is executing
+			if(current > 1)
+				return;
+			
+			
+			while(current > 0) {
+				loopBody.run();
+				
+				if(lock.compareAndSet(current, 0)) {
+					break;
 				}
 				
-				// but also try again in case there's more work to do and other threads trusted this one to finish the work
-				if(!whileCondition.getAsBoolean())
-					break;
+				current = lock.get();
 			}
-			
 		};
 	}
 

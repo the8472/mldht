@@ -56,31 +56,33 @@ public class NodeLookup extends Task {
 		addListener(t -> updatedPopulationEstimates());
 	}
 	
-	final Runnable exclusiveUpdate = SerializedTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() && !isClosestSetStable() && !nextTodoUseless(), () -> {
-		KBucketEntry e = todo.first();
-		
-		if(e == null)
-			return;
-		
-		// only send a findNode if we haven't already visited the node
-		if (hasVisited(e)) {
-			todo.remove(e);
-			return;
-		}
+	final Runnable exclusiveUpdate = SerializedTaskExecutor.onceMore(() -> {
+		while(!todo.isEmpty() && canDoRequest() && !isClosestSetStable() && !nextTodoUseless()) {
+			KBucketEntry e = todo.first();
 			
-		// send a findNode to the node
-		FindNodeRequest fnr = new FindNodeRequest(targetKey);
-		fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV4_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
-		fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV6_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
-		fnr.setDestination(e.getAddress());
-		if(rpcCall(fnr,e.getID(), (call) -> {
-			long rtt = e.getRTT();
-			rtt = rtt + rtt / 2; // *1.5 since this is the average and not the 90th percentile like the timeout filter
-			if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX && rtt < rpc.getTimeoutFilter().getStallTimeout())
-				call.setExpectedRTT(rtt); // only set a node-specific timeout if it's better than what the server would apply anyway
-		})) {
-			visited(e);
-			todo.remove(e);
+			if(e == null)
+				continue;
+			
+			// only send a findNode if we haven't already visited the node
+			if (hasVisited(e)) {
+				todo.remove(e);
+				continue;
+			}
+				
+			// send a findNode to the node
+			FindNodeRequest fnr = new FindNodeRequest(targetKey);
+			fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV4_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
+			fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV6_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
+			fnr.setDestination(e.getAddress());
+			if(rpcCall(fnr,e.getID(), (call) -> {
+				long rtt = e.getRTT();
+				rtt = rtt + rtt / 2; // *1.5 since this is the average and not the 90th percentile like the timeout filter
+				if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX && rtt < rpc.getTimeoutFilter().getStallTimeout())
+					call.setExpectedRTT(rtt); // only set a node-specific timeout if it's better than what the server would apply anyway
+			})) {
+				visited(e);
+				todo.remove(e);
+			}
 		}
 	});
 

@@ -53,25 +53,27 @@ public class AnnounceTask extends Task {
 	@Override
 	void callTimeout (RPCCall c) {}
 	
-	final Runnable exclusiveUpdate = SerializedTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest() , () -> {
-		KBucketEntryAndToken e = (KBucketEntryAndToken) todo.first();
+	final Runnable exclusiveUpdate = SerializedTaskExecutor.onceMore(() -> {
+		while(!todo.isEmpty() && canDoRequest()) {
+			KBucketEntryAndToken e = (KBucketEntryAndToken) todo.first();
 
-		if(e == null)
-			return;
-		
-		if(hasVisited(e)) {
-			todo.remove(e);
-			return;
-		}
-
-		AnnounceRequest anr = new AnnounceRequest(targetKey, port, e.getToken());
-		//System.out.println("sending announce to ID:"+e.getID()+" addr:"+e.getAddress());
-		anr.setDestination(e.getAddress());
-		anr.setSeed(isSeed);
-		if(rpcCall(anr,e.getID(),null)) {
-			todo.remove(e);
-			visited(e);
+			if(e == null)
+				continue;
 			
+			if(hasVisited(e)) {
+				todo.remove(e);
+				continue;
+			}
+
+			AnnounceRequest anr = new AnnounceRequest(targetKey, port, e.getToken());
+			//System.out.println("sending announce to ID:"+e.getID()+" addr:"+e.getAddress());
+			anr.setDestination(e.getAddress());
+			anr.setSeed(isSeed);
+			if(rpcCall(anr,e.getID(),null)) {
+				todo.remove(e);
+				visited(e);
+				
+			}
 		}
 	});
 	

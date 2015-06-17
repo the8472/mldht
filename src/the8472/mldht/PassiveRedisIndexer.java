@@ -197,30 +197,32 @@ public class PassiveRedisIndexer implements Component {
 		volatile boolean awaitingWriteNotification = true;
 		ByteBuffer toWrite;
 		
-		Runnable tryWrite = SerializedTaskExecutor.whileTrue(() -> !awaitingWriteNotification && !writeQueue.isEmpty(), () -> {
-			if(toWrite == null)
-				toWrite = writeQueue.poll();
-			if(toWrite == null)
-				return;
-			
-			int written = 0;
-			try {
-				chan.write(toWrite);
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-			
-			if(written < 0) {
-				awaitingWriteNotification = true;
-				close();
-				return;
-			}
-			
-			if(toWrite.remaining() > 0) {
-				awaitingWriteNotification = true;
-				conMan.interestOpsChanged(this);
-			} else {
-				toWrite = null;
+		Runnable tryWrite = SerializedTaskExecutor.onceMore(() -> {
+			while(!awaitingWriteNotification && !writeQueue.isEmpty()) {
+				if(toWrite == null)
+					toWrite = writeQueue.poll();
+				if(toWrite == null)
+					continue;
+				
+				int written = 0;
+				try {
+					chan.write(toWrite);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+				
+				if(written < 0) {
+					awaitingWriteNotification = true;
+					close();
+					continue;
+				}
+				
+				if(toWrite.remaining() > 0) {
+					awaitingWriteNotification = true;
+					conMan.interestOpsChanged(this);
+				} else {
+					toWrite = null;
+				}
 			}
 		});
 		

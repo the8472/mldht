@@ -95,23 +95,25 @@ public class PingRefreshTask extends Task {
 	}
 	
 	
-	final Runnable exclusiveUpdate = SerializedTaskExecutor.whileTrue(() -> !todo.isEmpty() && canDoRequest(), () -> {
-		KBucketEntry e = todo.first();
+	final Runnable exclusiveUpdate = SerializedTaskExecutor.onceMore(() -> {
+		while(!todo.isEmpty() && canDoRequest()) {
+			KBucketEntry e = todo.first();
 
-		if (e.isGood()) {
-			todo.remove(e);
-			return;
-		}
-
-		PingRequest pr = new PingRequest();
-		pr.setDestination(e.getAddress());
-		if (cleanOnTimeout) {
-			synchronized (lookupMap) {
-				lookupMap.put(pr, e);
+			if (e.isGood()) {
+				todo.remove(e);
+				continue;
 			}
+
+			PingRequest pr = new PingRequest();
+			pr.setDestination(e.getAddress());
+			if (cleanOnTimeout) {
+				synchronized (lookupMap) {
+					lookupMap.put(pr, e);
+				}
+			}
+			if(rpcCall(pr,e.getID(),null))
+				todo.remove(e);
 		}
-		if(rpcCall(pr,e.getID(),null))
-			todo.remove(e);
 	});
 	
 

@@ -130,7 +130,11 @@ public class GenericStorage {
 	
 	
 	public void cleanup() {
-		// TODO: cleanup
+		long now = System.currentTimeMillis();
+		
+		items.entrySet().removeIf(entry -> {
+			return entry.getValue().expirationDate < now;
+		});
 	}
 
 }

@@ -311,7 +311,7 @@ public class DHT implements DHTBase {
 			return;
 		}
 		
-		UpdateResult result = storage.putOrUpdate(k, new StorageItem(req));
+		UpdateResult result = storage.putOrUpdate(k, new StorageItem(req), req.getExpectedSequenceNumber());
 		
 		switch(result) {
 			case CAS_FAIL:
@@ -323,14 +323,18 @@ public class DHT implements DHTBase {
 			case SEQ_FAIL:
 				sendError(req, ErrorCode.CasNotMonotonic.code, "sequence number less than current");
 				return;
-			default:
+			case IMMUTABLE_SUBSTITUTION_FAIL:
+				sendError(req, ErrorCode.ProtocolError.code, "PUT request replacing mutable data with immutable is not supported");
+				return;
+			case SUCCESS:
+				
+				PutResponse rsp = new PutResponse(req.getMTID());
+				rsp.setDestination(req.getOrigin());
+				
+				req.getServer().sendMessage(rsp);
 				break;
 		}
-			
-		PutResponse rsp = new PutResponse(req.getMTID());
-		rsp.setDestination(req.getOrigin());
-		
-		req.getServer().sendMessage(rsp);
+
 		
 		node.recieved(req);
 	}

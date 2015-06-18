@@ -90,25 +90,36 @@ public class GenericStorage {
 	
 	enum UpdateResult {
 		SUCCESS,
+		IMMUTABLE_SUBSTITUTION_FAIL,
 		SIG_FAIL,
 		CAS_FAIL,
 		SEQ_FAIL;
 	}
 	
 	
-	public UpdateResult putOrUpdate(Key k, StorageItem item) {
+	public UpdateResult putOrUpdate(Key k, StorageItem newItem, long expected) {
 		
-		if(item.mutable() && !item.validateSig())
+		if(newItem.mutable() && !newItem.validateSig())
 			return UpdateResult.SIG_FAIL;
 		
-		
-		// TODO: implement cas
-		StorageItem inserted = items.merge(k, item, (old, newItem) -> {
-			return newItem;
-		});
-		
-		if(inserted != item)
-			return UpdateResult.CAS_FAIL;
+		while(true) {
+			StorageItem oldItem = items.putIfAbsent(k, newItem);
+			
+			if(oldItem == null)
+				return UpdateResult.SUCCESS;
+			
+			if(oldItem.mutable()) {
+				if(!newItem.mutable())
+					return UpdateResult.IMMUTABLE_SUBSTITUTION_FAIL;
+				if(newItem.sequenceNumber < oldItem.sequenceNumber)
+					return UpdateResult.SEQ_FAIL;
+				if(expected >= 0 && oldItem.sequenceNumber >= 0 && oldItem.sequenceNumber != expected)
+					return UpdateResult.CAS_FAIL;
+			}
+			
+			if(items.replace(k, oldItem, newItem))
+				break;
+		}
 		
 		return UpdateResult.SUCCESS;
 	}

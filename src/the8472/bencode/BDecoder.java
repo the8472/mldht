@@ -39,8 +39,8 @@ public class BDecoder {
 					break;
 				case TREE_ROOT:
 					break;
-				default:
-					throw new RuntimeException("unexpeced state");
+				case DICT_KEY:
+					throw new Tokenizer.BDecodingException("encountered non-string type while decoding a dictionary key");
 			}
 		}
 

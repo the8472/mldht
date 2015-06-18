@@ -54,6 +54,7 @@ import lbms.plugins.mldht.kad.utils.ResponseTimeoutFilter;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
 import lbms.plugins.mldht.utils.Selectable;
+import the8472.bencode.Tokenizer.BDecodingException;
 import the8472.bencode.Utils;
 
 /**
@@ -291,13 +292,17 @@ public class RPCServer {
 			} catch (Exception e) {
 				DHT.log(e, LogLevel.Error);
 			}
-		} catch(Exception e) {
+		} catch(BDecodingException e) {
 			p.rewind();
-			DHT.logError("failed to decode message  " + Utils.stripToAscii(p) + " (length:"+p.remaining()+") from: " + source + " reason:" + e.getMessage());
-			DHT.log(e, LogLevel.Debug);
+			DHT.logInfo("failed to decode message  " + Utils.stripToAscii(p) + " (length:"+p.remaining()+") from: " + source + " reason:" + e.getMessage());
 			MessageBase err = new ErrorMessage(new byte[] {0,0,0,0}, ErrorCode.ProtocolError.code,"invalid bencoding: "+e.getMessage());
 			err.setDestination(source);
 			sendMessage(err);
+			return;
+		} catch(Exception e) {
+			DHT.log(e, LogLevel.Error);
+			p.rewind();
+			DHT.logError("unexpected error while bdecoding message  " + Utils.stripToAscii(p) + " (length:"+p.remaining()+") from: " + source + " reason:" + e.getMessage());
 			return;
 		}
 		

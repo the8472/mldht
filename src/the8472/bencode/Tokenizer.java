@@ -4,6 +4,14 @@ import java.nio.ByteBuffer;
 
 public class Tokenizer {
 	
+	public static class BDecodingException extends RuntimeException {
+		
+		public BDecodingException(String msg) {
+			super(msg);
+		}
+		
+	}
+	
 	public static interface TokenConsumer {
 
 		default void dictionaryEnter() {}
@@ -62,7 +70,7 @@ public class Tokenizer {
 						length = 0;
 					ByteBuffer key = buf.slice();
 					if(length > key.capacity())
-						throw new RuntimeException("string (offset: "+buf.position()+" length: "+length+") points beyond end of message (length: "+buf.limit()+")");
+						throw new BDecodingException("string (offset: "+buf.position()+" length: "+length+") points beyond end of message (length: "+buf.limit()+")");
 					key.limit((int) length);
 					consumer.string(key);
 					buf.position((int) (buf.position() + length));
@@ -70,7 +78,7 @@ public class Tokenizer {
 				default:
 					StringBuilder b = new StringBuilder();
 					Utils.toHex(new byte[]{current}, b , 1);
-					throw new RuntimeException("unexpected character 0x" + b + " at offset "+(buf.position()-1));
+					throw new BDecodingException("unexpected character 0x" + b + " at offset "+(buf.position()-1));
 					
 			
 			}
@@ -87,6 +95,8 @@ public class Tokenizer {
 		
 		if(current == '-') {
 			neg = true;
+			if(buf.remaining() < 1)
+				throw new BDecodingException("end of message reached while decoding a number/string length prefix. offset:"+buf.position());
 			current = buf.get();
 		}
 		
@@ -94,7 +104,7 @@ public class Tokenizer {
 			if(current < '0' || current > '9') {
 				StringBuilder b = new StringBuilder();
 				Utils.toHex(new byte[]{current}, b , 1);
-				throw new RuntimeException("encountered invalid character 0x"+b+" when decoding a number, expected 0-9 or "+ (char)terminator);
+				throw new BDecodingException("encountered invalid character 0x"+b+" (offset:"+ (buf.position()-1) +") while decoding a number/string length prefix, expected 0-9 or "+ (char)terminator);
 			}
 				
 			
@@ -102,7 +112,9 @@ public class Tokenizer {
 			
 			result *= 10;
 			result += digit;
-			
+
+			if(buf.remaining() < 1)
+				throw new BDecodingException("end of message reached while decoding a number/string length prefix. offset:"+buf.position());
 			current = buf.get();
 		}
 		

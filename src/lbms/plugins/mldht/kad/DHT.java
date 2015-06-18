@@ -1007,15 +1007,12 @@ public class DHT implements DHTBase {
 	}
 
 	public void sendError (MessageBase origMsg, int code, String msg) {
-		sendError(origMsg.getOrigin(), origMsg.getMTID(), code, msg, origMsg.getServer());
+		ErrorMessage errMsg = new ErrorMessage(origMsg.getMTID(), code, msg);
+		errMsg.setMethod(origMsg.getMethod());
+		errMsg.setDestination(origMsg.getOrigin());
+		origMsg.getServer().sendMessage(errMsg);
 	}
 
-	public void sendError (InetSocketAddress target, byte[] mtid, int code,
-			String msg, RPCServer srv) {
-		ErrorMessage errMsg = new ErrorMessage(mtid, code, msg);
-		errMsg.setDestination(target);
-		srv.sendMessage(errMsg);
-	}
 
 	public Key getOurID () {
 		if (running) {

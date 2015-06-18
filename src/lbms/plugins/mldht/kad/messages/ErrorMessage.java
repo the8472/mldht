@@ -60,6 +60,10 @@ public class ErrorMessage extends MessageBase {
 		
 		return base;
 	}
+	
+	public void setMethod(Method m) {
+		this.method = m;
+	}
 
 
 

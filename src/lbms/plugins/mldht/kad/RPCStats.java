@@ -1,20 +1,22 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad;
+
+import java.util.Formatter;
 
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
@@ -49,22 +51,29 @@ public class RPCStats {
 	@Override
 	public String toString() {
 		StringBuilder b = new StringBuilder();
-		b.append("### local RPCs\n");
-		b.append("REQ | RSP / Error / Timeout\n");
+		
+		@SuppressWarnings("resource")
+		Formatter f = new Formatter(b);
+		
+		f.format("### local RPCs%n");
+		f.format("%15s %19s | %19s %19s %19s %n%n", "Method", "REQ", "RSP", "Error", "Timeout");
 		for(Method m : Method.values())
 		{
-			b.append(m).append('\t').append(sentMessages[m.ordinal()][Type.REQ_MSG.ordinal()]).append('|').append(receivedMessages[m.ordinal()][Type.RSP_MSG.ordinal()]).append('/').append(receivedMessages[m.ordinal()][Type.ERR_MSG.ordinal()]).append('/').append(timeoutMessages[m.ordinal()]).append('\n');
+			long sent = sentMessages[m.ordinal()][Type.REQ_MSG.ordinal()];
+			long received = receivedMessages[m.ordinal()][Type.RSP_MSG.ordinal()];
+			long error = receivedMessages[m.ordinal()][Type.ERR_MSG.ordinal()];
+			long timeouts = timeoutMessages[m.ordinal()];
+			f.format("%15s %19d | %19d %19d %19d %n", m, sent, received, error, timeouts);
 		}
-		b.append("### remote RPCs\n");
-		b.append("REQ / RSP\n");
+		f.format("%n### remote RPCs%n");
+		f.format("%15s %19s | %19s %19s %n%n", "Method","REQ", "RSP", "Errors");
 		for(Method m : Method.values())
 		{
-			b.append(m).append('\t').append(receivedMessages[m.ordinal()][Type.REQ_MSG.ordinal()]).append('/').append(sentMessages[m.ordinal()][Type.RSP_MSG.ordinal()]).append('\n');
+			long received = receivedMessages[m.ordinal()][Type.REQ_MSG.ordinal()];
+			long sent = sentMessages[m.ordinal()][Type.RSP_MSG.ordinal()];
+			long errors = sentMessages[m.ordinal()][Type.ERR_MSG.ordinal()];
+			f.format("%15s %19d | %19d %19d %n", m, received, sent, errors);
 		}
-		b.append("### non-associated errors\n");
-		b.append("RX / TX");
-		b.append('\t').append(receivedMessages[Method.UNKNOWN.ordinal()][Type.ERR_MSG.ordinal()]).append('/').append(sentMessages[Method.UNKNOWN.ordinal()][Type.ERR_MSG.ordinal()]).append('\n');
-
 		
 		return b.toString();
 	}

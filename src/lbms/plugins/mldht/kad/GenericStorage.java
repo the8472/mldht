@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.security.InvalidKeyException;
 import java.security.Signature;
 import java.security.SignatureException;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -83,6 +84,10 @@ public class GenericStorage {
 
 		}
 		
+		public ByteBuffer getRawValue() {
+			return ByteBuffer.wrap(value).asReadOnlyBuffer();
+		}
+		
 	}
 	
 	ConcurrentHashMap<Key, StorageItem> items = new ConcurrentHashMap<>();
@@ -135,6 +140,10 @@ public class GenericStorage {
 		items.entrySet().removeIf(entry -> {
 			return entry.getValue().expirationDate < now;
 		});
+	}
+	
+	public Map<Key, StorageItem> getItems() {
+		return Collections.unmodifiableMap(items);
 	}
 
 }

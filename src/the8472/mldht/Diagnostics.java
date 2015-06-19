@@ -20,10 +20,12 @@ import java.util.stream.Collectors;
 import lbms.plugins.mldht.kad.DBItem;
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.Database;
+import lbms.plugins.mldht.kad.GenericStorage;
 import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.Node;
 import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
+import the8472.bencode.Utils;
 import the8472.utils.Arrays;
 import the8472.utils.io.NetMask;
 
@@ -45,6 +47,7 @@ public class Diagnostics {
 			printMain();
 			printRoutingTable();
 			printDatabases();
+			printPUTStorage();
 			
 
 		} catch (Exception e) {
@@ -52,6 +55,26 @@ public class Diagnostics {
 		}
 	}
 	
+	void printPUTStorage() throws IOException {
+		Path file = logDir.resolve("putDB.log");
+		
+		writeAndAtomicMove(file, writer -> dhts.stream().filter(DHT::isRunning).forEach(d -> {
+			writer.append("Type: " + d.getType().shortName + "\n");
+			formatStorage(writer, d.getStorage());
+		}));
+	}
+	
+	public void formatStorage(Appendable writer, GenericStorage storage) {
+		Formatter f = new Formatter(writer);
+		
+		storage.getItems().forEach((k, v) -> {
+			f.format("%s: %n%s%n%n",
+				k,
+				Utils.stripToAscii(v.getRawValue())
+			);
+		});
+	}
+
 	void printDatabases() throws Exception {
 		Path file = logDir.resolve("getPeersDB.log");
 		

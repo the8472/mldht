@@ -525,6 +525,10 @@ public class DHT implements DHTBase {
 		return announce;
 	}
 	
+	public GenericStorage getStorage() {
+		return storage;
+	}
+	
 	
 	public DHTConfiguration getConfig() {
 		return config;

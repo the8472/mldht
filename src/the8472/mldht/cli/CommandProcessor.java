@@ -23,6 +23,7 @@ import java.util.function.Consumer;
 import lbms.plugins.mldht.kad.DHT;
 import the8472.bencode.BEncoder;
 import the8472.mldht.cli.commands.Burst;
+import the8472.mldht.cli.commands.GetPeers;
 import the8472.mldht.cli.commands.GetTorrent;
 import the8472.mldht.cli.commands.Help;
 import the8472.mldht.cli.commands.Ping;
@@ -41,6 +42,7 @@ public abstract class CommandProcessor {
 		m.put("PING", Ping.class);
 		m.put("HELP", Help.class);
 		m.put("GETTORRENT", GetTorrent.class);
+		m.put("GETPEERS", GetPeers.class);
 	});
 	
 	public static CommandProcessor from(List<byte[]> args, Consumer<ByteBuffer> writer, Collection<DHT> dhts) {

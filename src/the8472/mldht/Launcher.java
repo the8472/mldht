@@ -1,15 +1,18 @@
 package the8472.mldht;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -113,10 +116,10 @@ public class Launcher {
 		Files.createDirectories(logDir);
 		
 
-		Path log = logDir.resolve("dht.log");
+		final Path log = logDir.resolve("dht.log");
 		Path exLog = logDir.resolve("execptions.log");
 
-		final PrintWriter logWriter = new PrintWriter(Files.newBufferedWriter(log, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE), true);
+		//final PrintWriter logWriter = ;
 		final PrintWriter exWriter = new PrintWriter(Files.newBufferedWriter(exLog, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE), true);
 		
 		configReader.getAll(XMLUtils.buildXPath("//component/className",null)).forEach(className -> {
@@ -139,12 +142,29 @@ public class Launcher {
 			Thread writer = new Thread() {
 				@Override
 				public void run() {
-					while (true) {
-						try {
-							logWriter.println(toLog.take());
-						} catch (InterruptedException e) {
-							e.printStackTrace();
+					try {
+						FileChannel.open(log, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING).close();
+
+						while (true) {
+
+							String toWrite = toLog.take();
+							
+							// log rotate at 1GB
+							if(Files.size(log) > 1024*1024*1024)
+								Files.move(log, log.resolveSibling("dht.log.1"), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+
+
+							try(PrintWriter logWriter = new PrintWriter(Files.newBufferedWriter(log, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND))) {
+								do {
+									logWriter.println(toWrite);
+								} while((toWrite = toLog.poll()) != null);
+								logWriter.flush();
+							}
+
 						}
+
+					} catch (InterruptedException | IOException e) {
+						e.printStackTrace();
 					}
 				}
 			};

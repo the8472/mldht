@@ -1,18 +1,26 @@
 # mldht
 
-A java library implementing the bittorrent mainline DHT, with long-running server-class nodes in mind.
+A java library implementing the Kademlia-based bittorrent mainline DHT, with long-running server-class nodes in mind.
 
-Originally developed as [DHT plugin](http://azsmrc.sourceforge.net/index.php?action=plugin-mldht) for Azureus/Vuze
+Originally developed as [DHT plugin](http://azsmrc.sourceforge.net/index.php?action=plugin-mldht) for Azureus/[Vuze](http://dev.vuze.com/)
 
 ## Features
 
-- DHT spec itself ([BEP5](http://bittorrent.org/beps/bep_0005.html))
-- IPv6 support ([BEP32](http://bittorrent.org/beps/bep_0032.html)) 
-- Scrapes ([BEP33](http://bittorrent.org/beps/bep_0033.html)) 
-- DHT security ([BEP42](http://bittorrent.org/beps/bep_0042.html)), partial: IP headers are implemented, node ID restrictions are not
-- metadata exchange ([BEP9](http://bittorrent.org/beps/bep_0009.html)), fetch-only
-- the following [libtorrent DHT extensions](http://www.libtorrent.org/dht_extensions.html): "get_peers response", "forward compatibility", "client identification"
-- optional multihoming mode: separate IDs for each socket, shared routing table, automatically utilizes all available global unicast addresses available on the machine
+Implemented specs:
+
+| Spec | Title | Status |
+|------|-------|--------|
+|[BEP5](http://bittorrent.org/beps/bep_0005.html)|Bittorrent DHT| Yes |
+|[BEP32](http://bittorrent.org/beps/bep_0032.html)|IPv6| Yes |
+|[BEP33](http://bittorrent.org/beps/bep_0033.html)|Scrapes| Yes |
+|[BEP42](http://bittorrent.org/beps/bep_0042.html)|DHT Announce Security| Partial; only the `ip` fields for external address discovery are supported |
+|[BEP9](http://bittorrent.org/beps/bep_0009.html)|Metadata exchange| Partial; only fetching is supported |
+|[libtorrent.org](http://www.libtorrent.org/dht_extensions.html)| Extended `get_peers` response<br> Forward compatibility<br> Client identification|Yes|
+|pending|multi-homing/multi-address mode|Yes|
+|[BEP44](http://bittorrent.org/beps/bep_0044.html)|Arbitrary data storage|Yes| 
+
+Additional:
+
 - high-performance implementation without compromising correctness, i.e. the node will be a good citizen
  - can process 20k packets per second on a single Xeon core
 - low latency lookups by using adaptive timeouts and a secondary routing table/cache tuned for RTT instead of stability

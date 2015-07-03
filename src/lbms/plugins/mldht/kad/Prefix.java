@@ -1,25 +1,23 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.List;
 
 public class Prefix extends Key {
 	
@@ -39,7 +37,12 @@ public class Prefix extends Key {
 	
 	public Prefix(Prefix p) {
 		super(p);
-		depth = p.depth; 
+		depth = p.depth;
+	}
+	
+	public Prefix(Key k, int depth) {
+		copyBits(k, this, depth);
+		this.depth = depth;
 	}
 	
 	
@@ -147,7 +150,7 @@ public class Prefix extends Key {
 	}
 	
 	/**
-	 * Generates a random Key that has falls under this prefix  
+	 * Generates a random Key that has falls under this prefix
 	 */
 	public Key createRandomKeyFromPrefix() {
 		// first generate a random one

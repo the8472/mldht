@@ -109,6 +109,12 @@ public class Key implements Radixable<Key>, Serializable {
 		}
 		System.arraycopy(hash, 0, this.hash, 0, SHA1_HASH_LENGTH);
 	}
+	
+	public static Key setBit(int idx) {
+		Key k = new Key();
+		k.hash[idx / 8] = (byte)(0x80 >>> (idx % 8));
+		return k;
+	}
 
 	/*
 	 * compares Keys according to their natural distance
@@ -216,6 +222,13 @@ public class Key implements Radixable<Key>, Serializable {
 		}
 		return b.toString();
 	}
+	
+	public String toBinString() {
+		StringBuilder builder = new StringBuilder(160);
+		for(int i=0;i<160;i++)
+			builder.append((hash[i/8] & (0x80 >> (i % 8))) != 0 ? '1' : '0');
+		return builder.toString();
+	}
 
 	/**
 	 * Returns the approximate distance of this key to the other key.
@@ -229,10 +242,13 @@ public class Key implements Radixable<Key>, Serializable {
 
 		// XOR our id and the sender's ID
 		Key d = Key.distance(id, this);
-		// now use the first on bit to determine which bucket it should go in
-
+		
+		return d.leadingOneBit();
+	}
+	
+	public int leadingOneBit() {
 		int bit_on = 0xFF;
-		byte[] data_hash = d.getHash();
+		byte[] data_hash = hash;
 		for (int i = 0; i < 20; i++) {
 			// get the byte
 			int b = data_hash[i] & 0xFF;
@@ -263,6 +279,18 @@ public class Key implements Radixable<Key>, Serializable {
 	public Key distance (Key x) {
 
 		return distance(this, x);
+	}
+	
+	public Key add(Key x) {
+		int carry = 0;
+		Key out = new Key(this);
+		for(int i=19;i>=0;i--) {
+			carry = Byte.toUnsignedInt(out.hash[i]) + Byte.toUnsignedInt(x.hash[i]) + carry;
+			out.hash[i] = (byte)(carry & 0xff);
+			carry >>>= 8;
+		}
+		
+		return out;
 	}
 	
 	/**

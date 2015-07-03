@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 
 import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.utils.PackUtil;
@@ -70,36 +69,88 @@ public class KClosestNodesSearch {
 		fill(false);
 	}
 	
-	/**
-	 * @return true if we're done
+/**
+
+consider the following routing table:
+
+0000000...
+0000001...
+000001...
+00001...
+0001...
+001...
+01...
+1...
+
+now consider the following target key:
+
+1001101111011100000000011101011001111100001100000010111010111110101000100010101011101001101111010011011110000111010010001100001101011110100000010000011001101000
+
+the first bucket we will want to pick values from is 1...
+the second bucket with the next-higher xor distance actually is 0001...
+
+This requires a non-contiguous search
+
+
+
+	 * 
 	 */
-	private boolean insertBucket(KBucket bucket) {
-		if(bucket.getNumEntries() == 0)
-			return false;
-		Optional<Key> farthest = entries.size() >= max_entries ? entries.stream().max(comp).map(KBucketEntry::getID) : Optional.empty();
+
+	
+	
+	private void insertBucket(KBucket bucket) {
 		bucket.entriesStream().filter(e -> !e.isBad()).forEach(entries::add);
-		if(entries.size() >= max_entries) {
-			Collections.sort(entries,comp);
-			for(int i=entries.size()-1;i>=max_entries;i--)
-				entries.remove(i);
-			if(farthest.isPresent() && farthest.get().equals(entries.get(entries.size()-1).getID()))
-				return true;
-		}
-		return false;
+	}
+	
+	private void shave() {
+		int overshoot = entries.size() - max_entries;
 		
+		if(overshoot <= 0)
+			return;
+
+		List<KBucketEntry> tail = entries.subList(Math.max(0, entries.size() - DHTConstants.MAX_ENTRIES_PER_BUCKET), entries.size());
+		tail.sort(comp);
+		entries.subList(entries.size() - overshoot, entries.size()).clear();
 	}
 	
 	public void fill(boolean includeOurself) {
 		List<RoutingTableEntry> table = owner.getNode().getBuckets();
-		int center = Node.findIdxForId(table, targetKey);
-		boolean reachedMin;
-		boolean reachedMax;
-		reachedMax = reachedMin = insertBucket(table.get(center).getBucket());
-		for(int i=1;!reachedMax && !reachedMin;i++)
-		{
-			reachedMin = reachedMin || center-i < 0 || insertBucket(table.get(center-i).getBucket());
-			reachedMax = reachedMax || center+i >= table.size() || insertBucket(table.get(center+i).getBucket());
+		
+		
+		final int initialIdx = Node.findIdxForId(table, targetKey);
+		
+		Node.RoutingTableEntry current = table.get(initialIdx);
+		
+		
+		while(true){
+			
+			// System.out.println(current.prefix);
+			
+			insertBucket(current.getBucket());
+			
+			if(entries.size() >= max_entries)
+				break;
+			
+			Prefix bucketPrefix = current.prefix;
+			Prefix targetToBucketDistance = new Prefix(targetKey.distance(bucketPrefix), bucketPrefix.depth); // translate into xor distance, trim trailing bits
+			Key incrementedDistance = targetToBucketDistance.add(Key.setBit(targetToBucketDistance.depth)); // increment distance by least significant *prefix* bit
+			Key nextBucketTarget = targetKey.distance(incrementedDistance); // translate back to natural distance
+			
+			
+			//System.out.println("dist    " + targetToBucketDistance.toBinString());
+			//System.out.println("newDist " +  incrementedDistance.toBinString());
+			//System.out.println("target  " +  nextBucketTarget.toBinString());
+
+			int idx = Node.findIdxForId(table, nextBucketTarget);
+			
+			// quit if there are insufficient routing table entries to reach the desired size
+			if(idx == initialIdx)
+				break;
+			
+			current = table.get(idx);
 		}
+		
+		shave();
 		
 		RPCServer srv = owner.getServerManager().getRandomActiveServer(true);
 		
@@ -109,6 +160,8 @@ public class KClosestNodesSearch {
 			entries.add(new KBucketEntry(sockAddr, srv.getDerivedID()));
 		}
 	}
+	
+
 
 	public boolean isFull () {
 		return entries.size() >= max_entries;

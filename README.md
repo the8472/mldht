@@ -34,7 +34,7 @@ Additional:
 
 ## build
 
-    git clone https://github.com/the8472/mldht.git .
+    git clone --recursive https://github.com/the8472/mldht.git .
     mvn jar:jar
     
 The maven build uses ECJ, the eclipse compiler. It is recommended to also use it for manual builds, e.g. in a development environment. 

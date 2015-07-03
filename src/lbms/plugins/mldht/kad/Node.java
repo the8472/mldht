@@ -30,7 +30,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -38,6 +37,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.IntStream;
@@ -50,8 +50,8 @@ import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.tasks.NodeLookup;
 import lbms.plugins.mldht.kad.tasks.PingRefreshTask;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
+import the8472.utils.CowSet;
 import the8472.utils.Pair;
-import the8472.utils.SortedCoWSet;
 import the8472.utils.io.NetMask;
 
 
@@ -90,7 +90,7 @@ public class Node {
 	private long timeOfLastReceiveCountChange;
 	private long timeOfRecovery;
 	private int num_entries;
-	private final SortedCoWSet<Key> usedIDs = new SortedCoWSet<>(Key.class, null);
+	private final CowSet<Key> usedIDs = new CowSet<>();
 	private volatile Map<InetAddress,RoutingTableEntry> knownNodes = new HashMap<InetAddress, RoutingTableEntry>();
 	
 	Collection<NetMask> trustedNodes = Collections.emptyList();
@@ -266,7 +266,7 @@ public class Node {
 	}
 	
 	boolean canSplit(RoutingTableEntry entry, KBucketEntry toInsert, boolean relaxedSplitting) {
-		if(Arrays.stream(usedIDs.getSnapshot()).anyMatch(localId -> entry.prefix.isPrefixOf(localId)))
+		if(usedIDs.stream().anyMatch(localId -> entry.prefix.isPrefixOf(localId)))
 			return true;
 		
 		if(!relaxedSplitting)
@@ -274,7 +274,7 @@ public class Node {
 		
 		Comparator<Key> comp = new Key.DistanceOrder(toInsert.getID());
 		
-		Key closestLocalId = Arrays.stream(usedIDs.getSnapshot()).min(comp).orElseThrow(() -> new IllegalStateException("expected to find a local ID"));
+		Key closestLocalId = usedIDs.stream().min(comp).orElseThrow(() -> new IllegalStateException("expected to find a local ID"));
 		
 		List<RoutingTableEntry> table = routingTableCOW;
 		
@@ -369,7 +369,7 @@ public class Node {
 	}
 	
 	public Collection<Key> localIDs() {
-		return Collections.unmodifiableList(Arrays.asList(usedIDs.getSnapshot()));
+		return usedIDs.snapshot();
 	}
 	
 	public DHT getDHT() {
@@ -501,6 +501,8 @@ public class Node {
 			KBucket b = e.bucket;
 
 			List<KBucketEntry> entries = b.getEntries();
+			
+			Set<Key> localIds = usedIDs.snapshot();
 
 			// remove boostrap nodes from our buckets
 			boolean wasFull = b.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET;
@@ -509,7 +511,7 @@ public class Node {
 			{
 				if (wasFull && DHTConstants.BOOTSTRAP_NODE_ADDRESSES.contains(entry.getAddress()))
 					b.removeEntryIfBad(entry, true);
-				if(isLocalId(entry.getID()))
+				if(localIds.contains(entry.getID()))
 					b.removeEntryIfBad(entry, true);
 				allBad &= entry.isBad();
 				

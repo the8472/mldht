@@ -8,7 +8,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.concurrent.ThreadLocalRandom;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -31,25 +30,6 @@ public class OnInsertValidations {
 		nodeId = node.registerServer(null);
 	}
 	
-	private InetAddress generateIp(byte subnet) {
-		// generate valid unicast IPs from 2001:20xx::/32
-		byte[] addr = new byte[16];
-		ThreadLocalRandom.current().nextBytes(addr);
-		addr[0] = 0x20;
-		addr[1] = 0x01;
-		addr[2] = 0x20;
-		addr[3] = subnet;
-
-		return unchecked(() -> InetAddress.getByAddress(addr));
-	}
-	
-	private void fillTable() {
-		for(int i=0;i<1000;i++) {
-			node.insertEntry(new KBucketEntry(new InetSocketAddress(generateIp((byte)0x00), 1024), Key.createRandomKey()), true);
-		}
-		node.rebuildAddressCache();
-	}
-	
 	private PingResponse buildResponse(Key k, InetSocketAddress origin) {
 		PingRequest req = new PingRequest();
 		RPCCall call = new RPCCall(req);
@@ -63,7 +43,7 @@ public class OnInsertValidations {
 
 	@Test
 	public void testImmediateEvictionOnIdMismatch() {
-		fillTable();
+		NodeFactory.fillTable(node);
 		KBucket bucket = node.getBuckets().get(0).getBucket();
 		KBucketEntry entry = bucket.randomEntry().get();
 		
@@ -78,7 +58,7 @@ public class OnInsertValidations {
 	
 	@Test
 	public void testRTTPreference() {
-		fillTable();
+		NodeFactory.fillTable(node);
 		
 		Collection<Key> localIds = node.localIDs();
 		
@@ -86,7 +66,7 @@ public class OnInsertValidations {
 		RoutingTableEntry nonLocalFullBucket = node.getBuckets().stream().filter(e -> e.prefix.depth == 1).findAny().get();
 		
 		Key newId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
-		PingResponse rsp = buildResponse(newId, new InetSocketAddress(generateIp((byte)0x00), 1234));
+		PingResponse rsp = buildResponse(newId, new InetSocketAddress(NodeFactory.generateIp((byte)0x00), 1234));
 		
 		node.recieved(rsp);
 		
@@ -105,7 +85,7 @@ public class OnInsertValidations {
 		assertTrue(nonLocalFullBucket.getBucket().getEntries().stream().anyMatch(e -> e.getID().equals(newId)));
 		
 		Key anotherId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
-		rsp = buildResponse(anotherId, new InetSocketAddress(generateIp((byte)0x00), 1234));
+		rsp = buildResponse(anotherId, new InetSocketAddress(NodeFactory.generateIp((byte)0x00), 1234));
 		call = rsp.getAssociatedCall();
 		call.sentTime = now - 50;
 		call.responseTime = now;
@@ -118,7 +98,7 @@ public class OnInsertValidations {
 	
 	@Test
 	public void testTrustedNodes() {
-		fillTable();
+		NodeFactory.fillTable(node);
 		
 		Collection<Key> localIds = node.localIDs();
 		
@@ -130,7 +110,7 @@ public class OnInsertValidations {
 		rsp.setAssociatedCall(call);
 		Key newId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
 		rsp.setID(newId);
-		rsp.setOrigin(new InetSocketAddress(generateIp((byte)0x02), 1234));
+		rsp.setOrigin(new InetSocketAddress(NodeFactory.generateIp((byte)0x02), 1234));
 		
 		node.recieved(rsp);
 		assertFalse(node.getBuckets().stream().anyMatch(e -> e.getBucket().findByIPorID(null, newId).isPresent()));

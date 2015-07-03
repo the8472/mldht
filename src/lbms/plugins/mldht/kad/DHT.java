@@ -586,6 +586,23 @@ public class DHT implements DHTBase {
 		return port;
 	}
 
+
+	void populate() {
+		serverStats = new RPCStats();
+
+		
+		cache = new AnnounceNodeCache();
+		stats.setRpcStats(serverStats);
+		
+		serverManager = new RPCServerManager(this);
+		node = new Node(this);
+		db = new Database();
+		stats.setDbStats(db.getStats());
+		tman = new TaskManager(this);
+		running = true;
+		storage = new GenericStorage();
+	}
+	
 	/*
 	 * (non-Javadoc)
 	 * 
@@ -611,20 +628,11 @@ public class DHT implements DHTBase {
 		logInfo("Starting DHT on port " + getPort());
 		resolveBootstrapAddresses();
 		
-		serverStats = new RPCStats();
-
-		
-		cache = new AnnounceNodeCache();
-		stats.setRpcStats(serverStats);
 		connectionManager = new NIOConnectionManager("mlDHT "+type.shortName+" NIO Selector");
-		serverManager = new RPCServerManager(this);
-		node = new Node(this);
-		db = new Database();
-		stats.setDbStats(db.getStats());
-		tman = new TaskManager(this);
-		running = true;
-		storage = new GenericStorage();
 		
+		populate();
+		
+
 		// these checks are fairly expensive on large servers (network interface enumeration)
 		// schedule them separately
 		scheduledActions.add(scheduler.scheduleWithFixedDelay(serverManager::doBindChecks, 10, 10, TimeUnit.SECONDS));

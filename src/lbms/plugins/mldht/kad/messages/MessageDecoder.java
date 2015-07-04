@@ -19,6 +19,7 @@ package lbms.plugins.mldht.kad.messages;
 import static the8472.bencode.Utils.prettyPrint;
 import static the8472.utils.Functional.castOrThrow;
 import static the8472.utils.Functional.tap;
+import static the8472.utils.Functional.tapThrow;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -331,7 +332,7 @@ public class MessageDecoder {
 				break;
 			case PUT:
 				
-				msg = tap(new PutRequest(), put -> {
+				msg = tapThrow(new PutRequest(), put -> {
 					put.value = args.get("v");
 					put.pubkey = typedGet(args, "k", byte[].class).orElse(null);
 					put.sequenceNumber = typedGet(args, "seq", Long.class).orElse(-1L);

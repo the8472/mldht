@@ -50,12 +50,9 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>3.1</version>
 				<configuration>
-					<compilerId>eclipse</compilerId>
+					<compilerId>javac</compilerId>
 					<source>1.8</source>
 					<target>1.8</target>
-					<excludes>
-						<exclude>**/lbms/plugins/mldht/indexer/</exclude>
-					</excludes>
 				</configuration>
 				<dependencies>
 					<dependency>

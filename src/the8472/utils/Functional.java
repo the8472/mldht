@@ -8,11 +8,17 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class Functional {
 	
-	public static <T, E extends Throwable> T tap(T obj, ThrowingConsumer<T, E> c) throws E  {
+	public static <T> T tap(T obj, Consumer<T> c) {
+		c.accept(obj);
+		return obj;
+	}
+	
+	public static <T, E extends Throwable> T tapThrow(T obj, ThrowingConsumer<T, E> c) throws E  {
 		c.accept(obj);
 		return obj;
 	}

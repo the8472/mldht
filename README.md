@@ -35,6 +35,7 @@ Additional:
 ## build
 
     git clone --recursive https://github.com/the8472/mldht.git .
+    mvn compiler:compile
     mvn jar:jar 
 
 ## run DHT node in standalone mode

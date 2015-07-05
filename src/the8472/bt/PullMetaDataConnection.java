@@ -31,7 +31,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.HashMap;
@@ -39,6 +38,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.IntFunction;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -49,6 +49,7 @@ import lbms.plugins.mldht.utils.NIOConnectionManager;
 import lbms.plugins.mldht.utils.Selectable;
 import the8472.bencode.BDecoder;
 import the8472.bencode.BEncoder;
+import the8472.bt.MetadataPool.Completion;
 
 public class PullMetaDataConnection implements Selectable {
 	
@@ -91,7 +92,6 @@ public class PullMetaDataConnection implements Selectable {
 	public static final int STATE_BASIC_HANDSHAKING = 0x01 << 1; // 2
 	public static final int STATE_LTEP_HANDSHAKING = 0x01 << 2; // 4
 	public static final int STATE_GETTING_METADATA = 0x01 << 3; // 8
-	public static final int STATE_METADATA_VERIFIED = 0x01 << 4; // 16
 	public static final int STATE_CLOSED = 0x01 << 5; // 32
 	
 	private static final int RCV_TIMEOUT = 25*1000;
@@ -107,10 +107,6 @@ public class PullMetaDataConnection implements Selectable {
 	private static final int BT_MSG_ID_OFFSET = 4; // 0-3 length, 4 id
 	private static final int BT_LTEP_HEADER_OFFSET =  5; // 5 ltep id
 	
-	private static final int META_PIECE_NOT_REQUESTED = 0;
-	private static final int META_PIECE_REQUESTED = 1;
-	private static final int META_PIECE_DONE = 2;
-	
 	SocketChannel				channel;
 	NIOConnectionManager		connManager;
 	boolean						incoming;
@@ -124,11 +120,11 @@ public class PullMetaDataConnection implements Selectable {
 	int							ltepRemotePexId;
 	public int					dhtPort = -1;
 	
-	ByteBuffer					metaData;
+	
+	MetadataPool				pool;
 	InfohashChecker				checker;
 	byte[]						infoHash;
-	int							infoLength = -1;
-	int[]						metaPiecesState;
+
 	int							outstandingRequests;
 	int							maxRequests = 1;
 	
@@ -144,6 +140,7 @@ public class PullMetaDataConnection implements Selectable {
 	String 						remoteClient;
 	
 	public Consumer<List<InetSocketAddress>> pexConsumer = (x) -> {};
+	public IntFunction<MetadataPool> 	poolGenerator = (i) -> new MetadataPool(i);
 	
 	static PrintWriter idWriter;
 	
@@ -294,8 +291,8 @@ public class PullMetaDataConnection implements Selectable {
 	}
 	
 	
-	public ByteBuffer getMetaData() {
-		return metaData;
+	public MetadataPool getMetaData() {
+		return pool;
 	}
 	
 	private void processInput() throws IOException {
@@ -479,13 +476,7 @@ public class PullMetaDataConnection implements Selectable {
 						return;
 					}
 					
-
-					if(metaData == null || newInfoLength != infoLength)
-					{
-						infoLength = newInfoLength;
-						metaData = ByteBuffer.allocate(infoLength);
-						metaPiecesState = new int[(int) Math.ceil(infoLength * 1.0 / (16*1024))];
-					}
+					pool = poolGenerator.apply(newInfoLength);
 
 					ltepRemoteMetadataExchangeMessageId = metaMsgID.intValue();
 
@@ -525,15 +516,17 @@ public class PullMetaDataConnection implements Selectable {
 				
 				if(type == 1)
 				{ // piece
-					metaPiecesState[idx.intValue()] = META_PIECE_DONE;
 					outstandingRequests--;
-					// use remaining bytes for metadata
-					metaData.position((int) (16*1024 * idx));
-					metaData.put(inputBuffer);
+					
+					ByteBuffer chunk = ByteBuffer.allocate(inputBuffer.remaining());
+					chunk.put(inputBuffer);
+					pool.addBuffer(idx.intValue(), chunk);
+					
 					doMetaRequests();
 					checkMetaRequests();
 				} else if(type == 2)
 				{ // reject
+					pool.releasePiece(idx.intValue());
 					terminate("request was rejected");
 					return;
 				}
@@ -593,16 +586,20 @@ public class PullMetaDataConnection implements Selectable {
 	}
 	
 	void doMetaRequests() throws IOException {
-		for(int i=0;i<metaPiecesState.length;i++)
+		if(!isState(STATE_GETTING_METADATA))
+			return;
+		
+		while(outstandingRequests <= maxRequests)
 		{
-			if(metaPiecesState[i] != META_PIECE_NOT_REQUESTED)
-				continue;
-			if(outstandingRequests >= maxRequests)
+			int idx = pool.reservePiece(this);
+			
+
+			if(idx < 0)
 				break;
 			
 			Map<String,Object> req = new HashMap<String, Object>();
 			req.put("msg_type", 0);
-			req.put("piece", i);
+			req.put("piece", idx);
 			
 			BEncoder encoder = new BEncoder();
 			ByteBuffer body = encoder.encode(req, 512);
@@ -613,7 +610,7 @@ public class PullMetaDataConnection implements Selectable {
 			header.flip();
 			
 			outstandingRequests++;
-			metaPiecesState[i] = META_PIECE_REQUESTED;
+			
 			outputBuffers.addLast(header);
 			outputBuffers.addLast(body);
 		}
@@ -622,44 +619,15 @@ public class PullMetaDataConnection implements Selectable {
 	}
 	
 	void checkMetaRequests() throws IOException {
-		boolean done = true;
-		for(int i=0;done && i<metaPiecesState.length;i++)
-			done &= metaPiecesState[i] == META_PIECE_DONE;
-		
-		if(done)
-		{
-			MessageDigest hasher = ThreadLocalUtils.getThreadLocalSHA1();
-			
-			metaData.rewind();
-			setState(STATE_GETTING_METADATA, false);
-			if(!Arrays.equals(infoHash, hasher.digest(metaData.array())))
-			{ // hash check failed
-				metaData = null;
-				metaPiecesState = null;
-				infoLength = -1;
-			} else
-			{ // success!
-				setState(STATE_METADATA_VERIFIED, true);
-			}
-			terminate("finished meta data exchange");
-		}
-	}
-	
-	public void resume(PullMetaDataConnection previousConnection) {
-		if(!Arrays.equals(infoHash, previousConnection.infoHash))
+		if(pool == null)
 			return;
-		if(previousConnection.metaData != null)
-		{
-			metaData = previousConnection.metaData;
-			metaPiecesState = previousConnection.metaPiecesState;
-			infoLength = previousConnection.infoLength;
-			// pieces marked as requested aren't requested anymore since this is a new connection
-			for(int i=0;i<metaPiecesState.length;i++)
-				if(metaPiecesState[i] == META_PIECE_REQUESTED)
-					metaPiecesState[i] = META_PIECE_NOT_REQUESTED;
-				
-		}
+
+		pool.checkComletion(infoHash);
+		
+		if(pool.status != Completion.PROGRESS)
+			terminate("meta data exchange finished or failed");
 	}
+
 
 	public void canWriteEvent() throws IOException {
 		ByteBuffer outBuf = outputBuffers.pollFirst();
@@ -689,6 +657,11 @@ public class PullMetaDataConnection implements Selectable {
 	}
 	
 	public void doStateChecks(long now) throws IOException {
+		// connections sharing a pool might get stalled if no more requests are left
+		doMetaRequests();
+		// hash check may have finished or failed due to other pool members
+		checkMetaRequests();
+		
 		if(now - lastReceivedTime > RCV_TIMEOUT || consecutiveKeepAlives >= 2) {
 			terminate("closing idle connection "+Integer.toBinaryString(state)+" "+outstandingRequests+" "+outputBuffers.size()+" "+inputBuffer);
 		}
@@ -697,12 +670,15 @@ public class PullMetaDataConnection implements Selectable {
 			terminate("async close detected");
 	}
 	
-	private void terminate(String reason) throws IOException {
+	public void terminate(String reason) throws IOException {
 		if(isState(STATE_CLOSED))
 			return;
 		//if(!isState(STATE_FINISHED) && !isState(STATE_CONNECTING))
 			//MetaDataGatherer.log("closing connection for "+(infoHash != null ? new Key(infoHash).toString(false) : null)+" to "+destination+"/"+remoteClient+" state:"+state+" reason:"+reason);
-		connManager.deRegister(this);
+		if(pool != null)
+			pool.deRegister(this);
+		if(connManager != null)
+			connManager.deRegister(this);
 		setState(STATE_CLOSED, true);
 		metaHandler.onTerminate(!isState(STATE_CONNECTING));
 		channel.close();

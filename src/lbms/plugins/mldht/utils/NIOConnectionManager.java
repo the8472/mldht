@@ -22,6 +22,7 @@ import java.nio.channels.Selector;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
@@ -78,8 +79,9 @@ public class NIOConnectionManager {
 				long now = System.currentTimeMillis();
 				for(Selectable conn : new ArrayList<Selectable>(connections)) {
 					conn.doStateChecks(now);
-					if(!conn.getChannel().keyFor(selector).isValid())
+					Optional.ofNullable(conn.getChannel()).map(c -> c.keyFor(selector)).filter(k -> !k.isValid()).ifPresent(k -> {
 						connections.remove(conn);
+					});
 				}
 					
 				

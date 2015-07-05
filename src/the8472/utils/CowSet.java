@@ -7,22 +7,22 @@ import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 public class CowSet<E> implements Set<E> {
 	
 	static final AtomicReferenceFieldUpdater<CowSet,HashMap> u = AtomicReferenceFieldUpdater.newUpdater(CowSet.class, HashMap.class, "backingStore");
 	
-	static final HashMap<?, Boolean> EMPTY = new HashMap<>();
-	
-	volatile HashMap<E,Boolean> backingStore = (HashMap<E, Boolean>) EMPTY;
+	volatile HashMap<E,Boolean> backingStore = new HashMap<>();
 	
 	<T> T update(Function<HashMap<E,Boolean>, ? extends T> c) {
 		HashMap<E, Boolean> current;
 		final HashMap<E, Boolean> newMap = new HashMap<>();
 		T ret;
+
 		do {
-			current = backingStore;
+			current = u.get(this);
 			newMap.clear();
 			newMap.putAll(current);
 			ret = c.apply(newMap);
@@ -49,7 +49,7 @@ public class CowSet<E> implements Set<E> {
 
 	@Override
 	public Iterator<E> iterator() {
-		return backingStore.keySet().iterator();
+		return Collections.unmodifiableCollection(backingStore.keySet()).iterator();
 	}
 
 	@Override
@@ -94,12 +94,19 @@ public class CowSet<E> implements Set<E> {
 
 	@Override
 	public void clear() {
-		backingStore = (HashMap<E, Boolean>) EMPTY;
+		backingStore = new HashMap<>();
 	}
 	
 	@Override
 	public Stream<E> stream() {
 		return backingStore.keySet().stream();
+	}
+	
+	@Override
+	public boolean removeIf(Predicate<? super E> filter) {
+		return update(m -> {
+			return m.keySet().removeIf(filter);
+		});
 	}
 	
 	public Set<E> snapshot() {

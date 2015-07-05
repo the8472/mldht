@@ -78,6 +78,8 @@ public class NIOConnectionManager {
 				long now = System.currentTimeMillis();
 				for(Selectable conn : new ArrayList<Selectable>(connections)) {
 					conn.doStateChecks(now);
+					if(!conn.getChannel().keyFor(selector).isValid())
+						connections.remove(conn);
 				}
 					
 				

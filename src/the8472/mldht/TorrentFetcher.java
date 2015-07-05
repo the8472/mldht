@@ -132,32 +132,7 @@ public class TorrentFetcher {
 		}
 		
 		void addCandidate(InetSocketAddress addr) {
-			if(pinged.add(addr)) {
-				dhts.stream().filter(d -> d.getType().PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress())).findAny().ifPresent(d -> {
-					RPCServer srv = d.getServerManager().getRandomActiveServer(false);
-					if(srv == null)
-						return;
-					PingRequest req = new PingRequest();
-					req.setDestination(addr);
-					RPCCall call = new RPCCall(req);
-					call.addListener(new RPCCallListener() {
-						
-						@Override
-						public void onTimeout(RPCCall c) {}
-						
-						@Override
-						public void onStall(RPCCall c) {}
-						
-						@Override
-						public void onResponse(RPCCall c, MessageBase rsp) {
-							priorityCanidates.add(addr);
-						}
-					});
-					srv.doCall(call);
-				});
-				canidates.add(addr);
-			}
-				
+			canidates.add(addr);
 		}
 		
 		MetadataPool getPool(int length) {
@@ -174,12 +149,57 @@ public class TorrentFetcher {
 					task.setNoAnnounce(true);
 					task.setResultHandler(this::addCandidate);
 					task.addListener(t -> thingsBlockingCompletion.decrementAndGet());
+			
 					
 					d.getTaskManager().addTask(task);
+					
+					future.thenAccept(x -> task.kill());
+					
 					thingsBlockingCompletion.incrementAndGet();
 				});
 			});
 		}
+		
+		AtomicInteger pings = new AtomicInteger(0);
+		
+		void doPings() {
+			for(InetSocketAddress addr : canidates) {
+				if(pings.get() > 10)
+					break;
+				if(!pinged.add(addr))
+					continue;
+				
+				dhts.stream().filter(d -> d.getType().PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress())).findAny().ifPresent(d -> {
+					RPCServer srv = d.getServerManager().getRandomActiveServer(false);
+					if(srv == null)
+						return;
+					PingRequest req = new PingRequest();
+					req.setDestination(addr);
+					RPCCall call = new RPCCall(req);
+					call.addListener(new RPCCallListener() {
+						
+						@Override
+						public void onTimeout(RPCCall c) {
+							pings.decrementAndGet();
+						}
+												
+						@Override
+						public void onStall(RPCCall c) {}
+						
+						@Override
+						public void onResponse(RPCCall c, MessageBase rsp) {
+							pings.decrementAndGet();
+							priorityCanidates.add(addr);
+						}
+					});
+					pings.incrementAndGet();
+					srv.doCall(call);
+				});
+								
+			}
+			
+		}
+		
 		
 		void connections() {
 			if(!running) {
@@ -193,8 +213,10 @@ public class TorrentFetcher {
 				return;
 			}
 			
-			if(openConnections.get() > maxOpen || socketsIncludingHalfOpen.get() > maxSockets)
+			if(openConnections.get() > maxOpen || socketsIncludingHalfOpen.get() > maxSockets) {
+				doPings();
 				return;
+			}
 			
 			Stream.generate(() -> {
 				InetSocketAddress addr = priorityCanidates.poll();

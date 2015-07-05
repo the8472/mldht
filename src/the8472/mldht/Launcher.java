@@ -143,7 +143,7 @@ public class Launcher {
 				@Override
 				public void run() {
 					try {
-						FileChannel.open(log, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING).close();
+						FileChannel.open(log, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING).close();
 
 						while (true) {
 
@@ -186,6 +186,7 @@ public class Launcher {
 			public void log(Throwable e, LogLevel l) {
 				exWriter.append(timeFormat(l));
 				e.printStackTrace(exWriter);
+				exWriter.flush();
 			}
 		};
  

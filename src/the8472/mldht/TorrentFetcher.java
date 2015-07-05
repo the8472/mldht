@@ -149,13 +149,12 @@ public class TorrentFetcher {
 					task.setNoAnnounce(true);
 					task.setResultHandler(this::addCandidate);
 					task.addListener(t -> thingsBlockingCompletion.decrementAndGet());
-			
+					
+					thingsBlockingCompletion.incrementAndGet();
 					
 					d.getTaskManager().addTask(task);
 					
 					future.thenAccept(x -> task.kill());
-					
-					thingsBlockingCompletion.incrementAndGet();
 				});
 			});
 		}

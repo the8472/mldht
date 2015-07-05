@@ -41,9 +41,9 @@ public class TaskManager {
 	private DHT					dht;
 	private AtomicInteger		next_id = new AtomicInteger();
 	private TaskListener		finishListener 	= t -> {
-		tasks.remove(t);
 		dht.getStats().taskFinished(t);
 		dequeue(t.getRPC().getDerivedID());
+		tasks.remove(t);
 	};
 
 	public TaskManager (DHT dht) {
@@ -66,6 +66,8 @@ public class TaskManager {
 		synchronized (q) {
 			while ((t = q.peekFirst()) != null && canStartTask(t)) {
 				q.removeFirst();
+				if(t.isFinished())
+					continue;
 				tasks.add(t);
 				t.start();
 			}
@@ -93,14 +95,10 @@ public class TaskManager {
 		}
 		
 		Key rpcId = task.getRPC().getDerivedID();
-		Deque<Task> q = queued.get(rpcId);
-		if (q == null)
-		{
-			Deque<Task> t = new LinkedList<Task>();
-			q = queued.putIfAbsent(rpcId, t);
-			if(q == null)
-				q = t;
-		}
+		
+		
+		
+		Deque<Task> q = queued.computeIfAbsent(rpcId, k -> new LinkedList<>());;
 			
 		synchronized (q)
 		{

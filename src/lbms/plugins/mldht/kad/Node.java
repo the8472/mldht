@@ -383,6 +383,8 @@ public class Node {
 		// don't timeout anything if we don't have a connection
 		if(isInSurvivalMode())
 			return;
+		if(!call.getRequest().getServer().isReachable())
+			return;
 		
 		InetSocketAddress dest = call.getRequest().getDestination();
 		

@@ -69,7 +69,7 @@ public class CowSet<E> implements Set<E> {
 
 	@Override
 	public boolean remove(Object o) {
-		return update(m -> m.remove(o));
+		return update(m -> m.keySet().remove(o));
 	}
 
 	@Override

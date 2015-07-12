@@ -16,7 +16,7 @@ Implemented specs:
 |[BEP42](http://bittorrent.org/beps/bep_0042.html)|DHT Announce Security| Partial; only the `ip` fields for external address discovery are supported |
 |[BEP9](http://bittorrent.org/beps/bep_0009.html)|Metadata exchange| Partial; only fetching is supported |
 |[libtorrent.org](http://www.libtorrent.org/dht_extensions.html)| Extended `get_peers` response<br> Forward compatibility<br> Client identification|Yes|
-|pending|multi-homing/multi-address mode|Yes|
+|[BEP45](http://bittorrent.org/beps/bep_0045.html)|multi-homing/multi-address mode|Yes|
 |[BEP44](http://bittorrent.org/beps/bep_0044.html)|Arbitrary data storage|Yes| 
 
 Additional:

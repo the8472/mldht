@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Predicate;
 
 import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.utils.PackUtil;
@@ -35,6 +36,7 @@ public class KClosestNodesSearch {
 	private int							max_entries;
 	private DHT							owner;
 	private Comparator<KBucketEntry> comp;
+	public Predicate<KBucketEntry> filter = KBucketEntry::eligibleForNodesList;
 
 	/**
 	 * Constructor sets the key to compare with
@@ -99,7 +101,7 @@ This requires a non-contiguous search
 	
 	
 	private void insertBucket(KBucket bucket) {
-		bucket.entriesStream().filter(e -> !e.isBad()).forEach(entries::add);
+		bucket.entriesStream().filter(filter).forEach(entries::add);
 	}
 	
 	private void shave() {

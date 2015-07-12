@@ -27,7 +27,7 @@ public class OnInsertValidations {
 	public void setup() {
 		DHT dht = new DHT(DHTtype.IPV6_DHT);
 		node = new Node(dht);
-		nodeId = node.registerServer(null);
+		nodeId = node.registerId();
 	}
 	
 	private PingResponse buildResponse(Key k, InetSocketAddress origin) {

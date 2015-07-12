@@ -29,13 +29,16 @@ import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -109,7 +112,8 @@ public class RPCServer {
 		this.addr = addr;
 		this.manager = manager;
 		// reserve an ID
-		derivedId = dh_table.getNode().registerServer(this);
+		derivedId = dh_table.getNode().registerId();
+		dh_table.getNode().registerServer(this);
 	}
 	
 	public DHT getDHT()
@@ -161,16 +165,21 @@ public class RPCServer {
 		{
 			DHT.log(e, LogLevel.Error);
 		}
-		dh_table.getNode().removeServer(this);
+		dh_table.getNode().removeId(derivedId);
 		manager.serverRemoved(this);
 		pipeline.clear();
 	}
+	
+	
+	Collection<Consumer<RPCCall>> enqueueEventConsumers = new CopyOnWriteArrayList<>();
 
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#doCall(lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
 	public void doCall (RPCCall c) {
+		
+		enqueueEventConsumers.forEach(callback -> callback.accept(c));
 		
 		while(true)
 		{
@@ -189,6 +198,10 @@ public class RPCServer {
 				break;
 			}
 		}
+	}
+	
+	public void onEnqueue(Consumer<RPCCall> listener) {
+		enqueueEventConsumers.add(listener);
 	}
 	
 	private final RPCCallListener rpcListener = new RPCCallListener() {

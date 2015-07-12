@@ -36,6 +36,7 @@ import the8472.utils.concurrent.SerializedTaskExecutor;
 public class PingRefreshTask extends Task {
 
 	private boolean							cleanOnTimeout;
+	boolean									alsoCheckGood	= false;
 	private Map<MessageBase, KBucketEntry>	lookupMap;
 
 	/**
@@ -45,15 +46,26 @@ public class PingRefreshTask extends Task {
 	 * @param cleanOnTimeout if true Nodes that fail to respond are removed. should be false for normal use.
 	 */
 	public PingRefreshTask (RPCServer rpc, Node node, KBucket bucket, boolean cleanOnTimeout) {
+
+		// TODO: remove bucket constructor argument, remove target ID/make it optional
 		super(rpc.getDerivedID(),rpc, node);
 		this.cleanOnTimeout = cleanOnTimeout;
 		if (cleanOnTimeout) {
 			lookupMap = new HashMap<MessageBase, KBucketEntry>();
 		}
-
+		
+		addBucket(bucket);
+	}
+	
+	public void checkGoodEntries(boolean val) {
+		alsoCheckGood = val;
+	}
+	
+	public void addBucket(KBucket bucket) {
 		if (bucket != null) {
+			bucket.updateRefreshTimer();
 			for (KBucketEntry e : bucket.getEntries()) {
-				if (e.isQuestionable() || cleanOnTimeout) {
+				if (e.needsPing() || cleanOnTimeout || alsoCheckGood) {
 					todo.add(e);
 				}
 			}
@@ -99,7 +111,7 @@ public class PingRefreshTask extends Task {
 		while(!todo.isEmpty() && canDoRequest()) {
 			KBucketEntry e = todo.first();
 
-			if (e.isGood()) {
+			if (!alsoCheckGood && e.needsPing()) {
 				todo.remove(e);
 				continue;
 			}

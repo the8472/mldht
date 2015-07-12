@@ -16,6 +16,9 @@
  */
 package lbms.plugins.mldht.kad;
 
+import static java.lang.Math.max;
+import static java.lang.Math.min;
+
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -34,6 +37,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -49,6 +53,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.tasks.NodeLookup;
 import lbms.plugins.mldht.kad.tasks.PingRefreshTask;
+import lbms.plugins.mldht.kad.tasks.Task;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import the8472.utils.CowSet;
 import the8472.utils.Pair;
@@ -92,6 +97,7 @@ public class Node {
 	private int num_entries;
 	private final CowSet<Key> usedIDs = new CowSet<>();
 	private volatile Map<InetAddress,RoutingTableEntry> knownNodes = new HashMap<InetAddress, RoutingTableEntry>();
+	private Map<KBucket, Task> maintenanceTasks = new IdentityHashMap<>();
 	
 	Collection<NetMask> trustedNodes = Collections.emptyList();
 	
@@ -134,7 +140,8 @@ public class Node {
 			if(!entry.getID().equals(id)) {
 				// ID mismatch
 				
-				if(msg.getAssociatedCall() != null) {
+				
+				if(associatedCall.isPresent()) {
 					/*
 					 *  we are here because:
 					 *  a) a node with that IP is in our routing table
@@ -148,6 +155,27 @@ public class Node {
 					
 					DHT.logInfo("force-removing routing table entry "+entry+" because ID-change was detected; new ID:" + msg.getID());
 					bucket.removeEntryIfBad(entry, true);
+					
+					// might be pollution attack, check other entries in the same bucket too in case random pings can't keep up with scrubbing.
+					RPCServer srv = msg.getServer();
+					if(srv != null) {
+						PingRefreshTask t = new PingRefreshTask(srv, this, null, false);
+						if(maintenanceTasks.putIfAbsent(bucket, t) == null) {
+							t.addListener(x -> maintenanceTasks.remove(bucket, t));
+							t.checkGoodEntries(true);
+							t.addBucket(bucket);
+							// home bucket or something close to it, check adjacent buckets too
+							if(bucket.getNumEntries() < DHTConstants.MAX_ENTRIES_PER_BUCKET) {
+								List<RoutingTableEntry> table = routingTableCOW;
+								int idx = Node.findIdxForId(table, entry.getID());
+								t.addBucket(table.get(max(0,idx - 1)).getBucket());
+								t.addBucket(table.get(min(table.size()-1,idx+1)).getBucket());
+							}
+							t.setInfo("checking sibling bucket entries after ID change was detected");
+							dht.getTaskManager().addTask(t);
+							
+						}
+					}
 				}
 				
 				// even if this is not a response we don't want inmsert this in the routing table, it's an ID mismatch after all
@@ -176,7 +204,11 @@ public class Node {
 		
 		KBucketEntry newEntry = new KBucketEntry(msg.getOrigin(), id);
 		newEntry.setVersion(msg.getVersion());
-		associatedCall.ifPresent(c -> newEntry.signalResponse(c.getRTT()));
+		associatedCall.ifPresent(c -> {
+			newEntry.signalResponse(c.getRTT());
+			// fudge it. it's not actually the sent time, but it's a successful response, so who cares
+			newEntry.signalScheduledRequest();
+		});
 		
 		/*
 		if(scanForMismatchedEntry(newEntry)) {
@@ -403,14 +435,25 @@ public class Node {
 		return dht.getServerManager().getActiveServerCount() == 0;
 	}
 	
-	void removeServer(RPCServer server)
+	void removeId(Key k)
 	{
-		if(server.getDerivedID() != null) {
-			usedIDs.removeIf(e -> e.equals(server.getDerivedID()));
-		}
+		usedIDs.remove(k);
 	}
 	
-	Key registerServer(RPCServer server)
+	void registerServer(RPCServer srv) {
+		srv.onEnqueue(this::onOutgoingRequest);
+	}
+	
+	private void onOutgoingRequest(RPCCall c) {
+		Key expectedId = c.getExpectedID();
+		KBucket bucket = findBucketForId(expectedId).getBucket();
+		bucket.findByIPorID(c.getRequest().getDestination().getAddress(), expectedId).ifPresent(entry -> {
+			entry.signalScheduledRequest();
+		});
+		
+	}
+	
+	Key registerId()
 	{
 		int idx = 0;
 		Key k = null;
@@ -515,7 +558,7 @@ public class Node {
 					b.removeEntryIfBad(entry, true);
 				if(localIds.contains(entry.getID()))
 					b.removeEntryIfBad(entry, true);
-				allBad &= entry.isBad();
+				allBad &= entry.needsReplacement();
 				
 				
 			}
@@ -528,28 +571,27 @@ public class Node {
 			}
 				
 			
-			if (b.needsToBeRefreshed())
+			if (!maintenanceTasks.containsKey(b) && b.needsToBeRefreshed())
 			{
-				// if the bucket survived that test, ping it
-				DHT.logDebug("Refreshing Bucket: " + e.prefix);
-				// the key needs to be the refreshed
-				
 				
 				RPCServer srv = dht.getServerManager().getRandomActiveServer(true);
 				if(srv != null) {
 					PingRefreshTask prt = new PingRefreshTask(srv, this, b, false);
 					
-					b.setRefreshTask(prt);
 					prt.setInfo("Refreshing Bucket #" + e.prefix);
 					
-					if(prt.getTodoCount() > 0)
+					if(prt.getTodoCount() > 0 && maintenanceTasks.putIfAbsent(b, prt) == null) {
+						prt.addListener(x -> maintenanceTasks.remove(b, prt));
 						dht.getTaskManager().addTask(prt);
+					}
+						
 				}
 					
 
 
-			} else if(!isInSurvivalMode())
-			{
+			}
+			
+			if(!isInSurvivalMode())	{
 				// only replace 1 bad entry with a replacement bucket entry at a time (per bucket)
 				b.checkBadEntries();
 			}
@@ -585,16 +627,15 @@ public class Node {
 	 * @param dh_table
 	 */
 	public void fillBuckets (DHTBase dh_table) {
+		List<RoutingTableEntry> table = routingTableCOW;
 
-		for (int i = 0;i<routingTableCOW.size();i++) {
-			RoutingTableEntry entry = routingTableCOW.get(i);
+		for (int i = 0;i<table.size();i++) {
+			RoutingTableEntry entry = table.get(i);
 
 			if (entry.bucket.getNumEntries() < DHTConstants.MAX_ENTRIES_PER_BUCKET) {
-				DHT.logDebug("Filling Bucket: " + entry.prefix);
 
 				NodeLookup nl = dh_table.fillBucket(entry.prefix.createRandomKeyFromPrefix(), entry.bucket);
 				if (nl != null) {
-					entry.bucket.setRefreshTask(nl);
 					nl.setInfo("Filling Bucket #" + entry.prefix);
 				}
 			}

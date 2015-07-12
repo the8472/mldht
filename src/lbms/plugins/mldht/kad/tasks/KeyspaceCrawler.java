@@ -177,7 +177,7 @@ public class KeyspaceCrawler extends Task {
 		
 		outer: for (RoutingTableEntry bucket : node.getBuckets())
 			for (KBucketEntry e : bucket.getBucket().getEntries())
-				if (!e.isBad())
+				if (e.eligibleForLocalLookup())
 				{
 					todo.add(e);
 					added++;

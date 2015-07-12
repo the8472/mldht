@@ -70,10 +70,17 @@ public class KBucketEntry implements Serializable {
 	private InetSocketAddress	addr;
 	private Key					nodeID;
 	private long				lastSeen;
-	private int					failedQueries	= 0;
+	
+	/**
+	 *   -1 = never queried / learned about it from incoming requests
+	 *    0 = last query was a success
+	 *  > 0 = query failed
+	 */
+	private int					failedQueries	= -1;
 	private long				timeCreated;
 	private String				version;
 	private transient ExponentialWeightendMovingAverage avgRTT;
+	private transient long lastSendTime;
 
 	{ // delegate transient stuff to be handled the same way as on deserialization
 		fieldInitializers();
@@ -86,6 +93,7 @@ public class KBucketEntry implements Serializable {
 	
 	private void fieldInitializers() {
 		avgRTT = new ExponentialWeightendMovingAverage().setWeight(RTT_EMA_WEIGHT);
+		lastSendTime = -1;
 	}
 
 	/**
@@ -209,54 +217,78 @@ public class KBucketEntry implements Serializable {
 	@Override
 	public String toString() {
 		long now = System.currentTimeMillis();
-		return nodeID+"/"+addr+";seen:"+Duration.ofMillis(now-lastSeen)+";age:"+Duration.ofMillis(now-timeCreated)+(failedQueries>0?";fail:"+failedQueries:"")+";rtt:"+avgRTT.getAverage()+(version!=null?";ver:"+prettyPrint(version):"");
+		StringBuilder b = new StringBuilder(80);
+		b.append(nodeID+"/"+addr);
+		if(lastSendTime > 0)
+			b.append(";sent:"+Duration.ofMillis(now-lastSendTime));
+		b.append(";seen:"+Duration.ofMillis(now-lastSeen));
+		b.append(";age:"+Duration.ofMillis(now-timeCreated));
+		if(failedQueries != 0)
+			b.append(";fail:"+failedQueries);
+		double rtt = avgRTT.getAverage();
+		if(!Double.isNaN(rtt))
+			b.append(";rtt:"+rtt);
+		if(version != null)
+			b.append(";ver:"+prettyPrint(version));
+			
+		return b.toString();
 	}
 
-	/**
-	 * Checks if the node is Good.
-	 *
-	 * A node is considered Good if it has responded in the last 15 min
-	 *
-	 * @return true if the node as responded in the last 15 min.
-	 */
-	public boolean isGood () {
-		return !isQuestionable();
+
+
+
+	// 5 timeouts, used for exponential backoff as per kademlia paper
+	public static final int MAX_TIMEOUTS = 5;
+	
+	// haven't seen it for a long time + timeout == evict sooner than pure timeout based threshold. e.g. for old entries that we haven't touched for a long time
+	public static final int OLD_AND_STALE_TIME = 15*60*1000;
+	public static final int PING_BACKOFF_BASE_INTERVAL = 60*1000;
+	public static final int OLD_AND_STALE_TIMEOUTS = 2;
+	
+	public boolean eligibleForNodesList() {
+		// 1 timeout can occasionally happen. should be fine to hand it out as long as we've verified it at least once
+		if(failedQueries < 0 || failedQueries > 1)
+			return false;
+		
+		return true;
+	}
+	
+	
+	public boolean eligibleForLocalLookup() {
+		// allow implicit initial ping during lookups
+		if(failedQueries < -1 || failedQueries > 3)
+			return false;
+		return true;
+	}
+	
+	public int failedQueries() {
+		return Math.abs(failedQueries);
+	}
+	
+	public boolean needsPing() {
+		long now = System.currentTimeMillis();
+		// backoff for pings
+		if(now - lastSendTime < PING_BACKOFF_BASE_INTERVAL * failedQueries())
+			return false;
+			
+		
+		return failedQueries != 0 || now - lastSeen > OLD_AND_STALE_TIME;
 	}
 
-	/**
-	 * Checks if a node is Questionable.
-	 *
-	 * A node is considered Questionable if it hasn't responded in the last 15 min
-	 *
-	 * @return true if peer hasn't responded in the last 15 min.
-	 */
-	public boolean isQuestionable () {
-		return (System.currentTimeMillis() - lastSeen > DHTConstants.KBE_QUESTIONABLE_TIME || isBad());
+	// old entries, e.g. from routing table reload
+	private boolean oldAndStale() {
+		return failedQueries > OLD_AND_STALE_TIMEOUTS && System.currentTimeMillis() - lastSeen > OLD_AND_STALE_TIME;
 	}
-
-	/**
-	 * Checks if a node is Bad.
-	 *
-	 * A node is bad if it isn't good and hasn't responded the last 3 queries, or
-	 * failed 5 times. i
-	 *
-	 * @return true if bad
-	 */
-	public boolean isBad () {
-		if (failedQueries >= DHTConstants.KBE_BAD_IMMEDIATLY_ON_FAILED_QUERIES) {
-	        return true;
-        }
-		if(failedQueries > DHTConstants.KBE_BAD_IF_FAILED_QUERIES_LARGER_THAN &&
-			System.currentTimeMillis() - lastSeen > DHTConstants.KBE_QUESTIONABLE_TIME) {
-	        return true;
-        }
-		return false;
+	
+	public boolean needsReplacement() {
+		return failedQueries < -1 || failedQueries > MAX_TIMEOUTS || oldAndStale();
 	}
 
 	public void mergeInTimestamps(KBucketEntry other) {
 		if(!this.equals(other))
 			return;
 		lastSeen = Math.max(lastSeen, other.getLastSeen());
+		lastSendTime = Math.max(lastSendTime, other.lastSendTime);
 		timeCreated = Math.min(timeCreated, other.getCreationTime());
 		if(!Double.isNaN(other.avgRTT.getAverage()) )
 			avgRTT.updateAverage(other.avgRTT.getAverage());
@@ -276,12 +308,19 @@ public class KBucketEntry implements Serializable {
 		if(rtt > 0)
 			avgRTT.updateAverage(rtt);
 	}
+	
+	public void signalScheduledRequest() {
+		lastSendTime = System.currentTimeMillis();
+	}
 
 
 	/**
 	 * Should be called to signal that a request to this peer has timed out;
 	 */
 	public void signalRequestTimeout () {
-		failedQueries++;
+		if(failedQueries >= 0)
+			failedQueries++;
+		else
+			failedQueries--;
 	}
 }

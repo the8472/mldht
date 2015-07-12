@@ -56,7 +56,7 @@ public class KClosestNodeSearchTest {
 				return false;
 			}
 		});
-		node.registerServer(null);
+		node.registerId();
 		//node.registerServer(null);
 		//node.registerServer(null);
 	}
@@ -64,6 +64,12 @@ public class KClosestNodeSearchTest {
 	@Test
 	public void testOrdering() {
 		fillTable(node);
+		// KNS only accepts pinged entries
+		node.getBuckets().forEach(b -> {
+			b.getBucket().entriesStream().forEach(e -> {
+				e.signalResponse(1);
+			});
+		});
 		
 		Key k = Key.createRandomKey();
 		
@@ -76,7 +82,7 @@ public class KClosestNodeSearchTest {
 		search.fill();
 		List<KBucketEntry> result = search.getEntries();
 		
-		List<KBucketEntry> reference = node.getBuckets().stream().flatMap(b -> b.getBucket().entriesStream()).filter(e -> !e.isBad()).sorted(comp).limit(targetSize).collect(Collectors.toList());
+		List<KBucketEntry> reference = node.getBuckets().stream().flatMap(b -> b.getBucket().entriesStream()).filter(KBucketEntry::eligibleForNodesList).sorted(comp).limit(targetSize).collect(Collectors.toList());
 		
 		
 		List<KBucketEntry> sortedResult = new ArrayList<>(result);

@@ -29,7 +29,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -37,8 +36,6 @@ import java.util.stream.Stream;
 
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
-import lbms.plugins.mldht.kad.messages.PingRequest;
-import lbms.plugins.mldht.kad.tasks.Task;
 
 /**
  * A KBucket is just a list of KBucketEntry objects.
@@ -63,16 +60,12 @@ public class KBucket implements Externalizable {
 	private AtomicReferenceArray<KBucketEntry>	replacementBucket;
 	
 	private Node						node;
-	private Map<Key,KBucketEntry>		pendingPings;
-	private long						last_modified;
-	private Task						refresh_task;
+	private long						lastRefresh;
 	
 	public KBucket () {
 		entries = new ArrayList<KBucketEntry>(); // using arraylist here since reading/iterating is far more common than writing.
 		currentReplacementPointer = new AtomicInteger(0);
 		replacementBucket = new AtomicReferenceArray<KBucketEntry>(DHTConstants.MAX_ENTRIES_PER_BUCKET);
-		// .size() is called on every insert, it's rarely used and is limited to 2... so use a cow set for high throughput
-		pendingPings = new ConcurrentSkipListMap<Key, KBucketEntry>();
 	}
 
 	public KBucket (Node node) {
@@ -94,7 +87,6 @@ public class KBucket implements Externalizable {
 		for(KBucketEntry existing : entriesRef) {
 			if(existing.equals(newEntry) && newEntry.getAddress().getPort() == existing.getAddress().getPort()) {
 				existing.mergeInTimestamps(newEntry);
-				adjustTimerOnInsert(existing);
 				return;
 			}
 			
@@ -123,11 +115,11 @@ public class KBucket implements Externalizable {
 		{
 			modifyMainBucket(youngest,newEntry);
 			// it was a useful entry, see if we can use it to replace something questionable
-			pingQuestionable(youngest);
+			insertInReplacementBucket(youngest);
 			return;
 		}
 		
-		pingQuestionable(newEntry);
+		insertInReplacementBucket(newEntry);
 	}
 	
 	
@@ -163,7 +155,6 @@ public class KBucket implements Externalizable {
 				if(added)
 				{
 					newEntries.add(toInsert);
-					adjustTimerOnInsert(toInsert);
 				} else
 				{
 					insertInReplacementBucket(toInsert);
@@ -250,110 +241,21 @@ public class KBucket implements Externalizable {
 	 */
 	public boolean needsToBeRefreshed () {
 		long now = System.currentTimeMillis();
-		if(refresh_task != null && refresh_task.isFinished())
-			refresh_task = null;
-		
 
-		return (now - last_modified > DHTConstants.BUCKET_REFRESH_INTERVAL
-				&& refresh_task == null && entries.size() > 0);
+		return (now - lastRefresh > DHTConstants.BUCKET_REFRESH_INTERVAL && entries.stream().anyMatch(KBucketEntry::needsPing));
 	}
 
 	/**
 	 * Resets the last modified for this Bucket
 	 */
 	public void updateRefreshTimer () {
-		last_modified = System.currentTimeMillis();
+		lastRefresh = System.currentTimeMillis();
 	}
 	
 
 	@Override
 	public String toString() {
 		return "entries: "+entries+" replacements: "+replacementBucket;
-	}
-
-	private void adjustTimerOnInsert(KBucketEntry entry)
-	{
-		if(entry.getLastSeen() > last_modified) {
-			last_modified = entry.getLastSeen();
-		}
-	}
-
-	/**
-	 * Pings an entry and notifies the listener of the result.
-	 *
-	 * @param entry entry to ping
-	 * @return true if the ping was sent, false if there already is an outstanding ping for that entry
-	 */
-	private boolean pingEntry(final KBucketEntry entry, RPCCallListener listener)
-	{
-		// don't ping if there already is an outstanding ping
-		if(pendingPings.containsKey(entry.getID())) {
-	        return false;
-        }
-
-		PingRequest p = new PingRequest();
-		p.setDestination(entry.getAddress());
-		pendingPings.put(entry.getID(),entry);
-		
-		RPCServer activeServer = node.getDHT().getServerManager().getRandomActiveServer(false);
-				
-		if(activeServer == null)
-			return false;
-		
-		activeServer.doCall(new RPCCall(p).setExpectedID(entry.getID()).addListener(listener).addListener(new RPCCallListener() {
-			public void onTimeout(RPCCall c) {
-				pendingPings.remove(entry.getID());
-			}
-
-			// performance doesn't matter much here, ignore stalls
-			public void onStall(RPCCall c) {}
-
-			public void onResponse(RPCCall c, MessageBase rsp) {
-				pendingPings.remove(entry.getID());
-			}
-		}));
-		
-		return true;
-	}
-	
-	private void pingQuestionable (final KBucketEntry replacement_entry) {
-		if (pendingPings.size() >= 2) {
-			insertInReplacementBucket(replacement_entry);
-			return;
-		}
-
-		// we haven't found any bad ones so try the questionable ones
-		for (final KBucketEntry toTest : entries)
-		{
-			if (toTest.isQuestionable() && pingEntry(toTest, new RPCCallListener() {
-				public void onTimeout(RPCCall c) {
-					modifyMainBucket(toTest, replacement_entry);
-					// we could replace this one, try another one.
-					KBucketEntry nextReplacementEntry;
-					nextReplacementEntry = getBestReplacementEntry();
-					if (nextReplacementEntry != null && !replaceBadEntry(nextReplacementEntry))
-						pingQuestionable(nextReplacementEntry);
-				}
-
-				// performance doesn't matter much here. ignore stall
-				public void onStall(RPCCall c) {}
-
-				public void onResponse(RPCCall c, MessageBase rsp) {
-					// it's alive, check another one
-					if (!replaceBadEntry(replacement_entry))
-					{
-						pingQuestionable(replacement_entry);
-					}
-				}
-			}))
-			{
-				return;
-			}
-		}
-
-		//save the entry if all are good
-		insertInReplacementBucket(replacement_entry);
-
 	}
 
 	/**
@@ -366,7 +268,7 @@ public class KBucket implements Externalizable {
 		List<KBucketEntry> entriesRef = entries;
 		for (int i = 0,n=entriesRef.size();i<n;i++) {
 			KBucketEntry e = entriesRef.get(i);
-			if (e.isBad()) {
+			if (e.needsReplacement()) {
 				// bad one get rid of it
 				modifyMainBucket(e, entry);
 				return true;
@@ -448,16 +350,8 @@ public class KBucket implements Externalizable {
 	 */
 	public void checkBadEntries() {
 		List<KBucketEntry> entriesRef = entries;
-		KBucketEntry toRemove = null;
+		KBucketEntry toRemove = entriesRef.stream().filter(KBucketEntry::needsReplacement).findAny().orElse(null);
 		
-		for (int i=0,n=entriesRef.size();i<n;i++)
-		{
-			KBucketEntry e = entriesRef.get(i);
-			if (!e.isBad())
-				continue;
-			toRemove = e;
-			break;
-		}
 		if (toRemove == null)
 			return;
 		
@@ -499,7 +393,7 @@ public class KBucket implements Externalizable {
 	 */
 	public void removeEntryIfBad(KBucketEntry toRemove, boolean force) {
 		List<KBucketEntry> entriesRef = entries;
-		if (entriesRef.contains(toRemove) && (force || toRemove.isBad()))
+		if (entriesRef.contains(toRemove) && (force || toRemove.needsReplacement()))
 		{
 			KBucketEntry replacement = null;
 			replacement = getBestReplacementEntry();
@@ -518,13 +412,6 @@ public class KBucket implements Externalizable {
 		this.node = node;
 	}
 
-	/**
-	 * @param refresh_task the refresh_task to set
-	 */
-	public void setRefreshTask (Task refresh_task) {
-		this.refresh_task = refresh_task;
-	}
-	
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		Map<String,Object> serialized = (Map<String, Object>) in.readObject();
 		Object obj = serialized.get("mainBucket");
@@ -541,7 +428,7 @@ public class KBucket implements Externalizable {
 			
 		obj = serialized.get("lastModifiedTime");
 		if(obj instanceof Long)
-			last_modified = (Long)obj;
+			lastRefresh = (Long)obj;
 		obj = serialized.get("prefix");
 		
 		entries.removeAll(Collections.singleton(null));
@@ -554,7 +441,7 @@ public class KBucket implements Externalizable {
 		// put entries as any type of collection, will convert them on deserialisation
 		serialized.put("mainBucket", entries);
 		serialized.put("replacementBucket", getReplacementEntries());
-		serialized.put("lastModifiedTime", last_modified);
+		serialized.put("lastModifiedTime", lastRefresh);
 
 		out.writeObject(serialized);
 	}

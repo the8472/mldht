@@ -351,7 +351,7 @@ public class PeerLookupTask extends Task {
 		//delay the filling of the todo list until we actually start the task
 		KClosestNodesSearch kns = new KClosestNodesSearch(targetKey,
 				DHTConstants.MAX_ENTRIES_PER_BUCKET * 4,rpc.getDHT());
-
+		kns.filter = KBucketEntry::eligibleForLocalLookup;
 		kns.fill();
 		todo.addAll(kns.getEntries());
 		

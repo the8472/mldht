@@ -179,6 +179,10 @@ public class RPCServer {
 	 */
 	public void doCall (RPCCall c) {
 		
+		MessageBase req = c.getRequest();
+		if(req.getServer() == null)
+			req.setServer(this);
+		
 		enqueueEventConsumers.forEach(callback -> callback.accept(c));
 		
 		while(true)

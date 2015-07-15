@@ -120,9 +120,12 @@ public class Key implements Radixable<Key>, Serializable {
 	 * compares Keys according to their natural distance
 	 */
 	public int compareTo (Key o) {
-		for (int i = 0,n=min(hash.length,o.hash.length); i < n; i+=4) {
-			int a = Byte.toUnsignedInt(hash[i]) << 24 | Byte.toUnsignedInt(hash[i+1]) << 16 | Byte.toUnsignedInt(hash[i+2]) << 8 | Byte.toUnsignedInt(hash[i+3]);
-			int b = Byte.toUnsignedInt(o.hash[i]) << 24 | Byte.toUnsignedInt(o.hash[i+1]) << 16 | Byte.toUnsignedInt(o.hash[i+2]) << 8 | Byte.toUnsignedInt(o.hash[i+3]);
+		byte[] h1 = hash;
+		byte[] h2 = o.hash;
+		
+		for (int i = 0,n=min(h1.length,h2.length); i < n; i+=4) {
+			int a = Byte.toUnsignedInt(h1[i]) << 24 | Byte.toUnsignedInt(h1[i+1]) << 16 | Byte.toUnsignedInt(h1[i+2]) << 8 | Byte.toUnsignedInt(h1[i+3]);
+			int b = Byte.toUnsignedInt(h2[i]) << 24 | Byte.toUnsignedInt(h2[i+1]) << 16 | Byte.toUnsignedInt(h2[i+2]) << 8 | Byte.toUnsignedInt(h2[i+3]);
 			int t = Integer.compareUnsigned(a, b);
 			if(t != 0)
 				return t;
@@ -137,13 +140,19 @@ public class Key implements Radixable<Key>, Serializable {
 	 */
 	public int threeWayDistance(Key k1, Key k2)
 	{
-		for (int i = 0,n=hash.length; i+3 < n; i+=4) {
-			int h = Byte.toUnsignedInt(hash[i]) << 24 | Byte.toUnsignedInt(hash[i+1]) << 16 | Byte.toUnsignedInt(hash[i+2]) << 8 | Byte.toUnsignedInt(hash[i+3]);
-			int a = Byte.toUnsignedInt(k1.hash[i]) << 24 | Byte.toUnsignedInt(k1.hash[i+1]) << 16 | Byte.toUnsignedInt(k1.hash[i+2]) << 8 | Byte.toUnsignedInt(k1.hash[i+3]);
-			int b = Byte.toUnsignedInt(k2.hash[i]) << 24 | Byte.toUnsignedInt(k2.hash[i+1]) << 16 | Byte.toUnsignedInt(k2.hash[i+2]) << 8 | Byte.toUnsignedInt(k2.hash[i+3]);
+		byte[] h0 = hash;
+		byte[] h1 = k1.hash;
+		byte[] h2 = k2.hash;
+		
+		for (int i = 0,n=min(min(h0.length,h1.length), h2.length) - 3; i < n; i+=4) {
+			int a = Byte.toUnsignedInt(h1[i]) << 24 | Byte.toUnsignedInt(h1[i+1]) << 16 | Byte.toUnsignedInt(h1[i+2]) << 8 | Byte.toUnsignedInt(h1[i+3]);
+			int b = Byte.toUnsignedInt(h2[i]) << 24 | Byte.toUnsignedInt(h2[i+1]) << 16 | Byte.toUnsignedInt(h2[i+2]) << 8 | Byte.toUnsignedInt(h2[i+3]);
 			
 			if(a == b)
 				continue;
+
+			int h = Byte.toUnsignedInt(h0[i]) << 24 | Byte.toUnsignedInt(h0[i+1]) << 16 | Byte.toUnsignedInt(h0[i+2]) << 8 | Byte.toUnsignedInt(h0[i+3]);
+
 			//needs & 0xFF since bytes are signed in Java
 			//so we must convert to int to compare it unsigned
 			int byte1 = (a ^ h);

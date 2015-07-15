@@ -99,17 +99,21 @@ public class Prefix extends Key {
 		if(n < 0)
 			return true;
 		
+		byte[] h1 = k1.hash;
+		byte[] h2 = k2.hash;
+		
+		int lastToCheck = n >>> 3;
+		
 		// check all complete bytes preceding the bit we want to check
-		for(int i=0;i<n/8;i++)
+		for(int i=0;i<lastToCheck ;i++)
 		{
-			if(k1.hash[i] != k2.hash[i])
+			if(h1[i] != h2[i])
 				return false;
 		}
 		
-		// check the bits
-		int mask = (0xFF80 >> n % 8) & 0xFF;
+		int diff = (h1[lastToCheck] ^ h2[lastToCheck]) & 0xff;
 		
-		return (k1.hash[n / 8] & mask) == (k2.hash[n / 8] & mask);
+		return (diff & (0xff80 >>> (n & 0x07))) == 0;
 	}
 	
 	private static void copyBits(Key source, Key destination, int depth)

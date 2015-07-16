@@ -16,9 +16,6 @@
  */
 package lbms.plugins.mldht.kad;
 
-import static java.lang.Math.max;
-import static java.lang.Math.min;
-
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -44,6 +41,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -65,6 +63,21 @@ import the8472.utils.io.NetMask;
  *
  */
 public class Node {
+	/*
+	 * Verification Strategy:
+	 * 
+	 * - trust incoming requests less than responses to outgoing requests
+	 * - most outgoing requests will have an expected ID - expected ID may come from external nodes, so don't take it at face value
+	 *  - if response does not match expected ID drop the packet for routing table accounting purposes without penalizing any existing routing table entry
+	 * - map *verified* routing table entries to IP addresses
+	 *  - lookup all routing table entry for incoming messages based on IP address (not node ID!) and ignore them if ID does not match
+	 *  - also ignore if port changed
+	 *  - drop, not just ignore, if we are sure that the incoming message is not fake (mtid-verified response)
+	 * - allow duplicate addresses for unverified entries
+	 *  - scrub later when one becomes verified
+	 * - never hand out unverified entries to other nodes
+	 * 
+	 */
 	
 	public static final class RoutingTableEntry implements Comparable<RoutingTableEntry> {
 		
@@ -74,7 +87,7 @@ public class Node {
 		}
 		
 		public final Prefix prefix;
-		private KBucket bucket;
+		final KBucket bucket;
 		
 		public KBucket getBucket() {
 			return bucket;
@@ -158,24 +171,7 @@ public class Node {
 					
 					// might be pollution attack, check other entries in the same bucket too in case random pings can't keep up with scrubbing.
 					RPCServer srv = msg.getServer();
-					if(srv != null) {
-						PingRefreshTask t = new PingRefreshTask(srv, this, null, false);
-						if(maintenanceTasks.putIfAbsent(bucket, t) == null) {
-							t.addListener(x -> maintenanceTasks.remove(bucket, t));
-							t.checkGoodEntries(true);
-							t.addBucket(bucket);
-							// home bucket or something close to it, check adjacent buckets too
-							if(bucket.getNumEntries() < DHTConstants.MAX_ENTRIES_PER_BUCKET) {
-								List<RoutingTableEntry> table = routingTableCOW;
-								int idx = Node.findIdxForId(table, entry.getID());
-								t.addBucket(table.get(max(0,idx - 1)).getBucket());
-								t.addBucket(table.get(min(table.size()-1,idx+1)).getBucket());
-							}
-							t.setInfo("checking sibling bucket entries after ID change was detected");
-							dht.getTaskManager().addTask(t);
-							
-						}
-					}
+					tryPingMaintenance(bucket, "checking sibling bucket entries after ID change was detected", srv, (t) -> t.checkGoodEntries(true));
 				}
 				
 				// even if this is not a response we don't want inmsert this in the routing table, it's an ID mismatch after all
@@ -270,6 +266,7 @@ public class Node {
 		Key nodeID = toInsert.getID();
 		
 		RoutingTableEntry tableEntry = findBucketForId(nodeID);
+
 		while(tableEntry.bucket.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET && tableEntry.prefix.getDepth() < Key.KEY_BITS - 1)
 		{
 			if(!canSplit(tableEntry, toInsert, !internalInsert && isResponse))
@@ -477,70 +474,19 @@ public class Node {
 	 */
 	public void doBucketChecks (long now) {
 		
+		boolean survival = isInSurvivalMode();
 		
 		// don't spam the checks if we're not receiving anything.
 		// we don't want to cause too many stray packets somewhere in a network
-		if(isInSurvivalMode() && now - timeOfLastPingCheck > DHTConstants.BOOTSTRAP_MIN_INTERVAL)
+		if(survival && now - timeOfLastPingCheck > DHTConstants.BOOTSTRAP_MIN_INTERVAL)
 			return;
 		timeOfLastPingCheck = now;
-
-		synchronized (CoWLock)
-		{
-			// perform bucket merge operations where possible
-			for(int i=1;i<routingTableCOW.size();i++)
-			{
-				RoutingTableEntry e1 = routingTableCOW.get(i-1);
-				RoutingTableEntry e2 = routingTableCOW.get(i);
-
-				if(e1.prefix.isSiblingOf(e2.prefix))
-				{
-					// uplift siblings if the other one is dead
-					if(e1.getBucket().getNumEntries() == 0)
-					{
-						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
-						newTable.remove(e1);
-						newTable.remove(e2);
-						newTable.add(new RoutingTableEntry(e2.prefix.getParentPrefix(), e2.getBucket()));
-						Collections.sort(newTable);
-						routingTableCOW = newTable;
-						i--;continue;
-					}
-
-					if(e2.getBucket().getNumEntries() == 0)
-					{
-						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
-						newTable.remove(e1);
-						newTable.remove(e2);
-						newTable.add(new RoutingTableEntry(e1.prefix.getParentPrefix(), e1.getBucket()));
-						Collections.sort(newTable);
-						routingTableCOW = newTable;
-						i--;continue;
-
-					}
-					
-					// check if the buckets can be merged without losing entries
-					if(e1.getBucket().getNumEntries() + e2.getBucket().getNumEntries() < DHTConstants.MAX_ENTRIES_PER_BUCKET)
-					{
-						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
-						newTable.remove(e1);
-						newTable.remove(e2);
-						newTable.add(new RoutingTableEntry(e1.prefix.getParentPrefix(), new KBucket(this)));
-						Collections.sort(newTable);
-						routingTableCOW = newTable;
-						// no need to carry over replacements. there shouldn't be any, otherwise the bucket(s) would be full
-						for(KBucketEntry e : e1.bucket.getEntries())
-							insertEntry(e, true);
-						for(KBucketEntry e : e2.bucket.getEntries())
-							insertEntry(e, true);
-						i--;continue;
-					}
-				}
-
-			}
-
-		}
+		
+		mergeBuckets();
 		
 		int newEntryCount = 0;
+		
+		Map<InetAddress, KBucket> addressDedup = new HashMap<>();
 		
 		for (RoutingTableEntry e : routingTableCOW) {
 			KBucket b = e.bucket;
@@ -549,49 +495,48 @@ public class Node {
 			
 			Set<Key> localIds = usedIDs.snapshot();
 
-			// remove boostrap nodes from our buckets
 			boolean wasFull = b.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET;
-			boolean allBad = true;
 			for (KBucketEntry entry : entries)
 			{
-				if (wasFull && DHTConstants.BOOTSTRAP_NODE_ADDRESSES.contains(entry.getAddress()))
+				// remove really old entries, ourselves and bootstrap nodes if the bucket is full
+				if ((!survival && entry.removableWithoutReplacement()) || localIds.contains(entry.getID()) || (wasFull && DHTConstants.BOOTSTRAP_NODE_ADDRESSES.contains(entry.getAddress()))) {
 					b.removeEntryIfBad(entry, true);
-				if(localIds.contains(entry.getID()))
-					b.removeEntryIfBad(entry, true);
-				allBad &= entry.needsReplacement();
+					continue;
+				}
 				
+				// remove duplicate addresses. prefer to keep reachable entries
+				addressDedup.compute(entry.getAddress().getAddress(), (addr, oldBucket) -> {
+					if(oldBucket != null) {
+						KBucketEntry oldEntry = oldBucket.findByIPorID(addr, null).orElse(null);
+						if(oldEntry != null) {
+							if(oldEntry.verifiedReachable()) {
+								b.removeEntryIfBad(entry, true);
+								return oldBucket;
+							} else if(entry.verifiedReachable()) {
+								oldBucket.removeEntryIfBad(oldEntry, true);
+							}
+						}
+					}
+					return b;
+				});
 				
 			}
+			
+			boolean allBad = b.entriesStream().allMatch(KBucketEntry::needsReplacement);
+
 
 			// clean out buckets full of bad nodes. merge operations will do the rest
-			if(!isInSurvivalMode() && allBad)
+			if(!survival && allBad)
 			{
-				e.bucket = new KBucket(this);
+				clearEntry(e);
 				continue;
 			}
 				
 			
-			if (!maintenanceTasks.containsKey(b) && b.needsToBeRefreshed())
-			{
-				
-				RPCServer srv = dht.getServerManager().getRandomActiveServer(true);
-				if(srv != null) {
-					PingRefreshTask prt = new PingRefreshTask(srv, this, b, false);
-					
-					prt.setInfo("Refreshing Bucket #" + e.prefix);
-					
-					if(prt.getTodoCount() > 0 && maintenanceTasks.putIfAbsent(b, prt) == null) {
-						prt.addListener(x -> maintenanceTasks.remove(b, prt));
-						dht.getTaskManager().addTask(prt);
-					}
-						
-				}
-					
-
-
-			}
+			if (b.needsToBeRefreshed())
+				tryPingMaintenance(b, "Refreshing Bucket #" + e.prefix);
 			
-			if(!isInSurvivalMode())	{
+			if(!survival)	{
 				// only replace 1 bad entry with a replacement bucket entry at a time (per bucket)
 				b.checkBadEntries();
 			}
@@ -606,6 +551,98 @@ public class Node {
 		rebuildAddressCache();
 	}
 	
+	void clearEntry(RoutingTableEntry e) {
+		synchronized (CoWLock) {
+			List<RoutingTableEntry> table = new ArrayList<>(routingTableCOW);
+			
+			int idx = table.indexOf(e);
+			if(idx >= 0) {
+				table.set(idx, new RoutingTableEntry(e.prefix, new KBucket()));
+				routingTableCOW = table;
+			}
+		}
+	}
+	
+	
+	void tryPingMaintenance(KBucket b, String reason, RPCServer srv, Consumer<PingRefreshTask> taskConfig) {
+		if(maintenanceTasks.containsKey(b))
+			return;
+		
+		
+		if(srv != null) {
+			PingRefreshTask prt = new PingRefreshTask(srv, this, null, false);
+			
+			if(taskConfig != null)
+				taskConfig.accept(prt);
+			prt.setInfo(reason);
+			
+			prt.addBucket(b);
+			
+			if(prt.getTodoCount() > 0 && maintenanceTasks.putIfAbsent(b, prt) == null) {
+				prt.addListener(x -> maintenanceTasks.remove(b, prt));
+				dht.getTaskManager().addTask(prt);
+			}
+				
+		}
+	}
+	
+	void tryPingMaintenance(KBucket b, String reason) {
+		RPCServer srv = dht.getServerManager().getRandomActiveServer(true);
+		tryPingMaintenance(b, reason, srv, null);
+	}
+	
+	
+	
+	
+	void mergeBuckets() {
+		synchronized (CoWLock) {
+			
+			// perform bucket merge operations where possible
+			for (int i = 1; i < routingTableCOW.size(); i++) {
+				while(i < 1)
+					continue;
+				RoutingTableEntry e1 = routingTableCOW.get(i - 1);
+				RoutingTableEntry e2 = routingTableCOW.get(i);
+
+				if (e1.prefix.isSiblingOf(e2.prefix)) {
+					// uplift siblings if the other one is dead
+					if (e1.getBucket().getNumEntries() == 0 || e2.getBucket().getNumEntries() == 0) {
+						KBucket toLift = e1.getBucket().getNumEntries() == 0 ? e2.getBucket() : e1.getBucket();
+
+						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
+						newTable.remove(e1);
+						newTable.remove(e2);
+						newTable.add(new RoutingTableEntry(e2.prefix.getParentPrefix(), toLift));
+						Collections.sort(newTable);
+						routingTableCOW = newTable;
+						i -= 2;
+						continue;
+					}
+
+					// check if the buckets can be merged without losing entries
+
+					if (e1.getBucket().getNumEntries() + e2.getBucket().getNumEntries() <= DHTConstants.MAX_ENTRIES_PER_BUCKET) {
+						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
+						newTable.remove(e1);
+						newTable.remove(e2);
+						newTable.add(new RoutingTableEntry(e1.prefix.getParentPrefix(), new KBucket(this)));
+						Collections.sort(newTable);
+						routingTableCOW = newTable;
+						// no need to carry over replacements. there shouldn't
+						// be any, otherwise the bucket(s) would be full
+						for (KBucketEntry e : e1.bucket.getEntries())
+							insertEntry(e, true);
+						for (KBucketEntry e : e2.bucket.getEntries())
+							insertEntry(e, true);
+						i -= 2;
+						continue;
+					}
+				}
+
+			}
+		}
+	}
+	
 	void rebuildAddressCache() {
 		Map<InetAddress, RoutingTableEntry> newKnownMap = new HashMap<InetAddress, RoutingTableEntry>(num_entries);
 		List<RoutingTableEntry> table = routingTableCOW;
@@ -613,7 +650,9 @@ public class Node {
 		{
 			RoutingTableEntry entry = table.get(i);
 			Stream<KBucketEntry> entries = entry.bucket.entriesStream();
-			entries.forEach(e -> {
+			// don't track unverified entries in case of address-spoofing.
+			// they'll get eliminated later
+			entries.filter(KBucketEntry::verifiedReachable).forEach(e -> {
 				newKnownMap.put(e.getAddress().getAddress(), entry);
 			});
 		}
@@ -631,8 +670,12 @@ public class Node {
 
 		for (int i = 0;i<table.size();i++) {
 			RoutingTableEntry entry = table.get(i);
+			
+			int num = entry.bucket.getNumEntries();
 
-			if (entry.bucket.getNumEntries() < DHTConstants.MAX_ENTRIES_PER_BUCKET) {
+			// just try to fill partially populated buckets
+			// not empty ones, they may arise as artifacts from deep splitting
+			if (num > 0 && num < DHTConstants.MAX_ENTRIES_PER_BUCKET) {
 
 				NodeLookup nl = dh_table.fillBucket(entry.prefix.createRandomKeyFromPrefix(), entry.bucket);
 				if (nl != null) {

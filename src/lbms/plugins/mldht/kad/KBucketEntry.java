@@ -261,6 +261,14 @@ public class KBucketEntry implements Serializable {
 		return true;
 	}
 	
+	public boolean verifiedReachable() {
+		return failedQueries >= 0;
+	}
+	
+	public boolean neverContacted() {
+		return lastSendTime == -1;
+	}
+	
 	public int failedQueries() {
 		return Math.abs(failedQueries);
 	}
@@ -268,7 +276,7 @@ public class KBucketEntry implements Serializable {
 	public boolean needsPing() {
 		long now = System.currentTimeMillis();
 		// backoff for pings
-		if(now - lastSendTime < PING_BACKOFF_BASE_INTERVAL * failedQueries())
+		if(now - lastSendTime < PING_BACKOFF_BASE_INTERVAL << Math.min(MAX_TIMEOUTS, Math.max(0, failedQueries() - 1)))
 			return false;
 			
 		
@@ -278,6 +286,12 @@ public class KBucketEntry implements Serializable {
 	// old entries, e.g. from routing table reload
 	private boolean oldAndStale() {
 		return failedQueries > OLD_AND_STALE_TIMEOUTS && System.currentTimeMillis() - lastSeen > OLD_AND_STALE_TIME;
+	}
+	
+	public boolean removableWithoutReplacement() {
+		// some non-reachable nodes may contact us repeatedly, bumping the last seen counter. they might be interesting to keep around so the back off interval keeps getting bumped
+		// but things we haven't heard from in a while and never been verified can be discarded
+		return failedQueries < -3 && System.currentTimeMillis() - lastSeen > OLD_AND_STALE_TIME;
 	}
 	
 	public boolean needsReplacement() {
@@ -318,9 +332,10 @@ public class KBucketEntry implements Serializable {
 	 * Should be called to signal that a request to this peer has timed out;
 	 */
 	public void signalRequestTimeout () {
-		if(failedQueries >= 0)
-			failedQueries++;
+		int fq = failedQueries;
+		if(fq >= 0)
+			failedQueries = fq+1;
 		else
-			failedQueries--;
+			failedQueries = fq-1;
 	}
 }

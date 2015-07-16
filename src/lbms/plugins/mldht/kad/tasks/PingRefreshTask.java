@@ -38,6 +38,7 @@ public class PingRefreshTask extends Task {
 	private boolean							cleanOnTimeout;
 	boolean									alsoCheckGood	= false;
 	private Map<MessageBase, KBucketEntry>	lookupMap;
+	KBucket									bucket;
 
 	/**
 	 * @param rpc
@@ -46,8 +47,8 @@ public class PingRefreshTask extends Task {
 	 * @param cleanOnTimeout if true Nodes that fail to respond are removed. should be false for normal use.
 	 */
 	public PingRefreshTask (RPCServer rpc, Node node, KBucket bucket, boolean cleanOnTimeout) {
-
-		// TODO: remove bucket constructor argument, remove target ID/make it optional
+		
+		// TODO: remove target ID/make it optional?
 		super(rpc.getDerivedID(),rpc, node);
 		this.cleanOnTimeout = cleanOnTimeout;
 		if (cleanOnTimeout) {
@@ -63,6 +64,9 @@ public class PingRefreshTask extends Task {
 	
 	public void addBucket(KBucket bucket) {
 		if (bucket != null) {
+			if(this.bucket !=null)
+				new IllegalStateException("a bucket already present");
+			this.bucket = bucket;
 			bucket.updateRefreshTimer();
 			for (KBucketEntry e : bucket.getEntries()) {
 				if (e.needsPing() || cleanOnTimeout || alsoCheckGood) {
@@ -108,10 +112,14 @@ public class PingRefreshTask extends Task {
 	
 	
 	final Runnable exclusiveUpdate = SerializedTaskExecutor.onceMore(() -> {
+		if(todo.isEmpty()) {
+			bucket.entriesStream().filter(KBucketEntry::needsPing).filter(e -> !hasVisited(e)).forEach(todo::add);
+		}
+		
 		while(!todo.isEmpty() && canDoRequest()) {
 			KBucketEntry e = todo.first();
 
-			if (!alsoCheckGood && !e.needsPing()) {
+			if (hasVisited(e) || (!alsoCheckGood && !e.needsPing())) {
 				todo.remove(e);
 				continue;
 			}
@@ -123,8 +131,11 @@ public class PingRefreshTask extends Task {
 					lookupMap.put(pr, e);
 				}
 			}
-			if(rpcCall(pr,e.getID(),null))
+			if(rpcCall(pr,e.getID(),null)) {
+				visited(e);
 				todo.remove(e);
+			}
+				
 		}
 	});
 	

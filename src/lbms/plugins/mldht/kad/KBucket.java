@@ -242,7 +242,7 @@ public class KBucket implements Externalizable {
 	public boolean needsToBeRefreshed () {
 		long now = System.currentTimeMillis();
 
-		return (now - lastRefresh > DHTConstants.BUCKET_REFRESH_INTERVAL && entries.stream().anyMatch(KBucketEntry::needsPing));
+		return (now - lastRefresh > DHTConstants.BUCKET_REFRESH_INTERVAL && entries.stream().anyMatch(KBucketEntry::needsPing)) || entries.stream().allMatch(KBucketEntry::neverContacted);
 	}
 
 	/**

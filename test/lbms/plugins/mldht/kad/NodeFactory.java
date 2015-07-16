@@ -22,7 +22,9 @@ public class NodeFactory {
 
 	static void fillTable(Node node) {
 		for(int i=0;i<1000;i++) {
-			node.insertEntry(new KBucketEntry(new InetSocketAddress(generateIp((byte)0x00), 1024), Key.createRandomKey()), true);
+			KBucketEntry e = new KBucketEntry(new InetSocketAddress(generateIp((byte)0x00), 1024), Key.createRandomKey());
+			e.signalResponse(DHTConstants.RPC_CALL_TIMEOUT_MAX);
+			node.insertEntry(e, true);
 		}
 		node.rebuildAddressCache();
 	}

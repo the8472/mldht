@@ -349,9 +349,8 @@ public class PeerLookupTask extends Task {
 	@Override
 	public void start () {
 		//delay the filling of the todo list until we actually start the task
-		KClosestNodesSearch kns = new KClosestNodesSearch(targetKey,
-				DHTConstants.MAX_ENTRIES_PER_BUCKET * 4,rpc.getDHT());
-		kns.filter = KBucketEntry::eligibleForLocalLookup;
+		KClosestNodesSearch kns = new KClosestNodesSearch(targetKey, DHTConstants.MAX_ENTRIES_PER_BUCKET * 4,rpc.getDHT());
+		// unlike NodeLookups we do not use unverified nodes here. this avoids rewarding spoofers with useful lookup target IDs
 		kns.fill();
 		todo.addAll(kns.getEntries());
 		

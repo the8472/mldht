@@ -111,7 +111,7 @@ public class PingRefreshTask extends Task {
 		while(!todo.isEmpty() && canDoRequest()) {
 			KBucketEntry e = todo.first();
 
-			if (!alsoCheckGood && e.needsPing()) {
+			if (!alsoCheckGood && !e.needsPing()) {
 				todo.remove(e);
 				continue;
 			}

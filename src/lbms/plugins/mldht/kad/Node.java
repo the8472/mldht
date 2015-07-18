@@ -599,7 +599,7 @@ public class Node {
 			
 			// perform bucket merge operations where possible
 			for (int i = 1; i < routingTableCOW.size(); i++) {
-				while(i < 1)
+				if(i < 1)
 					continue;
 				RoutingTableEntry e1 = routingTableCOW.get(i - 1);
 				RoutingTableEntry e2 = routingTableCOW.get(i);

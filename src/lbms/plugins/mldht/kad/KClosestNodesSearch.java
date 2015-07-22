@@ -22,8 +22,9 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.Predicate;
+import java.util.stream.Stream;
 
-import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
+import lbms.plugins.mldht.kad.Node.RoutingTable;
 import lbms.plugins.mldht.kad.utils.PackUtil;
 
 /**
@@ -116,10 +117,11 @@ This requires a non-contiguous search
 	}
 	
 	public void fill(boolean includeOurself) {
-		List<RoutingTableEntry> table = owner.getNode().getBuckets();
+		RoutingTable table = owner.getNode().table();
 		
 		
-		final int initialIdx = Node.findIdxForId(table, targetKey);
+		final int initialIdx = table.indexForId(targetKey);
+		int currentIdx = initialIdx;
 		
 		Node.RoutingTableEntry current = table.get(initialIdx);
 		
@@ -142,14 +144,27 @@ This requires a non-contiguous search
 			//System.out.println("dist    " + targetToBucketDistance.toBinString());
 			//System.out.println("newDist " +  incrementedDistance.toBinString());
 			//System.out.println("target  " +  nextBucketTarget.toBinString());
+			
+			// guess neighbor bucket that might be next in target order
+			int dir = Integer.signum(nextBucketTarget.compareTo(current.prefix));
+			int idx;
+			
+			
+			idx = currentIdx + dir;
+			if(0 < idx && idx < table.size())
+				current = table.get(idx);
+			
+			// do binary search if guess turned out incorrect
+			if(!current.prefix.isPrefixOf(nextBucketTarget)) {
+				idx = table.indexForId(nextBucketTarget);
+				current = table.get(idx);
+			}
+			
+			currentIdx = idx;
 
-			int idx = Node.findIdxForId(table, nextBucketTarget);
-			
 			// quit if there are insufficient routing table entries to reach the desired size
-			if(idx == initialIdx)
+			if(currentIdx == initialIdx)
 				break;
-			
-			current = table.get(idx);
 		}
 		
 		shave();
@@ -192,6 +207,21 @@ This requires a non-contiguous search
 			j++;
 		}
 		return buffer;
+	}
+	
+	public NodeList asNodeList() {
+		return new NodeList() {
+			
+			@Override
+			public int packedSize() {
+				return entries.size() * owner.getType().NODES_ENTRY_LENGTH;
+			}
+			
+			@Override
+			public Stream<KBucketEntry> entries() {
+				return entries.stream();
+			}
+		};
 	}
 
 	/**

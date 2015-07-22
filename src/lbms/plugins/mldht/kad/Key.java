@@ -65,7 +65,7 @@ public class Key implements Radixable<Key>, Serializable {
 	public static final int		SHA1_HASH_LENGTH	= 20;
 	public static final int		KEY_BITS			= SHA1_HASH_LENGTH * 8;
 	public static final Pattern STRING_PATTERN		= Pattern.compile("[a-fA-F0-9]{40}");
-	protected byte[]			hash				= new byte[SHA1_HASH_LENGTH];
+	final protected byte[]			hash				= new byte[SHA1_HASH_LENGTH];
 
 	/**
 	 * A Key in the DHT.
@@ -185,6 +185,11 @@ public class Key implements Radixable<Key>, Serializable {
 		return hash.clone();
 	}
 	
+	public int getInt(int offset) {
+		byte[] hash = this.hash;
+		return Byte.toUnsignedInt(hash[offset]) << 24 | Byte.toUnsignedInt(hash[offset+1]) << 16 | Byte.toUnsignedInt(hash[offset+2]) << 8 | Byte.toUnsignedInt(hash[offset+3]);
+	}
+	
 	public Key getDerivedKey(int idx) {
 		Key k = new Key(this);
 		idx = Integer.reverse(idx);
@@ -203,6 +208,7 @@ public class Key implements Radixable<Key>, Serializable {
 	 */
 	@Override
 	public int hashCode () {
+		byte[] hash = this.hash;
 		return (((hash[0] ^ hash[1] ^ hash[2] ^ hash[3] ^ hash[4]) & 0xff) << 24)
 				| (((hash[5] ^ hash[6] ^ hash[7] ^ hash[8] ^ hash[9]) & 0xff) << 16)
 				| (((hash[10] ^ hash[11] ^ hash[12] ^ hash[13] ^ hash[14]) & 0xff) << 8)

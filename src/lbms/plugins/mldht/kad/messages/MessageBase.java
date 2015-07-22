@@ -78,12 +78,9 @@ public abstract class MessageBase {
 	 * BEncode the message.
 	 * @return Data array
 	 */
-	public byte[] encode(int capacity) throws IOException
+	public void encode(ByteBuffer target) throws IOException
 	{
-		ByteBuffer buf = new BEncoder().encode(getBase(),capacity);
-		byte out[] = new byte[buf.remaining()];
-		buf.get(out);
-		return out;
+		new BEncoder().encodeInto(getBase(),target);
 	}
 	
 	public Map<String, Object> getBase()

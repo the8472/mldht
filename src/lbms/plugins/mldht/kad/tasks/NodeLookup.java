@@ -29,6 +29,7 @@ import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.KClosestNodesSearch;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.Node;
+import lbms.plugins.mldht.kad.NodeList;
 import lbms.plugins.mldht.kad.RPCCall;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.FindNodeRequest;
@@ -37,7 +38,6 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
-import lbms.plugins.mldht.kad.utils.PackUtil;
 import the8472.utils.concurrent.SerializedTaskExecutor;
 
 /**
@@ -170,24 +170,20 @@ public class NodeLookup extends Task {
 
 		for (DHTtype type : DHTtype.values())
 		{
-			byte[] nodes = fnr.getNodes(type);
+			NodeList nodes = fnr.getNodes(type);
 			if (nodes == null)
 				continue;
-			int nval = nodes.length / type.NODES_ENTRY_LENGTH;
 			if (type == rpc.getDHT().getType()) {
-				for (int i = 0; i < nval; i++)
-				{
-					KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
+				nodes.entries().forEach(e -> {
 					if (!AddressUtils.isBogon(e.getAddress()) && !node.isLocalId(e.getID()) && !todo.contains(e) && !hasVisited(e))
 						todo.add(e);
-				}
+					
+				});
 			} else {
 				rpc.getDHT().getSiblings().stream().filter(sib -> sib.getType() == type).forEach(sib -> {
-					for (int i = 0; i < nval; i++)
-					{
-						KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
+					nodes.entries().forEach(e -> {
 						sib.addDHTNode(e.getAddress().getAddress().getHostAddress(), e.getAddress().getPort());
-					}
+					});
 				});
 			}
 		}

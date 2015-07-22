@@ -23,12 +23,14 @@ import static the8472.utils.Functional.tapThrow;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import lbms.plugins.mldht.kad.BloomFilterBEP33;
@@ -37,9 +39,8 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.NodeList;
 import lbms.plugins.mldht.kad.PeerAddressDBItem;
-import lbms.plugins.mldht.kad.RPCCall;
-import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
@@ -52,7 +53,7 @@ import lbms.plugins.mldht.kad.utils.AddressUtils;
 public class MessageDecoder {
 
 	public static MessageBase parseMessage (Map<String, Object> map,
-			RPCServer srv) throws MessageException, IOException {
+			Function<byte[], Optional<Method>> transactionIdMapper, DHTtype type) throws MessageException, IOException {
 
 		try {
 			String msgType = getStringFromBytes((byte[]) map.get(Type.TYPE_KEY), true);
@@ -64,11 +65,11 @@ public class MessageDecoder {
 
 			MessageBase mb = null;
 			if (msgType.equals(Type.REQ_MSG.getRPCTypeName())) {
-				mb = parseRequest(map, srv);
+				mb = parseRequest(map, transactionIdMapper, type);
 			} else if (msgType.equals(Type.RSP_MSG.getRPCTypeName())) {
-				mb = parseResponse(map, srv);
+				mb = parseResponse(map, transactionIdMapper);
 			} else if (msgType.equals(Type.ERR_MSG.getRPCTypeName())) {
-				mb = parseError(map, srv);
+				mb = parseError(map, transactionIdMapper);
 			} else
 				throw new MessageException("unknown RPC type (y="+msgType+")");
 
@@ -88,7 +89,7 @@ public class MessageDecoder {
 	 * @param map
 	 * @return
 	 */
-	private static MessageBase parseError (Map<String, Object> map, RPCServer srv) {
+	private static MessageBase parseError (Map<String, Object> map, Function<byte[], Optional<Method>> transactionIdMapper) {
 		Object error = map.get(Type.ERR_MSG.innerKey());
 		
 		int errorCode = 0;
@@ -118,9 +119,7 @@ public class MessageDecoder {
 		
 		ErrorMessage msg = new ErrorMessage(mtid, errorCode,errorMsg);
 		
-		RPCCall call = srv.findCall(mtid);
-		if(call != null)
-			msg.method = call.getMessageMethod();
+		transactionIdMapper.apply(mtid).ifPresent(m -> msg.method = m);
 
 		return msg;
 	}
@@ -130,14 +129,14 @@ public class MessageDecoder {
 	 * @param srv
 	 * @return
 	 */
-	private static MessageBase parseResponse (Map<String, Object> map,RPCServer srv) throws MessageException {
+	private static MessageBase parseResponse (Map<String, Object> map,  Function<byte[], Optional<Method>> transactionIdMapper) throws MessageException {
 
 		byte[] mtid = (byte[]) map.get(MessageBase.TRANSACTION_KEY);
 		if (mtid == null || mtid.length < 1)
 			throw new MessageException("missing transaction ID",ErrorCode.ProtocolError);
 		
 		// responses don't have explicit methods, need to match them to a request to figure that one out
-		Method m = Optional.ofNullable(srv.findCall(mtid)).map(c -> c.getMessageMethod()).orElse(Method.UNKNOWN);
+		Method m = transactionIdMapper.apply(mtid).orElse(Method.UNKNOWN);
 
 		return parseResponse(map, m, mtid);
 	}
@@ -180,14 +179,14 @@ public class MessageDecoder {
 				//return null;
 			
 			msg = tap(new FindNodeResponse(mtid), (m) -> {
-				m.setNodes((byte[]) args.get("nodes"));
-				m.setNodes6((byte[])args.get("nodes6"));
+				typedGet(args, "nodes", byte[].class).ifPresent(b -> m.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V4)));
+				typedGet(args, "nodes6", byte[].class).ifPresent(b -> m.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V6)));
 			});
 			break;
 		case GET_PEERS:
 			byte[] token = typedGet(args, "token", byte[].class).orElse(null);
-			byte[] nodes = typedGet(args, "nodes", byte[].class).orElse(null);
-			byte[] nodes6 = typedGet(args, "nodes6", byte[].class).orElse(null);
+			Optional<byte[]> nodes = typedGet(args, "nodes", byte[].class);
+			Optional<byte[]> nodes6 = typedGet(args, "nodes6", byte[].class);
 
 			
 			List<DBItem> dbl = null;
@@ -215,9 +214,11 @@ public class MessageDecoder {
 			if((peerFilter != null && peerFilter.length != BloomFilterBEP33.m/8) || (seedFilter != null && seedFilter.length != BloomFilterBEP33.m/8))
 				throw new MessageException("invalid BEP33 filter length", ErrorCode.ProtocolError);
 			
-			if (dbl != null || nodes != null || nodes6 != null)
+			if (dbl != null || nodes.isPresent() || nodes6.isPresent())
 			{
-				GetPeersResponse resp = new GetPeersResponse(mtid, nodes, nodes6);
+				GetPeersResponse resp = new GetPeersResponse(mtid);
+				nodes.ifPresent(b -> resp.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V4)));
+				nodes6.ifPresent(b -> resp.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V6)));
 				resp.setPeerItems(dbl);
 				resp.setToken(token);
 				resp.setScrapePeers(peerFilter);
@@ -254,7 +255,7 @@ public class MessageDecoder {
 	 * @param map
 	 * @return
 	 */
-	private static MessageBase parseRequest (Map<String, Object> map, RPCServer srv) throws MessageException {
+	private static MessageBase parseRequest (Map<String, Object> map,  Function<byte[], Optional<Method>> transactionIdMapper, DHTtype type) throws MessageException {
 		Object rawRequestMethod = map.get(Type.REQ_MSG.getRPCTypeName());
 		Map<String, Object> args = (Map<String, Object>) map.get(Type.REQ_MSG.innerKey());
 		
@@ -316,8 +317,8 @@ public class MessageDecoder {
 				if(explicitWants != null)
 					req.decodeWant(explicitWants);
 				else {
-					req.setWant4(srv.getDHT().getType() == DHTtype.IPV4_DHT);
-					req.setWant6(srv.getDHT().getType() == DHTtype.IPV6_DHT);
+					req.setWant4(type == DHTtype.IPV4_DHT);
+					req.setWant6(type == DHTtype.IPV6_DHT);
 				}
 				
 				

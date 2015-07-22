@@ -21,11 +21,23 @@ public class BEncoder {
 		}
 	}
 	
+	public static interface StringWriter {
+		int length();
+		
+		void writeTo(ByteBuffer buf);
+	}
+	
 	public ByteBuffer encode(Map<String, Object> toEnc, int maxSize) {
 		buf = ByteBuffer.allocate(maxSize);
-		encodeInternal(toEnc);
+		encodeMap(toEnc);
 		buf.flip();
 		return buf;
+	}
+	
+	public void encodeInto(Map<String, Object> toEnc, ByteBuffer target) {
+		buf = target;
+		encodeMap(toEnc);
+		buf.flip();
 	}
 	
 	public ByteBuffer encode(Object toEnc, int maxSize) {
@@ -80,6 +92,13 @@ public class BEncoder {
 		
 		if(o instanceof RawData) {
 			buf.put(((RawData) o).rawBuf);
+			return;
+		}
+		
+		if(o instanceof StringWriter) {
+			StringWriter w = (StringWriter) o;
+			encodeInt(w.length(), (byte)':');
+			w.writeTo(buf);
 			return;
 		}
 		

@@ -68,6 +68,15 @@ public class Prefix extends Key {
 		return branch;
 	}
 	
+	public Key first() {
+		return new Key(this);
+	}
+	
+	public Key last() {
+		Key trailingBits = new Prefix(Key.MAX_KEY, depth).distance(Key.MAX_KEY);
+		return this.distance(trailingBits);
+	}
+	
 	public Prefix getParentPrefix() {
 		if(depth == -1)
 			return this;

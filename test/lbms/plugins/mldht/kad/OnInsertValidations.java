@@ -44,7 +44,7 @@ public class OnInsertValidations {
 	@Test
 	public void testImmediateEvictionOnIdMismatch() {
 		NodeFactory.fillTable(node);
-		KBucket bucket = node.getBuckets().get(0).getBucket();
+		KBucket bucket = node.table().get(0).getBucket();
 		KBucketEntry entry = bucket.randomEntry().get();
 		
 		PingResponse rsp = buildResponse(Key.createRandomKey(), entry.getAddress());
@@ -63,7 +63,7 @@ public class OnInsertValidations {
 		Collection<Key> localIds = node.localIDs();
 		
 				
-		RoutingTableEntry nonLocalFullBucket = node.getBuckets().stream().filter(e -> e.prefix.depth == 1).findAny().get();
+		RoutingTableEntry nonLocalFullBucket = node.table().stream().filter(e -> e.prefix.depth == 1).findAny().get();
 		
 		Key newId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
 		PingResponse rsp = buildResponse(newId, new InetSocketAddress(NodeFactory.generateIp((byte)0x00), 1234));
@@ -102,7 +102,7 @@ public class OnInsertValidations {
 		
 		Collection<Key> localIds = node.localIDs();
 		
-		RoutingTableEntry nonLocalFullBucket = node.getBuckets().stream().filter(e -> e.prefix.depth == 1).findAny().get();
+		RoutingTableEntry nonLocalFullBucket = node.table().stream().filter(e -> e.prefix.depth == 1).findAny().get();
 		
 		PingRequest req = new PingRequest();
 		RPCCall call = new RPCCall(req);
@@ -113,7 +113,7 @@ public class OnInsertValidations {
 		rsp.setOrigin(new InetSocketAddress(NodeFactory.generateIp((byte)0x02), 1234));
 		
 		node.recieved(rsp);
-		assertFalse(node.getBuckets().stream().anyMatch(e -> e.getBucket().findByIPorID(null, newId).isPresent()));
+		assertFalse(node.table().stream().anyMatch(e -> e.getBucket().findByIPorID(null, newId).isPresent()));
 		
 		byte[] addr = new byte[16];
 		addr[0] = 0x20;
@@ -126,7 +126,7 @@ public class OnInsertValidations {
 		node.setTrustedNetMasks(Collections.singleton(mask));
 		
 		node.recieved(rsp);
-		assertTrue(node.getBuckets().stream().anyMatch(e -> e.getBucket().findByIPorID(null, newId).isPresent()));
+		assertTrue(node.table().stream().anyMatch(e -> e.getBucket().findByIPorID(null, newId).isPresent()));
 		
 	}
 }

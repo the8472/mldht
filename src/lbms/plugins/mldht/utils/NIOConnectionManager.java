@@ -52,11 +52,12 @@ public class NIOConnectionManager {
 		}
 	}
 	
+	int iterations;
+	
 	void selectLoop() {
 		
-		int iterations = 0;
-		
-		HashSet<Selectable> toUpdate = new HashSet<>();
+		iterations = 0;
+		lastNonZeroIteration = 0;
 		
 		while(true)
 		{
@@ -66,46 +67,11 @@ public class NIOConnectionManager {
 				selector.select(100);
 				wakeupCalled = false;
 				
-				// handle active connections
-				Set<SelectionKey> keys = selector.selectedKeys();
-				for(SelectionKey selKey : keys)
-				{
-					Selectable connection = (Selectable) selKey.attachment();
-					connection.selectionEvent(selKey);
-				}
-				keys.clear();
-				
-				// check existing connections
-				long now = System.currentTimeMillis();
-				for(Selectable conn : new ArrayList<Selectable>(connections)) {
-					conn.doStateChecks(now);
-					Optional.ofNullable(conn.getChannel()).map(c -> c.keyFor(selector)).filter(k -> !k.isValid()).ifPresent(k -> {
-						connections.remove(conn);
-					});
-				}
-					
-				
-				// register new connections
-				Selectable toRegister = null;
-				while((toRegister = registrations.poll()) != null)
-				{
-					connections.add(toRegister);
-					toRegister.registrationEvent(NIOConnectionManager.this,toRegister.getChannel().register(selector, toRegister.calcInterestOps(),toRegister));
-				}
-				
-				while(true) {
-					Selectable t = updateInterestOps.poll();
-					if(t == null)
-						break;
-					toUpdate.add(t);
-				}
-				
-				toUpdate.forEach(sel -> {
-					SelectionKey k = sel.getChannel().keyFor(selector);
-					if(k != null && k.isValid())
-						k.interestOps(sel.calcInterestOps());
-				});
-				toUpdate.clear();
+				processSelected();
+				connectionChecks();
+				handleRegistrations();
+				updateInterestOps();
+
 					
 			} catch (Exception e)
 			{
@@ -114,20 +80,90 @@ public class NIOConnectionManager {
 			
 			iterations++;
 			
-			if(connections.size() == 0 && registrations.peek() == null)
-			{
-				if(iterations > 10)
-				{
-					workerThread.set(null);
-					ensureRunning();
-					break;
-				}
-			} else
-			{
-				iterations = 0;
-			}
-				
+			if(suspendOnIdle())
+				break;
 		}
+	}
+	
+	void processSelected() throws IOException {
+		Set<SelectionKey> keys = selector.selectedKeys();
+		for(SelectionKey selKey : keys)
+		{
+			Selectable connection = (Selectable) selKey.attachment();
+			connection.selectionEvent(selKey);
+		}
+		keys.clear();
+	}
+	
+	
+	long lastConnectionCheck;
+
+	/*
+	 * checks if connections need to be removed from the selector
+	 */
+	void connectionChecks() throws IOException {
+		if((iterations & 0x0F) != 0)
+			return;
+
+		long now = System.currentTimeMillis();
+		
+		if(now - lastConnectionCheck < 500)
+			return;
+		lastConnectionCheck = now;
+		
+		for(Selectable conn : new ArrayList<Selectable>(connections)) {
+			conn.doStateChecks(now);
+			Optional.ofNullable(conn.getChannel()).map(c -> c.keyFor(selector)).filter(k -> !k.isValid()).ifPresent(k -> {
+				connections.remove(conn);
+			});
+		}
+	}
+	
+	void handleRegistrations() throws IOException {
+		// register new connections
+		Selectable toRegister = null;
+		while((toRegister = registrations.poll()) != null)
+		{
+			connections.add(toRegister);
+			toRegister.registrationEvent(NIOConnectionManager.this,toRegister.getChannel().register(selector, toRegister.calcInterestOps(),toRegister));
+		}
+	}
+	
+	HashSet<Selectable> toUpdate = new HashSet<>();
+	
+	void updateInterestOps() {
+		while(true) {
+			Selectable t = updateInterestOps.poll();
+			if(t == null)
+				break;
+			toUpdate.add(t);
+		}
+		
+		toUpdate.forEach(sel -> {
+			SelectionKey k = sel.getChannel().keyFor(selector);
+			if(k != null && k.isValid())
+				k.interestOps(sel.calcInterestOps());
+		});
+		toUpdate.clear();
+	}
+	
+	int lastNonZeroIteration;
+	
+	boolean suspendOnIdle() {
+		if(connections.size() == 0 && registrations.peek() == null)
+		{
+			if(iterations - lastNonZeroIteration > 10)
+			{
+				workerThread.set(null);
+				ensureRunning();
+				return true;
+			}
+			return false;
+		}
+		
+		lastNonZeroIteration = iterations;
+			
+		return false;
 	}
 	
 	private void ensureRunning() {

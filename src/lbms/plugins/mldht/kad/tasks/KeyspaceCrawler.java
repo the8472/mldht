@@ -26,6 +26,7 @@ import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.Node;
 import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
+import lbms.plugins.mldht.kad.NodeList;
 import lbms.plugins.mldht.kad.RPCCall;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.FindNodeRequest;
@@ -33,7 +34,6 @@ import lbms.plugins.mldht.kad.messages.FindNodeResponse;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
-import lbms.plugins.mldht.kad.utils.PackUtil;
 
 /**
  * @author The 8472
@@ -107,32 +107,25 @@ public class KeyspaceCrawler extends Task {
 			
 			for (DHTtype type : DHTtype.values())
 			{
-				byte[] nodes = fnr.getNodes(type);
+				NodeList nodes = fnr.getNodes(type);
 				if (nodes == null)
 					continue;
-				int nval = nodes.length / type.NODES_ENTRY_LENGTH;
+
 				if (type == rpc.getDHT().getType())
 				{
 					synchronized (todo)
 					{
-						for (int i = 0; i < nval; i++)
-						{
-							// add node to todo list
-							KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
+						nodes.entries().forEach(e -> {
 							if (!node.isLocalId(e.getID()) && !todo.contains(e) && !hasVisited(e))
-							{
 								todo.add(e);
-							}
-						}
+						});
 					}
 				} else
 				{
 					rpc.getDHT().getSiblings().stream().filter(sib -> sib.getType() == type).forEach(sib -> {
-						for (int i = 0; i < nval; i++)
-						{
-							KBucketEntry e = PackUtil.UnpackBucketEntry(nodes, i * type.NODES_ENTRY_LENGTH, type);
+						nodes.entries().forEach(e -> {
 							sib.addDHTNode(e.getAddress().getAddress().getHostAddress(), e.getAddress().getPort());
-						}
+						});
 					});
 				}
 			}
@@ -175,7 +168,7 @@ public class KeyspaceCrawler extends Task {
 
 		// delay the filling of the todo list until we actually start the task
 		
-		outer: for (RoutingTableEntry bucket : node.getBuckets())
+		outer: for (RoutingTableEntry bucket : node.table().list())
 			for (KBucketEntry e : bucket.getBucket().getEntries())
 				if (e.eligibleForLocalLookup())
 				{

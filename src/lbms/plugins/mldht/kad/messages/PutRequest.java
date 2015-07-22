@@ -73,8 +73,9 @@ public class PutRequest extends MessageBase {
 		return token;
 	}
 	
+	// TODO: extract raw value directly from incoming message instead of re-encoding
 	public ByteBuffer rawValue() {
-		return new BEncoder().encode(value, 1000);
+		return new BEncoder().encode(value, 2048);
 	}
 	
 	public long getSequenceNumber() {

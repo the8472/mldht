@@ -35,8 +35,7 @@ public class AnnounceNodeCache {
 	private static class CacheAnchorPoint extends Key {
 		public CacheAnchorPoint(Key k)
 		{
-			// reuse array to save memory
-			hash = k.hash;
+			super(k);
 		}
 		
 		long expirationTime;

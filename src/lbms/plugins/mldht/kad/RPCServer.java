@@ -32,6 +32,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -324,7 +325,9 @@ public class RPCServer {
 		}
 		
 		try {
-			msg = MessageDecoder.parseMessage(bedata, this);
+			msg = MessageDecoder.parseMessage(bedata, (byte[] mtid) -> {
+				return Optional.ofNullable(findCall(mtid)).map(RPCCall::getMessageMethod);
+			}, dh_table.getType());
 		} catch(MessageException e)
 		{
 			byte[] mtid = {0,0,0,0};
@@ -527,6 +530,8 @@ public class RPCServer {
 		return b.toString();
 	}
 	
+	static final ThreadLocal<ByteBuffer> writeBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(1500));
+	
 	private class SocketHandler implements Selectable {
 		DatagramChannel channel;
 
@@ -621,7 +626,11 @@ public class RPCServer {
 						break;
 					try
 					{
-						ByteBuffer buf = es.getBuffer();
+						
+						
+						ByteBuffer buf = writeBuffer.get();
+								
+						es.encodeTo(buf);
 						
 						int bytesSent = channel.send(buf, es.toSend.getDestination());
 						
@@ -720,7 +729,6 @@ public class RPCServer {
 	private class EnqueuedSend {
 		MessageBase toSend;
 		RPCCall associatedCall;
-		ByteBuffer buf;
 		
 		public EnqueuedSend(MessageBase msg) {
 			toSend = msg;
@@ -741,20 +749,20 @@ public class RPCServer {
 				toSend.getAssociatedCall().setExpectedRTT(timeoutFilter.getStallTimeout());
 		}
 		
-		ByteBuffer getBuffer() throws IOException {
-			if(buf != null)
-				return buf;
+		void encodeTo(ByteBuffer buf) throws IOException {
 			try {
-				return buf = ByteBuffer.wrap(toSend.encode(dh_table.getType().MAX_PACKET_SIZE));
+				buf.rewind();
+				buf.limit(dh_table.getType().MAX_PACKET_SIZE);
+				toSend.encode(buf);
 			} catch (Exception e) {
-				byte[] t = new byte[0];
+				ByteBuffer t = ByteBuffer.allocate(4096);
 				try {
-					t = toSend.encode(4096);
+					toSend.encode(t);
 				} catch(Exception e2) {
 					
 				}
 				
-				DHT.logError("encode failed for " + toSend.toString() + " 2nd encode attempt: (" + t.length + ") bytes. base map was:" + Utils.prettyPrint(toSend.getBase())  );
+				DHT.logError("encode failed for " + toSend.toString() + " 2nd encode attempt: (" + t.limit() + ") bytes. base map was:" + Utils.prettyPrint(toSend.getBase())  );
 				
 				
 				throw new IOException(e) ;

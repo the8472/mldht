@@ -100,7 +100,7 @@ public class PingRefreshTask extends Task {
 				if (lookupMap.containsKey(mb)) {
 					KBucketEntry e = lookupMap.remove(mb);
 					
-					KBucket bucket = node.findBucketForId(e.getID()).getBucket();
+					KBucket bucket = node.table().entryForId(e.getID()).getBucket();
 					if (bucket != null) {
 						DHT.logDebug("Removing invalid entry from cache.");
 						bucket.removeEntryIfBad(e, true);

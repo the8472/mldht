@@ -24,7 +24,7 @@ import lbms.plugins.mldht.kad.GenericStorage;
 import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.Node;
-import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
+import lbms.plugins.mldht.kad.Node.RoutingTable;
 import the8472.bencode.Utils;
 import the8472.utils.Arrays;
 import the8472.utils.io.NetMask;
@@ -124,14 +124,14 @@ public class Diagnostics {
 	
 	public void formatRoutingTable(Appendable writer, Node node) {
 		Collection<Key> localIds = node.localIDs();
-		List<RoutingTableEntry> entries = node.getBuckets();
+		RoutingTable entries = node.table();
 		Collection<NetMask> masks = node.getTrustedNetMasks();
 		
 		Formatter f = new Formatter(writer);
 		
 		f.format("Type: %s%n", node.getDHT().getType().shortName);
 		
-		entries.forEach(tableEntry -> {
+		entries.stream().forEach(tableEntry -> {
 			Optional<Key> localId = localIds.stream().filter(i -> tableEntry.prefix.isPrefixOf(i)).findAny();
 			String isHomeBucket = localId.map(k -> "[Home:"+k.toString(false)+"]").orElse("");
 			f.format("%s/%-3s main:%d rep:%d %s %s%n", new Key(tableEntry.prefix).toString(false), tableEntry.prefix.getDepth(), tableEntry.getBucket().getNumEntries(), tableEntry.getBucket().getNumReplacements(), tableEntry.prefix, isHomeBucket);
@@ -139,7 +139,7 @@ public class Diagnostics {
 		
 		f.format("%n======%n%n");
 		
-		entries.forEach(tableEntry -> {
+		entries.stream().forEach(tableEntry -> {
 			Optional<Key> localId = localIds.stream().filter(i -> tableEntry.prefix.isPrefixOf(i)).findAny();
 			String isHomeBucket = localId.map(k -> "[Home:"+k.toString(false)+"]").orElse("");
 			f.format("%40s/%-3d %s%n", new Key(tableEntry.prefix).toString(false), tableEntry.prefix.getDepth(), isHomeBucket);

@@ -16,6 +16,9 @@
  */
 package lbms.plugins.mldht.kad;
 
+import static java.lang.Math.max;
+import static java.lang.Math.min;
+
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -30,6 +33,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -69,7 +73,8 @@ public class Node {
 	 * - trust incoming requests less than responses to outgoing requests
 	 * - most outgoing requests will have an expected ID - expected ID may come from external nodes, so don't take it at face value
 	 *  - if response does not match expected ID drop the packet for routing table accounting purposes without penalizing any existing routing table entry
-	 * - map *verified* routing table entries to IP addresses
+	 * - map routing table entries to IP addresses
+	 *  - verified responses trump unverified entries
 	 *  - lookup all routing table entry for incoming messages based on IP address (not node ID!) and ignore them if ID does not match
 	 *  - also ignore if port changed
 	 *  - drop, not just ignore, if we are sure that the incoming message is not fake (mtid-verified response)
@@ -96,10 +101,143 @@ public class Node {
 		public int compareTo(RoutingTableEntry o) {
 			return prefix.compareTo(o.prefix);
 		}
+		
+		@Override
+		public String toString() {
+			return prefix.toString() + " " + bucket.toString();
+		}
+	}
+	
+	public static final class RoutingTable {
+		
+		final RoutingTableEntry[] entries;
+		final int[] indexCache;
+		
+		RoutingTable(RoutingTableEntry... entries) {
+			this.entries = entries;
+			if(entries.length > 64) {
+				indexCache = buildCache();
+			} else {
+				indexCache = new int[] {0, entries.length};
+			}
+			
+		}
+		
+		public RoutingTable() {
+			this(new RoutingTableEntry[] {new RoutingTableEntry(new Prefix(), new KBucket())});
+		}
+		
+		int[] buildCache() {
+			int[] cache = new int[256];
+			
+			assert(Integer.bitCount(cache.length) == 1);
+			
+			int lsb = Integer.bitCount((cache.length/2)-1)-1;
+			
+			Key increment = Key.setBit(lsb);
+			Key trailingBits = new Prefix(Key.MAX_KEY, lsb).distance(Key.MAX_KEY);
+			Key currentLower = new Key(new Prefix(Key.MIN_KEY, lsb));
+			Key currentUpper = new Prefix(Key.MIN_KEY, lsb).distance(trailingBits);
+			
+			int innerOffset = 0;
+			
+			for(int i=0;i<cache.length;i+=2) {
+				cache[i+1] = entries.length;
+				
+				for(int j=innerOffset;j<entries.length;j++) {
+					Prefix p = entries[j].prefix;
+					
+					if(p.compareTo(currentLower) <= 0) {
+						innerOffset = cache[i] = max(cache[i],j);
+					}
+						
+					if(p.compareTo(currentUpper) >= 0) {
+						cache[i+1] = min(cache[i+1],j);
+						break;
+					}
+						
+				}
+				
+				currentLower = new Key(new Prefix(currentLower.add(increment), lsb));
+				currentUpper = currentLower.distance(trailingBits);
+			}
+			
+			// System.out.println(IntStream.of(cache).mapToObj(Integer::toString).collect(Collectors.joining(", ")));
+			
+			return cache;
+		}
+		
+		public int indexForId(Key id) {
+			int mask = indexCache.length/2 - 1;
+			int bits = Integer.bitCount(mask);
+			
+			int cacheIdx = id.getInt(0);
+			
+			cacheIdx = Integer.rotateLeft(cacheIdx, bits);
+			cacheIdx = cacheIdx & mask;
+			cacheIdx <<= 1;
+			
+	        int lowerBound = indexCache[cacheIdx];
+	        int upperBound = indexCache[cacheIdx+1];
+	        
+	        Prefix pivot = null;
+
+	        while(true) {
+	            int pivotIdx = (lowerBound + upperBound) >>> 1;
+	            pivot = entries[pivotIdx].prefix;
+	            
+	            if(pivotIdx == lowerBound)
+	            	break;
+
+	            if (pivot.compareTo(id) <= 0)
+	           		lowerBound = pivotIdx;
+	           	else
+	           		upperBound = pivotIdx;
+	        }
+	        
+	        assert(pivot != null && pivot.isPrefixOf(id));
+	        
+           	return lowerBound;
+		}
+
+		
+		public RoutingTableEntry entryForId(Key id) {
+			return entries[indexForId(id)];
+		}
+		
+		public int size() {
+			return entries.length;
+		}
+		
+		public RoutingTableEntry get(int idx) {
+			return entries[idx];
+		}
+		
+		public List<RoutingTableEntry> list() {
+			return Collections.unmodifiableList(Arrays.asList(entries));
+		}
+		
+		public Stream<RoutingTableEntry> stream() {
+			return Arrays.stream(entries);
+		}
+		
+		public RoutingTable modify(Collection<RoutingTableEntry> toRemove, Collection<RoutingTableEntry> toAdd) {
+			List<RoutingTableEntry> temp = new ArrayList<>(Arrays.asList(entries));
+			if(toRemove != null)
+				temp.removeAll(toRemove);
+			if(toAdd != null)
+				temp.addAll(toAdd);
+			return new RoutingTable(temp.stream().sorted().toArray(RoutingTableEntry[]::new));
+		}
+		
 	}
 
 	private Object CoWLock = new Object();
-	private volatile List<RoutingTableEntry> routingTableCOW = new ArrayList<RoutingTableEntry>();
+	private volatile RoutingTable routingTableCOW = new RoutingTable();
+	
+	
+	
+	
 	private DHT dht;
 	private int num_receives;
 	
@@ -123,8 +261,6 @@ public class Node {
 		this.dht = dht;
 		num_receives = 0;
 		num_entries = 0;
-		
-		routingTableCOW.add(new RoutingTableEntry(new Prefix(), new KBucket(this)));
 	}
 
 	/**
@@ -140,19 +276,17 @@ public class Node {
 		Optional<Pair<KBucket, KBucketEntry>> entryByIp = bucketForIP(ip);
 		
 		if(entryByIp.isPresent()) {
-			KBucket bucket = entryByIp.get().a;
-			KBucketEntry entry = entryByIp.get().b;
+			KBucket oldBucket = entryByIp.get().a;
+			KBucketEntry oldEntry = entryByIp.get().b;
 			
 			// this might happen if
 			// a) multiple nodes on a single IP -> ignore anything but the node we already have in the table
 			// b) one node changes ports (broken NAT?) -> ignore until routing table entry times out
-			if(entry.getAddress().getPort() != msg.getOrigin().getPort())
+			if(oldEntry.getAddress().getPort() != msg.getOrigin().getPort())
 				return;
 				
 			
-			if(!entry.getID().equals(id)) {
-				// ID mismatch
-				
+			if(!oldEntry.getID().equals(id)) { // ID mismatch
 				
 				if(associatedCall.isPresent()) {
 					/*
@@ -166,22 +300,41 @@ public class Node {
 					 *  In either case we don't want it in our routing table
 					 */
 					
-					DHT.logInfo("force-removing routing table entry "+entry+" because ID-change was detected; new ID:" + msg.getID());
-					bucket.removeEntryIfBad(entry, true);
+					DHT.logInfo("force-removing routing table entry "+oldEntry+" because ID-change was detected; new ID:" + msg.getID());
+					oldBucket.removeEntryIfBad(oldEntry, true);
 					
 					// might be pollution attack, check other entries in the same bucket too in case random pings can't keep up with scrubbing.
 					RPCServer srv = msg.getServer();
-					tryPingMaintenance(bucket, "checking sibling bucket entries after ID change was detected", srv, (t) -> t.checkGoodEntries(true));
+					tryPingMaintenance(oldBucket, "checking sibling bucket entries after ID change was detected", srv, (t) -> t.checkGoodEntries(true));
+					
+					if(oldEntry.verifiedReachable()) {
+						// old verified
+						// new verified
+						// -> probably misbehaving node. don't insert
+						return;
+					}
+					
+					/*
+					 *  old never verified
+					 *  new verified
+					 *  -> may allow insert, as if the old one has never been there
+					 * 
+					 *  but still need to check expected ID match.
+					 *  TODO: if this results in an insert then the known nodes list may be stale
+					 */
+					
+				} else {
+					
+					// new message is *not* a response -> not verified -> fishy due to ID mismatch -> ignore
+					return;
 				}
 				
-				// even if this is not a response we don't want inmsert this in the routing table, it's an ID mismatch after all
-				return;
 			}
 			
 			
 		}
 		
-		KBucket bucketById = findBucketForId(id).bucket;
+		KBucket bucketById = routingTableCOW.entryForId(id).bucket;
 		Optional<KBucketEntry> entryById = bucketById.findByIPorID(null, id);
 		
 		// entry is claiming the same ID as entry with different IP in our routing table -> ignore
@@ -193,11 +346,6 @@ public class Node {
 		if(!entryById.isPresent() && expectedId.isPresent() && !expectedId.get().equals(id))
 			return;
 
-		/*
-			DHT.logInfo("response "+msg+" did not match expected ID, ignoring for the purpose routing table maintenance (may still be consumed by lookups)");
-		};*/
-			
-		
 		KBucketEntry newEntry = new KBucketEntry(msg.getOrigin(), id);
 		newEntry.setVersion(msg.getVersion());
 		associatedCall.ifPresent(c -> {
@@ -206,11 +354,7 @@ public class Node {
 			newEntry.signalScheduledRequest();
 		});
 		
-		/*
-		if(scanForMismatchedEntry(newEntry)) {
-			DHT.logInfo("ID or IP mismatching pre-existing routing table entries detected "+msg+"; ignoring for routing table maintenance");
-			return;
-		}*/
+
 		
 		// force trusted entry into the routing table (by splitting if necessary) if it passed all preliminary tests and it's not yet in the table
 		// although we can only trust responses, anything else might be spoofed to clobber our routing table
@@ -232,27 +376,6 @@ public class Node {
 		return Optional.ofNullable(knownNodes.get(addr)).map(RoutingTableEntry::getBucket).flatMap(bucket -> bucket.findByIPorID(addr, null).map(Pair.of(bucket)));
 	}
 	
-	/**
-	 * Detects node ID or IP changes. such changes are ignored until the existing entry times out
-	 * 
-	 * @return true if there is a routing table entry that matches IP or ID of the new entry but is not equal to the new entry.
-	 
-	private boolean scanForMismatchedEntry(KBucketEntry newEntry) {
-		
-		// if either of them exists and doesn't match exactly ignore this node
-		
-		Optional<RoutingTableEntry> cachedEntry = Optional.ofNullable(knownNodes.get(newEntry.getAddress().getAddress()));
-		Optional<KBucketEntry> existing = cachedEntry.flatMap(e -> e.bucket.findByIPorID(newEntry));
-		if(existing.isPresent() && !existing.get().equals(newEntry))
-			return true;
-			
-		existing = findBucketForId(newEntry.getID()).bucket.findByIPorID(newEntry);
-		if(existing.isPresent() && !existing.get().equals(newEntry))
-			return true;
-
-		
-		return false;
-	}*/
 	
 	public void insertEntry(KBucketEntry entry, boolean internalInsert) {
 		insertEntry(entry, internalInsert, false, false);
@@ -265,7 +388,7 @@ public class Node {
 		
 		Key nodeID = toInsert.getID();
 		
-		RoutingTableEntry tableEntry = findBucketForId(nodeID);
+		RoutingTableEntry tableEntry = routingTableCOW.entryForId(nodeID);
 
 		while(tableEntry.bucket.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET && tableEntry.prefix.getDepth() < Key.KEY_BITS - 1)
 		{
@@ -273,7 +396,7 @@ public class Node {
 				break;
 			
 			splitEntry(tableEntry);
-			tableEntry = findBucketForId(nodeID);
+			tableEntry = routingTableCOW.entryForId(nodeID);
 		}
 		
 		int oldSize = tableEntry.bucket.getNumEntries();
@@ -305,11 +428,11 @@ public class Node {
 		
 		Key closestLocalId = usedIDs.stream().min(comp).orElseThrow(() -> new IllegalStateException("expected to find a local ID"));
 		
-		List<RoutingTableEntry> table = routingTableCOW;
+		RoutingTable table = routingTableCOW;
 		
 		int closer = 0;
 		
-		int center = findIdxForId(table, closestLocalId);
+		int center = table.indexForId(closestLocalId);
 		
 		for(int i=center;i<table.size();i++) {
 			KBucket bucket = table.get(i).bucket;
@@ -341,15 +464,16 @@ public class Node {
 	private void splitEntry(RoutingTableEntry entry) {
 		synchronized (CoWLock)
 		{
-			List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
+			RoutingTable current = routingTableCOW;
 			// check if we haven't entered the sync block after some other thread that did the same split operation
-			if(!newTable.contains(entry))
+			if(current.stream().noneMatch(e -> e.equals(entry)))
 				return;
 			
-			newTable.remove(entry);
-			newTable.add(new RoutingTableEntry(entry.prefix.splitPrefixBranch(false), new KBucket(this)));
-			newTable.add(new RoutingTableEntry(entry.prefix.splitPrefixBranch(true), new KBucket(this)));
-			Collections.sort(newTable);
+			RoutingTableEntry a = new RoutingTableEntry(entry.prefix.splitPrefixBranch(false), new KBucket());
+			RoutingTableEntry b = new RoutingTableEntry(entry.prefix.splitPrefixBranch(true), new KBucket());
+			
+			RoutingTable newTable = current.modify(Arrays.asList(entry), Arrays.asList(a, b));
+			
 			routingTableCOW = newTable;
 			for(KBucketEntry e : entry.bucket.getEntries())
 				insertEntry(e, true);
@@ -359,28 +483,8 @@ public class Node {
 		
 	}
 	
-	public static int findIdxForId(List<RoutingTableEntry> table, Key id) {
-        int lowerBound = 0;
-        int upperBound = table.size()-1;
-
-        while (lowerBound <= upperBound) {
-            int pivotIdx = (lowerBound + upperBound) >>> 1;
-            Prefix pivot = table.get(pivotIdx).prefix;
-
-            if(pivot.isPrefixOf(id))
-            	return pivotIdx;
-
-            if (pivot.compareTo(id) < 0)
-           		lowerBound = pivotIdx + 1;
-           	else
-           		upperBound = pivotIdx - 1;
-        }
-        throw new IllegalStateException("This shouldn't happen, really");
-	}
-	
-	public RoutingTableEntry findBucketForId(Key id) {
-		List<RoutingTableEntry> table = routingTableCOW;
-		return table.get(findIdxForId(table, id));
+	public RoutingTable table() {
+		return routingTableCOW;
 	}
 
 	/**
@@ -419,7 +523,7 @@ public class Node {
 		
 		if(call.getExpectedID() != null)
 		{
-			findBucketForId(call.getExpectedID()).bucket.onTimeout(dest);
+			routingTableCOW.entryForId(call.getExpectedID()).bucket.onTimeout(dest);
 		} else {
 			RoutingTableEntry entry = knownNodes.get(dest.getAddress());
 			if(entry != null)
@@ -443,7 +547,7 @@ public class Node {
 	
 	private void onOutgoingRequest(RPCCall c) {
 		Key expectedId = c.getExpectedID();
-		KBucket bucket = findBucketForId(expectedId).getBucket();
+		KBucket bucket = routingTableCOW.entryForId(expectedId).getBucket();
 		bucket.findByIPorID(c.getRequest().getDestination().getAddress(), expectedId).ifPresent(entry -> {
 			entry.signalScheduledRequest();
 		});
@@ -488,7 +592,7 @@ public class Node {
 		
 		Map<InetAddress, KBucket> addressDedup = new HashMap<>();
 		
-		for (RoutingTableEntry e : routingTableCOW) {
+		for (RoutingTableEntry e : routingTableCOW.entries) {
 			KBucket b = e.bucket;
 
 			List<KBucketEntry> entries = b.getEntries();
@@ -522,7 +626,8 @@ public class Node {
 				
 			}
 			
-			boolean allBad = b.entriesStream().allMatch(KBucketEntry::needsReplacement);
+			/*
+			boolean allBad = b.getNumEntries() > 0 && b.entriesStream().allMatch(KBucketEntry::removableWithoutReplacement);
 
 
 			// clean out buckets full of bad nodes. merge operations will do the rest
@@ -530,7 +635,7 @@ public class Node {
 			{
 				clearEntry(e);
 				continue;
-			}
+			}*/
 				
 			
 			if (b.needsToBeRefreshed())
@@ -553,17 +658,15 @@ public class Node {
 	
 	void clearEntry(RoutingTableEntry e) {
 		synchronized (CoWLock) {
-			List<RoutingTableEntry> table = new ArrayList<>(routingTableCOW);
+			RoutingTable table = routingTableCOW;
 			
-			int idx = table.indexOf(e);
-			if(idx >= 0) {
-				table.set(idx, new RoutingTableEntry(e.prefix, new KBucket()));
-				routingTableCOW = table;
-			}
+			if(Arrays.asList(table.entries).indexOf(e) < 0)
+				return;
+			
+			routingTableCOW = table.modify(Arrays.asList(e), Arrays.asList(new RoutingTableEntry(e.prefix, new KBucket())));
 		}
 	}
-	
-	
+
 	void tryPingMaintenance(KBucket b, String reason, RPCServer srv, Consumer<PingRefreshTask> taskConfig) {
 		if(maintenanceTasks.containsKey(b))
 			return;
@@ -609,12 +712,8 @@ public class Node {
 					if (e1.getBucket().getNumEntries() == 0 || e2.getBucket().getNumEntries() == 0) {
 						KBucket toLift = e1.getBucket().getNumEntries() == 0 ? e2.getBucket() : e1.getBucket();
 
-						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
-						newTable.remove(e1);
-						newTable.remove(e2);
-						newTable.add(new RoutingTableEntry(e2.prefix.getParentPrefix(), toLift));
-						Collections.sort(newTable);
-						routingTableCOW = newTable;
+						RoutingTable table = routingTableCOW;
+						routingTableCOW = table.modify(Arrays.asList(e1, e2), Arrays.asList(new RoutingTableEntry(e2.prefix.getParentPrefix(), toLift)));
 						i -= 2;
 						continue;
 					}
@@ -622,12 +721,9 @@ public class Node {
 					// check if the buckets can be merged without losing entries
 
 					if (e1.getBucket().getNumEntries() + e2.getBucket().getNumEntries() <= DHTConstants.MAX_ENTRIES_PER_BUCKET) {
-						List<RoutingTableEntry> newTable = new ArrayList<Node.RoutingTableEntry>(routingTableCOW);
-						newTable.remove(e1);
-						newTable.remove(e2);
-						newTable.add(new RoutingTableEntry(e1.prefix.getParentPrefix(), new KBucket(this)));
-						Collections.sort(newTable);
-						routingTableCOW = newTable;
+
+						RoutingTable table = routingTableCOW;
+						routingTableCOW = table.modify(Arrays.asList(e1, e2), Arrays.asList(new RoutingTableEntry(e1.prefix.getParentPrefix(), new KBucket())));
 						// no need to carry over replacements. there shouldn't
 						// be any, otherwise the bucket(s) would be full
 						for (KBucketEntry e : e1.bucket.getEntries())
@@ -645,14 +741,12 @@ public class Node {
 	
 	void rebuildAddressCache() {
 		Map<InetAddress, RoutingTableEntry> newKnownMap = new HashMap<InetAddress, RoutingTableEntry>(num_entries);
-		List<RoutingTableEntry> table = routingTableCOW;
+		RoutingTable table = routingTableCOW;
 		for(int i=0,n=table.size();i<n;i++)
 		{
 			RoutingTableEntry entry = table.get(i);
 			Stream<KBucketEntry> entries = entry.bucket.entriesStream();
-			// don't track unverified entries in case of address-spoofing.
-			// they'll get eliminated later
-			entries.filter(KBucketEntry::verifiedReachable).forEach(e -> {
+			entries.forEach(e -> {
 				newKnownMap.put(e.getAddress().getAddress(), entry);
 			});
 		}
@@ -666,7 +760,7 @@ public class Node {
 	 * @param dh_table
 	 */
 	public void fillBuckets (DHTBase dh_table) {
-		List<RoutingTableEntry> table = routingTableCOW;
+		RoutingTable table = routingTableCOW;
 
 		for (int i = 0;i<table.size();i++) {
 			RoutingTableEntry entry = table.get(i);
@@ -705,7 +799,7 @@ public class Node {
 			
 			tableMap.put("oldKey", getRootID());
 			
-			List<RoutingTableEntry> table = routingTableCOW;
+			RoutingTable table = routingTableCOW;
 			
 			KBucket[] bucket = new KBucket[table.size()];
 			for(int i=0;i<bucket.length;i++)
@@ -809,10 +903,6 @@ public class Node {
 	public int getNumEntriesInRoutingTable () {
 		return num_entries;
 	}
-
-	public List<RoutingTableEntry> getBuckets () {
-		return Collections.unmodifiableList(routingTableCOW) ;
-	}
 	
 	public void setTrustedNetMasks(Collection<NetMask> masks) {
 		trustedNodes = masks;
@@ -823,7 +913,7 @@ public class Node {
 	}
 	
 	public Optional<KBucketEntry> getRandomEntry() {
-		List<RoutingTableEntry> table = routingTableCOW;
+		RoutingTable table = routingTableCOW;
 		
 		int offset = ThreadLocalRandom.current().nextInt(table.size());
 		
@@ -834,12 +924,12 @@ public class Node {
 	@Override
 	public String toString() {
 		StringBuilder b = new StringBuilder(10000);
-		List<RoutingTableEntry> table = routingTableCOW;
+		RoutingTable table = routingTableCOW;
 		
 		Collection<Key> localIds = localIDs();
 		
 		b.append("buckets: ").append(table.size()).append(" / entries: ").append(num_entries).append('\n');
-		for(RoutingTableEntry e : table ) {
+		for(RoutingTableEntry e : table.entries) {
 			b.append(e.prefix).append("   num:").append(e.bucket.getNumEntries()).append(" rep:").append(e.bucket.getNumReplacements());
 			if(localIds.stream().anyMatch(e.prefix::isPrefixOf))
 				b.append(" [Home]");

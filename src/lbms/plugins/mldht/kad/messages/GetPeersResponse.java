@@ -44,10 +44,8 @@ public class GetPeersResponse extends AbstractLookupResponse {
 	 * @param nodes
 	 * @param token
 	 */
-	public GetPeersResponse (byte[] mtid, byte[] nodes, byte[] nodes6) {
+	public GetPeersResponse (byte[] mtid) {
 		super(mtid, Method.GET_PEERS, Type.RSP_MSG);
-		this.nodes = nodes;
-		this.nodes6 = nodes6;
 	}
 	
 	
@@ -77,16 +75,6 @@ public class GetPeersResponse extends AbstractLookupResponse {
 		}
 
 		return innerMap;
-	}
-
-	@Override
-	public byte[] getNodes(DHTtype type)
-	{
-		if(type == DHTtype.IPV4_DHT)
-			return nodes;
-		if(type == DHTtype.IPV6_DHT)
-			return nodes6;
-		return null;
 	}
 	
 	public void setPeerItems(List<DBItem> items) {
@@ -129,8 +117,8 @@ public class GetPeersResponse extends AbstractLookupResponse {
 	@Override
 	public String toString() {
 		return super.toString() +
-			(nodes != null ? (nodes.length/DHTtype.IPV4_DHT.NODES_ENTRY_LENGTH)+" nodes | " : "") +
-			(nodes6 != null ? (nodes6.length/DHTtype.IPV6_DHT.NODES_ENTRY_LENGTH)+" nodes6 | " : "") +
+			(nodes != null ? (nodes.packedSize()/DHTtype.IPV4_DHT.NODES_ENTRY_LENGTH)+" nodes | " : "") +
+			(nodes6 != null ? (nodes6.packedSize()/DHTtype.IPV6_DHT.NODES_ENTRY_LENGTH)+" nodes6 | " : "") +
 			(items != null ? (items.size())+" values | " : "") +
 			(scrapePeers != null ? "peer bloom filter | " : "") +
 			(scrapeSeeds != null ? "seed bloom filter | " :  "" );

@@ -5,18 +5,19 @@ import java.util.TreeMap;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
+import lbms.plugins.mldht.kad.NodeList;
 
 public class AbstractLookupResponse extends MessageBase {
 	
-	protected byte[]	nodes;
-	protected byte[]	nodes6;
+	protected NodeList	nodes;
+	protected NodeList	nodes6;
 	private byte[]			token;
 
-	public void setNodes(byte[] nodes) {
+	public void setNodes(NodeList nodes) {
 		this.nodes = nodes;
 	}
 	
-	public void setNodes6(byte[] nodes6) {
+	public void setNodes6(NodeList nodes6) {
 		this.nodes6 = nodes6;
 	}
 	
@@ -49,15 +50,15 @@ public class AbstractLookupResponse extends MessageBase {
 		if(token != null)
 			inner.put("token", token);
 		if(nodes != null)
-			inner.put("nodes", nodes);
+			inner.put("nodes", nodes.writer());
 		if(nodes6 != null)
-			inner.put("nodes6", nodes6);
+			inner.put("nodes6", nodes6.writer());
 		
 
 		return inner;
 	}
 	
-	public byte[] getNodes(DHTtype type)
+	public NodeList getNodes(DHTtype type)
 	{
 		if(type == DHTtype.IPV4_DHT)
 			return nodes;
@@ -66,23 +67,9 @@ public class AbstractLookupResponse extends MessageBase {
 		return null;
 	}
 
-	/**
-	 * @return the nodes
-	 */
-	public byte[] getNodes () {
-		return nodes;
-	}
-	
-	/**
-	 * @return the nodes
-	 */
-	public byte[] getNodes6 () {
-		return nodes6;
-	}
-	
 	@Override
 	public String toString() {
-		return super.toString() + (nodes != null ? "contains: "+ (nodes.length/DHTtype.IPV4_DHT.NODES_ENTRY_LENGTH) + " nodes" : "") + (nodes6 != null ? "contains: "+ (nodes6.length/DHTtype.IPV6_DHT.NODES_ENTRY_LENGTH) + " nodes6" : "") +
+		return super.toString() + (nodes != null ? "contains: "+ (nodes.packedSize()/DHTtype.IPV4_DHT.NODES_ENTRY_LENGTH) + " nodes" : "") + (nodes6 != null ? "contains: "+ (nodes6.packedSize()/DHTtype.IPV6_DHT.NODES_ENTRY_LENGTH) + " nodes6" : "") +
 				(token != null ? "token "+token.length+" | " : "");
 	}
 	

@@ -59,19 +59,12 @@ public class KBucket implements Externalizable {
 	private AtomicInteger						currentReplacementPointer;
 	private AtomicReferenceArray<KBucketEntry>	replacementBucket;
 	
-	private Node						node;
 	private long						lastRefresh;
 	
 	public KBucket () {
 		entries = new ArrayList<KBucketEntry>(); // using arraylist here since reading/iterating is far more common than writing.
 		currentReplacementPointer = new AtomicInteger(0);
 		replacementBucket = new AtomicReferenceArray<KBucketEntry>(DHTConstants.MAX_ENTRIES_PER_BUCKET);
-	}
-
-	public KBucket (Node node) {
-		this();
-		//last_modified = System.currentTimeMillis();
-		this.node = node;
 	}
 
 	/**
@@ -405,12 +398,6 @@ public class KBucket implements Externalizable {
 		
 	}
 
-	/**
-	 * @param node the node to set
-	 */
-	public void setNode (Node node) {
-		this.node = node;
-	}
 
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		Map<String,Object> serialized = (Map<String, Object>) in.readObject();

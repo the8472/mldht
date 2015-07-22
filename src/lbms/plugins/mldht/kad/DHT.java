@@ -249,7 +249,7 @@ public class DHT implements DHTBase {
 			getSiblingByType(DHTtype.IPV4_DHT).ifPresent(sib -> {
 				KClosestNodesSearch kns = new KClosestNodesSearch(target, v4, sib);
 				kns.fill(DHTtype.IPV4_DHT != type);
-				rsp.setNodes(kns.pack());
+				rsp.setNodes(kns.asNodeList());
 			});
 		}
 		
@@ -257,7 +257,7 @@ public class DHT implements DHTBase {
 			getSiblingByType(DHTtype.IPV6_DHT).ifPresent(sib -> {
 				KClosestNodesSearch kns = new KClosestNodesSearch(target, v6, sib);
 				kns.fill(DHTtype.IPV6_DHT != type);
-				rsp.setNodes6(kns.pack());
+				rsp.setNodes6(kns.asNodeList());
 			});
 		}
 	}
@@ -372,45 +372,30 @@ public class DHT implements DHTBase {
 				dbl.addAll(toAdd);
 		}
 		
-		
-			
-
 		// generate a token
 		ByteWrapper token = null;
 		if(db.insertForKeyAllowed(r.getInfoHash()))
 			token = db.genToken(r.getOrigin().getAddress(), r.getOrigin().getPort(), r.getInfoHash());
 
-		Optional<KClosestNodesSearch> kns4 = r.doesWant4() ? getSiblingByType(DHTtype.IPV4_DHT).map(sib -> {
-			KClosestNodesSearch kns = new KClosestNodesSearch(r.getTarget(), DHTConstants.MAX_ENTRIES_PER_BUCKET, sib);
-			kns.fill(DHTtype.IPV4_DHT != type);
-			return kns;
-		}) : Optional.empty();
-		
-		Optional<KClosestNodesSearch> kns6 = r.doesWant6() ? getSiblingByType(DHTtype.IPV6_DHT).map(sib -> {
-			int targetNodesCount = DHTConstants.MAX_ENTRIES_PER_BUCKET;
-			// can't embed many nodes in v6 responses with filters
-			if(v6 && peerFilter != null)
-				targetNodesCount = Math.min(5, targetNodesCount);
-			
-			KClosestNodesSearch kns = new KClosestNodesSearch(r.getTarget(), targetNodesCount, sib);
-			kns.fill(DHTtype.IPV6_DHT != type);
-			return kns;
-		}) : Optional.empty();
+		int want4 = r.doesWant4() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0;
+		int want6 = r.doesWant6() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0;
+
+		if(v6 && peerFilter != null)
+			want6 = Math.min(5, want6);
 		
 		// bloom filters + token + values => we can't include both sets of nodes, even if the node requests it
 		if(heavyWeight) {
 			if(v6)
-				kns4 = Optional.empty();
+				want4 = 0;
 			else
-				kns6 = Optional.empty();
+				want6 = 0;
 		}
 		
 
 		
-		GetPeersResponse resp = new GetPeersResponse(r.getMTID(),
-			kns4.map(KClosestNodesSearch::pack).orElse(null),
-			kns6.map(KClosestNodesSearch::pack).orElse(null)
-		);
+		GetPeersResponse resp = new GetPeersResponse(r.getMTID());
+		
+		populateResponse(r.getTarget(), resp, want4, want6);
 		
 		resp.setToken(token != null ? token.arr : null);
 		resp.setScrapePeers(peerFilter);
@@ -715,10 +700,7 @@ public class DHT implements DHTBase {
 
 	public void started () {
 		
-		// refresh everything during startup
-		List<RoutingTableEntry> tableEntries = node.getBuckets();
-		
-		for(RoutingTableEntry bucket : tableEntries) {
+		for(RoutingTableEntry bucket : node.table().list()) {
 			RPCServer srv = serverManager.getRandomServer();
 			if(srv == null)
 				break;

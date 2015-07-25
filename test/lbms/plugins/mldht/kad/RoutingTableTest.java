@@ -37,8 +37,8 @@ public class RoutingTableTest {
 				assertEquals(entry, f.apply(entry.prefix.last()));
 				
 				if(toRemove.add(entry)) {
-					toAdd.add(new RoutingTableEntry(entry.prefix.splitPrefixBranch(false), new KBucket()));
-					toAdd.add(new RoutingTableEntry(entry.prefix.splitPrefixBranch(true), new KBucket()));
+					toAdd.add(new RoutingTableEntry(entry.prefix.splitPrefixBranch(false), new KBucket(), (x) -> false));
+					toAdd.add(new RoutingTableEntry(entry.prefix.splitPrefixBranch(true), new KBucket(), (x) -> false));
 
 				}
 			}

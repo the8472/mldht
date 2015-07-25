@@ -46,6 +46,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -86,13 +87,15 @@ public class Node {
 	
 	public static final class RoutingTableEntry implements Comparable<RoutingTableEntry> {
 		
-		public RoutingTableEntry(Prefix prefix, KBucket bucket) {
+		public RoutingTableEntry(Prefix prefix, KBucket bucket, Predicate<Prefix> checkHome) {
 			this.prefix = prefix;
 			this.bucket = bucket;
+			this.homeBucket = checkHome.test(prefix);
 		}
 		
 		public final Prefix prefix;
 		final KBucket bucket;
+		final boolean homeBucket;
 		
 		public KBucket getBucket() {
 			return bucket;
@@ -124,7 +127,7 @@ public class Node {
 		}
 		
 		public RoutingTable() {
-			this(new RoutingTableEntry[] {new RoutingTableEntry(new Prefix(), new KBucket())});
+			this(new RoutingTableEntry[] {new RoutingTableEntry(new Prefix(), new KBucket(), (x) -> true)});
 		}
 		
 		int[] buildCache() {
@@ -418,7 +421,7 @@ public class Node {
 	}
 	
 	boolean canSplit(RoutingTableEntry entry, KBucketEntry toInsert, boolean relaxedSplitting) {
-		if(usedIDs.stream().anyMatch(localId -> entry.prefix.isPrefixOf(localId)))
+		if(entry.homeBucket)
 			return true;
 		
 		if(!relaxedSplitting)
@@ -469,8 +472,8 @@ public class Node {
 			if(current.stream().noneMatch(e -> e.equals(entry)))
 				return;
 			
-			RoutingTableEntry a = new RoutingTableEntry(entry.prefix.splitPrefixBranch(false), new KBucket());
-			RoutingTableEntry b = new RoutingTableEntry(entry.prefix.splitPrefixBranch(true), new KBucket());
+			RoutingTableEntry a = new RoutingTableEntry(entry.prefix.splitPrefixBranch(false), new KBucket(), this::isLocalBucket);
+			RoutingTableEntry b = new RoutingTableEntry(entry.prefix.splitPrefixBranch(true), new KBucket(), this::isLocalBucket);
 			
 			RoutingTable newTable = current.modify(Arrays.asList(entry), Arrays.asList(a, b));
 			
@@ -499,6 +502,10 @@ public class Node {
 	
 	public boolean isLocalId(Key id) {
 		return usedIDs.contains(id);
+	}
+	
+	public boolean isLocalBucket(Prefix p) {
+		return usedIDs.stream().anyMatch(p::isPrefixOf);
 	}
 	
 	public Collection<Key> localIDs() {
@@ -539,6 +546,7 @@ public class Node {
 	void removeId(Key k)
 	{
 		usedIDs.remove(k);
+		updateHomeBuckets();
 	}
 	
 	void registerServer(RPCServer srv) {
@@ -566,6 +574,8 @@ public class Node {
 				break;
 			idx++;
 		}
+		
+		updateHomeBuckets();
 
 		return k;
 	}
@@ -655,17 +665,6 @@ public class Node {
 		
 		rebuildAddressCache();
 	}
-	
-	void clearEntry(RoutingTableEntry e) {
-		synchronized (CoWLock) {
-			RoutingTable table = routingTableCOW;
-			
-			if(Arrays.asList(table.entries).indexOf(e) < 0)
-				return;
-			
-			routingTableCOW = table.modify(Arrays.asList(e), Arrays.asList(new RoutingTableEntry(e.prefix, new KBucket())));
-		}
-	}
 
 	void tryPingMaintenance(KBucket b, String reason, RPCServer srv, Consumer<PingRefreshTask> taskConfig) {
 		if(maintenanceTasks.containsKey(b))
@@ -713,7 +712,7 @@ public class Node {
 						KBucket toLift = e1.getBucket().getNumEntries() == 0 ? e2.getBucket() : e1.getBucket();
 
 						RoutingTable table = routingTableCOW;
-						routingTableCOW = table.modify(Arrays.asList(e1, e2), Arrays.asList(new RoutingTableEntry(e2.prefix.getParentPrefix(), toLift)));
+						routingTableCOW = table.modify(Arrays.asList(e1, e2), Arrays.asList(new RoutingTableEntry(e2.prefix.getParentPrefix(), toLift, this::isLocalBucket)));
 						i -= 2;
 						continue;
 					}
@@ -723,7 +722,7 @@ public class Node {
 					if (e1.getBucket().getNumEntries() + e2.getBucket().getNumEntries() <= DHTConstants.MAX_ENTRIES_PER_BUCKET) {
 
 						RoutingTable table = routingTableCOW;
-						routingTableCOW = table.modify(Arrays.asList(e1, e2), Arrays.asList(new RoutingTableEntry(e1.prefix.getParentPrefix(), new KBucket())));
+						routingTableCOW = table.modify(Arrays.asList(e1, e2), Arrays.asList(new RoutingTableEntry(e1.prefix.getParentPrefix(), new KBucket(), this::isLocalBucket)));
 						// no need to carry over replacements. there shouldn't
 						// be any, otherwise the bucket(s) would be full
 						for (KBucketEntry e : e1.bucket.getEntries())
@@ -734,7 +733,20 @@ public class Node {
 						continue;
 					}
 				}
+				
 
+
+			}
+		}
+	}
+	
+	void updateHomeBuckets() {
+		synchronized (CoWLock) {
+			for(int i=0;i < routingTableCOW.size();i++) {
+				RoutingTableEntry e = routingTableCOW.get(i);
+				// update home bucket status on local ID change
+				if(isLocalBucket(e.prefix) != e.homeBucket)
+					routingTableCOW = routingTableCOW.modify(Arrays.asList(e), Arrays.asList(new RoutingTableEntry(e.prefix, e.bucket, this::isLocalBucket)));
 			}
 		}
 	}

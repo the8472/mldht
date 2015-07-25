@@ -214,9 +214,11 @@ public class Database {
 		if(snapshot.length == 0)
 			return null;
 		
-		List<DBItem> peerlist = new ArrayList<DBItem>(max_entries);
+		List<DBItem> peerlist = new ArrayList<DBItem>(Math.min(max_entries, snapshot.length));
 		
 		int offset = ThreadLocalRandom.current().nextInt(snapshot.length);
+		
+		preferPeers &= snapshot.length > max_entries;
 		
 		// try to fill with peer items if so requested
 		for(int i=0;i<snapshot.length;i++) {

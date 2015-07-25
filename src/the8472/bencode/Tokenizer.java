@@ -90,7 +90,9 @@ public class Tokenizer {
 	public long parseNum(ByteBuffer buf, byte terminator) {
 		long result = 0;
 		boolean neg = false;
-				
+
+		if(buf.remaining() < 1)
+			throw new BDecodingException("end of message reached while decoding a number/string length prefix. offset:"+buf.position());
 		byte current = buf.get();
 		
 		if(current == '-') {
@@ -100,7 +102,13 @@ public class Tokenizer {
 			current = buf.get();
 		}
 		
+		int iter = 0;
+		
 		while (current != terminator) {
+			// do zero-check on 2nd character, since 0 itself is a valid length
+			if(iter > 0 && result == 0)
+				throw new BDecodingException("encountered a leading zero at offset "+(buf.position()-1)+" while decoding a number/string length prefix");
+			
 			if(current < '0' || current > '9') {
 				StringBuilder b = new StringBuilder();
 				Utils.toHex(new byte[]{current}, b , 1);
@@ -116,6 +124,8 @@ public class Tokenizer {
 			if(buf.remaining() < 1)
 				throw new BDecodingException("end of message reached while decoding a number/string length prefix. offset:"+buf.position());
 			current = buf.get();
+			
+			iter++;
 		}
 		
 		if(neg)

@@ -146,14 +146,28 @@ public class Database {
 		
 		void expire() {
 			synchronized (this) {
-				ArrayList<DBItem> newSet = new ArrayList<>();
 				long now = System.currentTimeMillis();
-				Arrays.asList(items).stream().filter(e -> !e.expired(now)).collect(Collectors.toCollection(() -> newSet));
-				if(newSet.size() != items.length) {
-					items = newSet.toArray(NO_ITEMS);
+				
+				DBItem[] items = this.items;
+				DBItem[] newItems = new DBItem[items.length];
+				
+				// don't remove all at once -> smears out new registrations on popular keys over time
+				int toRemove = DHTConstants.MAX_DB_ENTRIES_PER_KEY / 5;
+				
+				int insertPoint = 0;
+				
+				for(int i=0;i<items.length;i++) {
+					DBItem e = items[i];
+					if(toRemove == 0 || !e.expired(now))
+						newItems[insertPoint++] = e;
+					else
+						toRemove--;
+				}
+				
+				if(insertPoint != newItems.length) {
+					this.items = Arrays.copyOf(newItems, insertPoint);
 					modified();
 				}
-					
 				
 			}
 			
@@ -284,10 +298,17 @@ public class Database {
 		ItemSet entries = items.get(target);
 		if(entries == null)
 			return true;
-		if(entries.size() < DHTConstants.MAX_DB_ENTRIES_PER_KEY)
+		
+		int size = entries.size();
+		
+		if(size >= DHTConstants.MAX_DB_ENTRIES_PER_KEY)
+			return false;
+		
+		if(size < DHTConstants.MAX_DB_ENTRIES_PER_KEY / 5)
 			return true;
-	
-		return false;
+		
+		// implement RED to throttle write attempts
+		return size < ThreadLocalRandom.current().nextInt(DHTConstants.MAX_DB_ENTRIES_PER_KEY);
 	}
 	
 	/**

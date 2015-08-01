@@ -600,7 +600,7 @@ public class Node {
 		
 		int newEntryCount = 0;
 		
-		Map<InetAddress, KBucket> addressDedup = new HashMap<>();
+		Map<InetAddress, KBucket> addressDedup = new HashMap<>(num_entries);
 		
 		for (RoutingTableEntry e : routingTableCOW.entries) {
 			KBucket b = e.bucket;

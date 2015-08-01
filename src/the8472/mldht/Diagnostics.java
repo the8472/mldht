@@ -1,5 +1,7 @@
 package the8472.mldht;
 
+import static the8472.utils.Functional.unchecked;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -92,7 +94,7 @@ public class Diagnostics {
 		f.format("Keys: %d Entries: %d%n", items.size(), items.values().stream().collect(Collectors.summingInt(l -> l.size())));
 		
 		items.entrySet().stream().sorted((a,b) -> b.getValue().size() - a.getValue().size()).forEach(e -> {
-			f.format("%s: %4d%n", e.getKey().toString(false), e.getValue().size());
+			f.format("%s: %5d%n", e.getKey().toString(false), e.getValue().size());
 		});
 		
 		f.format("%n======%n%n");
@@ -100,14 +102,16 @@ public class Diagnostics {
 		
 		Instant now = Instant.now();
 		
-		items.entrySet().stream().sorted((a,b) -> a.getKey().compareTo(b.getKey())).forEach((e) -> {
+		
+		
+		items.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEachOrdered((e) -> {
 			Key k = e.getKey();
 			List<DBItem> v = e.getValue();
 			
 			f.format("%s (%d)%n", k.toString(false), v.size());
 			
 			v.stream().sorted((a,b) -> Arrays.compareUnsigned(a.getData(), b.getData())).forEachOrdered(i -> {
-				f.format("  %s age: %s%n", i.toString(), Duration.between(Instant.ofEpochMilli(i.getCreatedAt()), now));
+				unchecked(() -> writer.append("  ").append(i.toString()).append(" age: ").append(Duration.between(Instant.ofEpochMilli(i.getCreatedAt()), now).toString()).append('\n'));
 			});
 			
 			f.format("%n");

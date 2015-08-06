@@ -431,37 +431,19 @@ public class Node {
 		
 		Key closestLocalId = usedIDs.stream().min(comp).orElseThrow(() -> new IllegalStateException("expected to find a local ID"));
 		
-		RoutingTable table = routingTableCOW;
+		KClosestNodesSearch search = new KClosestNodesSearch(closestLocalId, DHTConstants.MAX_ENTRIES_PER_BUCKET, dht);
 		
-		int closer = 0;
+		search.filter = x -> true;
 		
-		int center = table.indexForId(closestLocalId);
+		search.fill();
+		List<KBucketEntry> found = search.getEntries();
 		
-		for(int i=center;i<table.size();i++) {
-			KBucket bucket = table.get(i).bucket;
-			if(bucket.getNumEntries() == 0)
-				continue;
-			int found = (int) bucket.entriesStream().filter(e -> closestLocalId.threeWayDistance(e.getID(), toInsert.getID()) < 0).count();
-			if(found == 0)
-				break;
-			closer+=found;
-			if(closer >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
-				return false;
-		}
+		if(found.size() < DHTConstants.MAX_ENTRIES_PER_BUCKET)
+			return true;
 		
-		for(int i=center-1;i>=0;i--) {
-			KBucket bucket = table.get(i).bucket;
-			if(bucket.getNumEntries() == 0)
-				continue;
-			int found = (int) bucket.entriesStream().filter(e -> closestLocalId.threeWayDistance(e.getID(), toInsert.getID()) < 0).count();
-			if(found == 0)
-				break;
-			closer+=found;
-			if(closer >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
-				return false;
-		}
+		KBucketEntry max = found.get(found.size()-1);
 		
-		return closer < DHTConstants.MAX_ENTRIES_PER_BUCKET;
+		return closestLocalId.threeWayDistance(max.getID(), toInsert.getID()) > 0;
 	}
 	
 	private void splitEntry(RoutingTableEntry entry) {

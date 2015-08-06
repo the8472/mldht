@@ -26,7 +26,8 @@ public class OnInsertValidations {
 	@Before
 	public void setup() {
 		DHT dht = new DHT(DHTtype.IPV6_DHT);
-		node = new Node(dht);
+		dht.populate();
+		node = dht.getNode();
 		nodeId = node.registerId();
 	}
 	

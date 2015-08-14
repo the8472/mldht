@@ -289,6 +289,7 @@ public class RPCServer {
 	
 	private void handlePacket (ByteBuffer p, SocketAddress soa) {
 		InetSocketAddress source = (InetSocketAddress) soa;
+		int rawLength = p.remaining();
 		
 		// ignore port 0, can't respond to them anyway and responses to requests from port 0 will be useless too
 		if(source.getPort() == 0)
@@ -305,7 +306,7 @@ public class RPCServer {
 			
 			try {
 				if (DHT.isLogLevelEnabled(LogLevel.Verbose)) {
-					DHT.logVerbose("received: " + Utils.prettyPrint(bedata) + " from: " + source);
+					DHT.logVerbose("received: " + Utils.prettyPrint(bedata) + " from: " + source + " length: "+rawLength );
 				}
 			} catch (Exception e) {
 				DHT.log(e, LogLevel.Error);
@@ -346,7 +347,7 @@ public class RPCServer {
 			return;
 		
 		if(DHT.isLogLevelEnabled(LogLevel.Debug))
-			DHT.logDebug("RPC received message from "+source.getAddress().getHostAddress() + ":" + source.getPort() +" | "+msg.toString());
+			DHT.logDebug("RPC received message from "+source.getAddress().getHostAddress() + ":" + source.getPort() +" | "+msg.toString()+ " length: "+rawLength );
 		stats.addReceivedMessageToCount(msg);
 		msg.setOrigin(source);
 		msg.setServer(this);

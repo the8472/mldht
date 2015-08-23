@@ -149,13 +149,14 @@ This requires a non-contiguous search
 			int dir = Integer.signum(nextBucketTarget.compareTo(current.prefix));
 			int idx;
 			
+			current = null;
 			
 			idx = currentIdx + dir;
-			if(0 < idx && idx < table.size())
+			if(0 <= idx && idx < table.size())
 				current = table.get(idx);
 			
 			// do binary search if guess turned out incorrect
-			if(!current.prefix.isPrefixOf(nextBucketTarget)) {
+			if(current == null || !current.prefix.isPrefixOf(nextBucketTarget)) {
 				idx = table.indexForId(nextBucketTarget);
 				current = table.get(idx);
 			}

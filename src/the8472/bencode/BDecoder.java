@@ -6,8 +6,11 @@ import static the8472.bencode.Utils.buf2str;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+
+import the8472.bencode.Tokenizer.BDecodingException;
+import the8472.bencode.Tokenizer.Token;
+import the8472.bencode.Tokenizer.TokenConsumer;
 
 public class BDecoder {
 	
@@ -18,81 +21,103 @@ public class BDecoder {
 		TREE_ROOT
 	}
 	
-	private class TokenConsumer implements the8472.bencode.Tokenizer.TokenConsumer {
-		Object[] stack = new Object[256];
-		int nesting = 0;
-		ParserState state = ParserState.TREE_ROOT;
-		String currentKey = null;
-		Map<String, Object> currentMap = null;
-		List<Object> currentList = null;
+	private class Consumer implements TokenConsumer {
 		
-		private void putObject(Object value) {
-			switch(state) {
-				case LIST_VALUE:
-					currentList.add(value);
+		Tokenizer t;
+		
+		Object[] stack = new Object[256];
+		
+		String keyPendingInsert;
+		
+		int depth = 0;
+		
+		@Override
+		public void push(Token st) {
+			
+			//System.out.println("push"+st.type());
+			
+			switch(st.type()) {
+				case DICT:
+					Object o = new HashMap<String, Object>();
+					putObject(o);
+					pushInternal(o);
 					break;
-				case DICT_VALUE:
-					assert(currentKey != null);
-					currentMap.put(currentKey, value);
-					currentKey = null;
-					state = ParserState.DICT_KEY;
+				case LIST:
+					o = new ArrayList<>();
+					putObject(o);
+					pushInternal(o);
 					break;
-				case TREE_ROOT:
-					break;
-				case DICT_KEY:
-					throw new Tokenizer.BDecodingException("encountered non-string type while decoding a dictionary key");
+				case LONG:
+				case STRING:
+				case PREFIXED_STRING:
+					return;
+				default:
+					throw new IllegalStateException("this shouldn't be happening");
 			}
+			
+			
+			
+			depth++;
+		}
+		
+		void pushInternal(Object o) {
+			stack[depth] = o;
+		}
+		
+		void putObject(Object o) {
+			if(depth == 0) {
+				stack[0] = o;
+				return;
+			}
+			
+			Object container = stack[depth - 1];
+			
+			
+			if(container.getClass() == HashMap.class) {
+				if(keyPendingInsert != null) {
+					if(o instanceof ByteBuffer)
+						o = buf2ary((ByteBuffer)o);
+					if(((HashMap<String, Object>)container).put(keyPendingInsert, o) != null)
+						throw new BDecodingException("duplicate key found in dictionary");
+					keyPendingInsert = null;
+					
+				} else {
+					keyPendingInsert = buf2str((ByteBuffer)o);
+				}
+			} else if(container.getClass() == ArrayList.class) {
+				if(o instanceof ByteBuffer)
+					o = buf2ary((ByteBuffer)o);
+				((ArrayList<Object>)container).add(o);
+			} else {
+				throw new RuntimeException("this should not happen");
+			}
+
 		}
 
-		
-		public void dictionaryEnter() {
-			Map newMap = new HashMap();
-			putObject(newMap);
-			stack[nesting] = currentMap = newMap;
-			state = ParserState.DICT_KEY;
-			nesting++;
-		}
-		
-		public void listEnter() {
-			List newList = new ArrayList();
-			putObject(newList);
-			stack[nesting] = currentList = newList;
-			state = ParserState.LIST_VALUE;
-			nesting++;
-		}
-		
-		public void number(long num) {
-			putObject(num);
-		}
-		
-		public void string(ByteBuffer key) {
-			if(state == ParserState.DICT_KEY) {
-				currentKey = buf2str(key);
-				state = ParserState.DICT_VALUE;
-			} else {
-				putObject(buf2ary(key));
+		@Override
+		public void pop(Token st) {
+			//System.out.println("pop"+st.type());
+			
+			switch(st.type()) {
+				case DICT:
+				case LIST:
+					depth--;
+					return;
+				case LONG:
+					putObject(t.lastDecodedNum);
+					break;
+				case STRING:
+					putObject(t.getSlice(st));
+					break;
+				case PREFIXED_STRING:
+					return;
+				default:
+					throw new IllegalStateException("this shouldn't be happening");
 			}
+			
 		}
 		
-		
-		@SuppressWarnings("unchecked")
-		public void nestingExit() {
-			currentKey = null;
-			currentList = null;
-			currentMap = null;
-			nesting--;
-			if(nesting >= 1) {
-				Object current = stack[nesting-1];
-				if(current instanceof Map) {
-					currentMap = (Map<String, Object>) current;
-					state = ParserState.DICT_KEY;
-				} else if(current instanceof List) {
-					currentList = (List<Object>) current;
-					state = ParserState.LIST_VALUE;
-				}
-			}
-				
-		}
+
 	}
 	
 	
@@ -105,10 +130,14 @@ public class BDecoder {
 	}
 	
 	private Object decodeInternal(ByteBuffer buf) {
-		TokenConsumer consumer = new TokenConsumer();
+		Consumer consumer = new Consumer();
+		
 		
 		Tokenizer t = new Tokenizer();
-		t.tokenize(buf, consumer);
+		consumer.t = t;
+		t.inputBuffer(buf);
+		t.consumer(consumer);
+		t.tokenize();
 		return consumer.stack[0];
 	}
 

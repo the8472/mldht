@@ -45,31 +45,47 @@ import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
+import the8472.bencode.PathMatcher;
+import the8472.bencode.Tokenizer;
 
 /**
  * @author Damokles
  * 
  */
 public class MessageDecoder {
+	
+	public MessageDecoder(Function<byte[], Optional<Method>> transactionIdMapper, DHTtype type) {
+		this.transactionIdMapper = transactionIdMapper;
+		this.type = type;
+	}
+	
+	Map<String, Object> rootMap;
+	ByteBuffer raw;
+	final Function<byte[], Optional<Method>> transactionIdMapper;
+	final DHTtype type;
+	
+	public void toDecode(ByteBuffer rawMessage, Map<String, Object> map) {
+		this.raw = rawMessage;
+		this.rootMap = map;
+	}
 
-	public static MessageBase parseMessage (Map<String, Object> map,
-			Function<byte[], Optional<Method>> transactionIdMapper, DHTtype type) throws MessageException, IOException {
+	public MessageBase parseMessage() throws MessageException, IOException {
 
 		try {
-			String msgType = getStringFromBytes((byte[]) map.get(Type.TYPE_KEY), true);
+			String msgType = getStringFromBytes((byte[]) rootMap.get(Type.TYPE_KEY), true);
 			if (msgType == null) {
 				throw new MessageException("message type (y) missing", ErrorCode.ProtocolError);
 			}
 
-			String version = getStringFromBytes((byte[]) map.get(MessageBase.VERSION_KEY),true);
+			String version = getStringFromBytes((byte[]) rootMap.get(MessageBase.VERSION_KEY),true);
 
 			MessageBase mb = null;
 			if (msgType.equals(Type.REQ_MSG.getRPCTypeName())) {
-				mb = parseRequest(map, transactionIdMapper, type);
+				mb = parseRequest(rootMap, transactionIdMapper, type);
 			} else if (msgType.equals(Type.RSP_MSG.getRPCTypeName())) {
-				mb = parseResponse(map, transactionIdMapper);
+				mb = parseResponse(rootMap, transactionIdMapper);
 			} else if (msgType.equals(Type.ERR_MSG.getRPCTypeName())) {
-				mb = parseError(map, transactionIdMapper);
+				mb = parseError(rootMap, transactionIdMapper);
 			} else
 				throw new MessageException("unknown RPC type (y="+msgType+")");
 
@@ -89,7 +105,7 @@ public class MessageDecoder {
 	 * @param map
 	 * @return
 	 */
-	private static MessageBase parseError (Map<String, Object> map, Function<byte[], Optional<Method>> transactionIdMapper) {
+	private MessageBase parseError (Map<String, Object> map, Function<byte[], Optional<Method>> transactionIdMapper) {
 		Object error = map.get(Type.ERR_MSG.innerKey());
 		
 		int errorCode = 0;
@@ -129,7 +145,7 @@ public class MessageDecoder {
 	 * @param srv
 	 * @return
 	 */
-	private static MessageBase parseResponse (Map<String, Object> map,  Function<byte[], Optional<Method>> transactionIdMapper) throws MessageException {
+	private MessageBase parseResponse (Map<String, Object> map,  Function<byte[], Optional<Method>> transactionIdMapper) throws MessageException {
 
 		byte[] mtid = (byte[]) map.get(MessageBase.TRANSACTION_KEY);
 		if (mtid == null || mtid.length < 1)
@@ -147,7 +163,7 @@ public class MessageDecoder {
 	 * @param mtid
 	 * @return
 	 */
-	private static MessageBase parseResponse (Map<String, Object> map,	Method msgMethod, byte[] mtid) throws MessageException {
+	private MessageBase parseResponse (Map<String, Object> map,	Method msgMethod, byte[] mtid) throws MessageException {
 		Map<String, Object> args = (Map<String, Object>) map.get(Type.RSP_MSG.innerKey());
 		if (args == null) {
 			throw new MessageException("response did not contain a body",ErrorCode.ProtocolError);
@@ -255,7 +271,7 @@ public class MessageDecoder {
 	 * @param map
 	 * @return
 	 */
-	private static MessageBase parseRequest (Map<String, Object> map,  Function<byte[], Optional<Method>> transactionIdMapper, DHTtype type) throws MessageException {
+	private MessageBase parseRequest (Map<String, Object> map,  Function<byte[], Optional<Method>> transactionIdMapper, DHTtype type) throws MessageException {
 		Object rawRequestMethod = map.get(Type.REQ_MSG.getRPCTypeName());
 		Map<String, Object> args = (Map<String, Object>) map.get(Type.REQ_MSG.innerKey());
 		
@@ -333,8 +349,14 @@ public class MessageDecoder {
 				break;
 			case PUT:
 				
+				PathMatcher m = new PathMatcher(Type.REQ_MSG.innerKey(),"v");
+				Tokenizer t = new Tokenizer();
+				m.tokenizer(t);
+				ByteBuffer rawVal = m.match(raw);
+				
 				msg = tapThrow(new PutRequest(), put -> {
-					put.value = args.get("v");
+					if(rawVal != null)
+						put.setValue(rawVal);
 					put.pubkey = typedGet(args, "k", byte[].class).orElse(null);
 					put.sequenceNumber = typedGet(args, "seq", Long.class).orElse(-1L);
 					put.expectedSequenceNumber = typedGet(args, "cas", Long.class).orElse(-1L);

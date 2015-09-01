@@ -326,9 +326,13 @@ public class RPCServer {
 		}
 		
 		try {
-			msg = MessageDecoder.parseMessage(bedata, (byte[] mtid) -> {
+			MessageDecoder dec = new MessageDecoder((byte[] mtid) -> {
 				return Optional.ofNullable(findCall(mtid)).map(RPCCall::getMessageMethod);
 			}, dh_table.getType());
+			
+			p.rewind();
+			dec.toDecode(p, bedata);
+			msg = dec.parseMessage();
 		} catch(MessageException e)
 		{
 			byte[] mtid = {0,0,0,0};

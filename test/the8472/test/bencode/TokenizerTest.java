@@ -1,24 +1,21 @@
 package the8472.test.bencode;
 
-import static org.junit.Assert.*;
-
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static the8472.bencode.Utils.str2buf;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 
 import org.junit.Before;
 import org.junit.Test;
 
 import the8472.bencode.Tokenizer;
 import the8472.bencode.Tokenizer.TokenConsumer;
-
-import static the8472.bencode.Utils.*;
+import the8472.bencode.Tokenizer.TokenType;
+import the8472.bencode.Tokenizer.Token;
 
 public class TokenizerTest {
 	
@@ -36,11 +33,19 @@ public class TokenizerTest {
 		
 		CompletableFuture<Long> parsed = new CompletableFuture<>();
 		
-		t.tokenize(num, new TokenConsumer() {
-			public void number(long result) {
-				parsed.complete(result);								
+		t.inputBuffer(num);
+		t.consumer(new TokenConsumer() {
+			
+			@Override
+			public void pop(Token st) {
+				if(st.type() == TokenType.LONG)
+					parsed.complete(t.lastDecodedNum());
 			}
+			
+			@Override
+			public void push(Token st) {}
 		});
+		t.tokenize();
 		
 		assertEquals(-17L, (long)parsed.getNow(0L));
 	}
@@ -49,13 +54,24 @@ public class TokenizerTest {
 	public void stopsBeforeTrailingContent() {
 		ByteBuffer trailing = str2buf("de|trailing");
 		
-		CompletableFuture<Boolean> reachedEnd = new CompletableFuture<>();		
+		CompletableFuture<Boolean> reachedEnd = new CompletableFuture<>();
+
+		t.inputBuffer(trailing);
+		t.consumer(new TokenConsumer() {
+			
+			@Override
+			public void pop(Token st) {
+				if(st.type() == TokenType.DICT)
+					reachedEnd.complete(true);
+			}
+			
+			@Override
+			public void push(Token st) {
+				// TODO Auto-generated method stub
 				
-		this.t.tokenize(trailing, new TokenConsumer() {
-			public void endOfRoot() {
-				reachedEnd.complete(true);			
 			}
 		});
+		t.tokenize();
 			
 		assertEquals(2, trailing.position());
 		assertTrue(reachedEnd.getNow(false));

@@ -9,7 +9,6 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
-import the8472.bencode.BEncoder;
 
 public class PutRequest extends MessageBase {
 	
@@ -38,8 +37,8 @@ public class PutRequest extends MessageBase {
 	byte[] salt;
 	byte[] signature;
 	byte[] token;
-	// TODO extract raw bencoded data from incoming message
-	Object value;
+
+	byte[] value;
 	
 	
 
@@ -63,7 +62,7 @@ public class PutRequest extends MessageBase {
 			throw new MessageException("salt too long", ErrorCode.SaltTooBig);
 		if(token == null || value == null)
 			throw new MessageException("required arguments for PUT request missing", ErrorCode.ProtocolError);
-		if(rawValue().limit() > 1000)
+		if(value.length > 1000)
 			throw new MessageException("bencoded PUT value ('v') field exceeds 1000 bytes", ErrorCode.PutMessageTooBig);
 		if((pubkey != null || salt != null || signature != null || expectedSequenceNumber >= 0 || sequenceNumber >= 0) && (pubkey == null || signature == null))
 			throw new MessageException("PUT request contained at least one field indicating mutable data but other fields mandatory for mutable PUTs were missing", ErrorCode.ProtocolError);
@@ -71,11 +70,6 @@ public class PutRequest extends MessageBase {
 	
 	public byte[] getToken() {
 		return token;
-	}
-	
-	// TODO: extract raw value directly from incoming message instead of re-encoding
-	public ByteBuffer rawValue() {
-		return new BEncoder().encode(value, 2048);
 	}
 	
 	public long getSequenceNumber() {
@@ -104,7 +98,7 @@ public class PutRequest extends MessageBase {
 				dig.update(salt);
 			return new Key(dig.digest());
 		}
-		return new Key(dig.digest(buf2ary(rawValue())));
+		return new Key(dig.digest(value));
 	}
 
 
@@ -124,15 +118,15 @@ public class PutRequest extends MessageBase {
 
 
 
-	public Object getValue() {
-		return value;
+	public ByteBuffer getValue() {
+		return ByteBuffer.wrap(value);
 	}
 
 
 
 
-	public void setValue(Object value) {
-		this.value = value;
+	public void setValue(ByteBuffer value) {
+		this.value = buf2ary(value);
 	}
 
 

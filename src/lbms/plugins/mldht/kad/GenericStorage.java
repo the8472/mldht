@@ -28,7 +28,7 @@ public class GenericStorage {
 		
 		public StorageItem(PutRequest req) {
 			expirationDate = System.currentTimeMillis() + EXPIRATION_INTERVAL_SECONDS*1000;
-			value = buf2ary(req.rawValue());
+			value = buf2ary(req.getValue());
 			
 			if(req.getPubkey() != null) {
 				sequenceNumber = req.getSequenceNumber();

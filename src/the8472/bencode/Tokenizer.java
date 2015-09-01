@@ -1,6 +1,7 @@
 package the8472.bencode;
 
 import java.nio.ByteBuffer;
+import java.util.stream.IntStream;
 
 public class Tokenizer {
 	
@@ -12,46 +13,225 @@ public class Tokenizer {
 		
 	}
 	
+	/* handled edge-cases:
+	 * 
+	 * - negative length strings
+	 * - zero-prefixed numbers (illegal)
+	 * - dictionary-exit while expecting a value
+	 * - non-string while expecting dict key
+	 * - end of input reached
+	 * 
+	 * TODO:
+	 * - verify correct sorting
+	 * - long overflow
+	 * 
+	 * Handled downstream: duplicate dict keys
+	 * 
+	 */
+	
 	public static interface TokenConsumer {
 
-		default void dictionaryEnter() {}
+		void push(Token st);
+		
+		void pop(Token st);
+	}
+	
+	
+	public enum TokenType {
+		LIST, DICT, PREFIXED_STRING, STRING, LONG;
+	}
 
-		default void nestingExit() {}
-
-		default void string(ByteBuffer key) {}
-
-		default void number(long num) {}
-
-		default void listEnter() {}
-
-		default void endOfRoot() {}
+	
+	int stackIdx = 0;
+	
+	Token[] stack = new Token[256];
+	{
+		IntStream.range(0, stack.length).forEach(i -> {
+			stack[i] = new Token();
+		});
+	}
+	
+	ByteBuffer buf;
+	TokenConsumer consumer;
+	
+	public static final class Token {
+		int start;
+		int end;
+		byte state;
+		byte dictExpect;
+		
+		public Token() {
+			reset();
+		}
+		
+		void reset() {
+			start = -1;
+			end = -1;
+			state = -1;
+			expect(DictState.NoExpectation);
+		}
+		
+		public TokenType type() {
+			return TokenType.values()[state];
+		}
+		
+		void type(TokenType t) {
+			state = (byte) t.ordinal();
+		}
+		
+		public DictState expect() {
+			return DictState.values()[dictExpect];
+		}
+		
+		void expect(DictState d) {
+			dictExpect = (byte) d.ordinal();
+		}
+		
+		@Override
+		public String toString() {
+			String st = "Token: "+type();
+			if(type() == TokenType.DICT)
+				st += " "+expect();
+			st += " [" + start + ","+ end + "]";
+			
+			return st;
+		}
+		
 		
 	}
 	
-	public void tokenize(ByteBuffer buf, TokenConsumer consumer) {
-		int nesting = 0;
+	
+	enum DictState {
+		NoExpectation,
+		ExpectKeyOrEnd,
+		ExpectValue
+	}
+	
+	
+	TokenType current() {
+		return stack[stackIdx].type();
+	}
+	
+	Token currentToken() {
+		return stack[stackIdx];
+	}
+	
+	Token atStackOffset(int offset) {
+		int depth = stackIdx + offset;
+		if(depth < 0)
+			return null;
+		return stack[depth];
+	}
+	
+	void push(TokenType t, int pos) {
+		Token current = currentToken();
+		if(current.expect() == DictState.ExpectKeyOrEnd && t != TokenType.PREFIXED_STRING)
+			throw new BDecodingException("encountered "+t.toString()+" while expecting a dictionary key");
 		
-		parse: while(buf.remaining() > 0) {
+		stackIdx++;
+		
+		Token newState = stack[stackIdx];
+		newState.start = pos;
+		newState.type(t);
+		if(t == TokenType.DICT)
+			newState.expect(DictState.ExpectKeyOrEnd);
+		consumer.push(newState);
+	}
+	
+	void pop(int pos) {
+		Token current = stack[stackIdx];
+		
+		if(current.type() == TokenType.DICT && current.expect() == DictState.ExpectValue)
+			throw new BDecodingException("encountered 'e' (offset: "+buf.position()+") after dictionary key, expected a value");
+		
+		current.end = pos;
+		consumer.pop(current);
+		
+		lastDecodedNum = -1;
+		
+		current.reset();
+		stackIdx--;
+		
+		current = currentToken();
+
+		switch(current.expect()) {
+			case ExpectKeyOrEnd:
+				current.expect(DictState.ExpectValue);
+				break;
+			case ExpectValue:
+				current.expect(DictState.ExpectKeyOrEnd);
+				break;
+			default:
+				break;
+		}
+	}
+	
+	void decodeString() {
+		long length = this.parseNum(buf, (byte) ':');
+		if(length < 0)
+			length = 0;
+		push(TokenType.STRING, buf.position());
+
+		if(length > buf.remaining())
+			throw new BDecodingException("string (offset: "+buf.position()+" + length: "+length+") points beyond end of message (length: "+buf.limit()+")");
+		//ByteBuffer key = buf.slice();
+		//if(length > key.capacity())
+		//key.limit((int) length);
+		buf.position((int) (buf.position() + length));
+		pop(buf.position());
+	}
+	
+	
+	ByteBuffer getSlice(Token t) {
+		int oldPos = buf.position();
+		buf.position(t.start);
+		ByteBuffer slice = buf.slice();
+		slice.limit(t.end - t.start);
+		buf.position(oldPos);
+		return slice;
+	}
+	
+	long lastDecodedNum;
+	ByteBuffer lastString;
+	
+	public long lastDecodedNum() {
+		return lastDecodedNum;
+	}
+	
+	public int stackIdx() {
+		return stackIdx;
+	}
+	
+	public void inputBuffer(ByteBuffer buf) {
+		this.buf = buf;
+	}
+	
+	public void consumer(TokenConsumer c) {
+		this.consumer = c;
+	}
+	
+	public void tokenize() {
+		
+		while(buf.remaining() > 0) {
+			
+			int pos = buf.position();
+			
 			byte current = buf.get();
 			
 			switch(current) {
 				case 'd':
-					nesting++;
-					consumer.dictionaryEnter();
+					push(TokenType.DICT, pos);
 					break;
 				case 'i':
-					long num = this.parseNum(buf, (byte) 'e');
-					consumer.number(num);
+					push(TokenType.LONG, pos);
+					lastDecodedNum = this.parseNum(buf, (byte) 'e');
+					pop(buf.position());
 					break;
 				case 'l':
-					nesting++;
-					consumer.listEnter();
+					push(TokenType.LIST, pos);
 					break;
 				case 'e':
-					nesting--;
-					consumer.nestingExit();
-					if(nesting == 0)
-						break parse;
+					pop(buf.position());
 					break;
 				case '-':
 				case '0':
@@ -64,27 +244,23 @@ public class Tokenizer {
 				case '7':
 				case '8':
 				case '9':
-					buf.position(buf.position()-1);
-					long length = this.parseNum(buf, (byte) ':');
-					if(length < 0)
-						length = 0;
-					ByteBuffer key = buf.slice();
-					if(length > key.capacity())
-						throw new BDecodingException("string (offset: "+buf.position()+" length: "+length+") points beyond end of message (length: "+buf.limit()+")");
-					key.limit((int) length);
-					consumer.string(key);
-					buf.position((int) (buf.position() + length));
+					push(TokenType.PREFIXED_STRING, pos);
+					buf.position(pos);
+					decodeString();
+					pop(buf.position());
 					break;
 				default:
 					StringBuilder b = new StringBuilder();
 					Utils.toHex(new byte[]{current}, b , 1);
 					throw new BDecodingException("unexpected character 0x" + b + " at offset "+(buf.position()-1));
-					
-			
 			}
+
+			if(stackIdx == 0)
+				break;
 		}
 		
-		consumer.endOfRoot();
+		if(stackIdx > 0)
+			throw new BDecodingException("reached end of data with unclosed dictionaries/lists on the list");
 	}
 	
 	public long parseNum(ByteBuffer buf, byte terminator) {

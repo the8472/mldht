@@ -260,7 +260,7 @@ public class Tokenizer {
 		}
 		
 		if(stackIdx > 0)
-			throw new BDecodingException("reached end of data with unclosed dictionaries/lists on the list");
+			throw new BDecodingException("reached end of data with unterminated lists/dictionaries on the stack");
 	}
 	
 	public long parseNum(ByteBuffer buf, byte terminator) {

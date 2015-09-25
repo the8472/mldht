@@ -278,7 +278,7 @@ public class MessageDecoder {
 		if (rawRequestMethod == null || args == null)
 			return null;
 
-		byte[] mtid = typedGet(map, MessageBase.TRANSACTION_KEY, byte[].class).filter(tid -> tid.length > 0).orElseThrow(() -> new MessageException("missing or zero-length transaction ID in response", ErrorCode.ProtocolError));
+		byte[] mtid = typedGet(map, MessageBase.TRANSACTION_KEY, byte[].class).filter(tid -> tid.length > 0).orElseThrow(() -> new MessageException("missing or zero-length transaction ID in request", ErrorCode.ProtocolError));
 		byte[] hash = typedGet(args,"id", byte[].class).filter(id -> id.length == Key.SHA1_HASH_LENGTH).orElseThrow(() -> new MessageException("missing or invalid node ID", ErrorCode.ProtocolError));
 		
 		Key id = new Key(hash);

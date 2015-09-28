@@ -89,13 +89,14 @@ public class Firehose implements Component {
 		
 		AtomicInteger writePointer = new AtomicInteger();
 		AtomicInteger readPointer = new AtomicInteger();
+		// length must be power of 2
 		AtomicReferenceArray<ByteBuffer> toWrite = new AtomicReferenceArray<>(1024);
 		volatile boolean empty = true;
 		
 		
 		void add(ByteBuffer buf) {
 			int current = writePointer.getAndIncrement();
-			toWrite.set(current % toWrite.length(), buf);
+			toWrite.set(current & (toWrite.length() - 1), buf);
 			if(empty) {
 				readPointer.set(current);
 				empty = false;
@@ -107,7 +108,7 @@ public class Firehose implements Component {
 			if(currentBuf != null && currentBuf.remaining() > 0)
 				return currentBuf;
 			int current = readPointer.getAndIncrement();
-			currentBuf = toWrite.getAndSet(current % toWrite.length(), null);
+			currentBuf = toWrite.getAndSet(current & (toWrite.length() - 1), null);
 			if(currentBuf == null) {
 				empty = true;
 				selector.interestOpsChanged(this);

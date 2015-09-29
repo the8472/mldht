@@ -84,6 +84,17 @@ public class Database {
 				Collections.shuffle(Arrays.asList(newItems));
 
 				items = newItems;
+				
+				// bloom filter supports adding, only deletions need a rebuild.
+				if(toAdd instanceof PeerAddressDBItem) {
+					BloomFilterBEP33 currentFilter = ((PeerAddressDBItem) toAdd).isSeed() ? seedFilter : peerFilter;
+					if(currentFilter != null)
+						synchronized (currentFilter) {
+							currentFilter.insert(((PeerAddressDBItem) toAdd).getInetAddress());
+						}
+				}
+				
+				
 				return true;
 												
 			}
@@ -101,7 +112,7 @@ public class Database {
 			return items.length;
 		}
 		
-		private void modified() {
+		private void invalidateFilters() {
 			peerFilter = null;
 			seedFilter = null;
 		}
@@ -166,7 +177,7 @@ public class Database {
 				
 				if(insertPoint != newItems.length) {
 					this.items = Arrays.copyOf(newItems, insertPoint);
-					modified();
+					invalidateFilters();
 				}
 				
 			}

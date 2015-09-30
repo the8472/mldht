@@ -99,7 +99,7 @@ public class Utils {
 		if(o instanceof ByteBuffer) {
 			ByteBuffer buf = ((ByteBuffer) o).slice();
 			byte[] bytes;
-			if(buf.hasArray() & buf.arrayOffset() == 0 && buf.capacity() == buf.limit())
+			if(buf.hasArray() && buf.arrayOffset() == 0 && buf.capacity() == buf.limit())
 				bytes = buf.array();
 			else
 				bytes = new byte[buf.remaining()];
@@ -165,7 +165,7 @@ public class Utils {
 	}
 	
 	
-	static byte[] hex2ary(CharSequence hex) {
+	public static byte[] hex2ary(CharSequence hex) {
 		byte[] bytes = new byte[hex.length()/2];
 		
 	    for (int i = 0; i < hex.length(); i += 2)

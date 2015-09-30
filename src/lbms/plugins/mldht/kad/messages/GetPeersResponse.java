@@ -16,10 +16,14 @@
  */
 package lbms.plugins.mldht.kad.messages;
 
+import static the8472.bencode.Utils.buf2ary;
+
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import lbms.plugins.mldht.kad.BloomFilterBEP33;
 import lbms.plugins.mldht.kad.DBItem;
@@ -33,8 +37,8 @@ import lbms.plugins.mldht.kad.DHT.DHTtype;
 public class GetPeersResponse extends AbstractLookupResponse {
 
 
-	private byte[]			scrapeSeeds;
-	private byte[]			scrapePeers;
+	private ByteBuffer			scrapeSeeds;
+	private ByteBuffer			scrapePeers;
 
 	private List<DBItem>	items;
 
@@ -87,31 +91,31 @@ public class GetPeersResponse extends AbstractLookupResponse {
 	
 	public BloomFilterBEP33 getScrapeSeeds() {
 		if(scrapeSeeds != null)
-			return new BloomFilterBEP33(scrapeSeeds);
+			return new BloomFilterBEP33(buf2ary(scrapeSeeds));
 		return null;
 	}
 
 	public void setScrapeSeeds(byte[] scrapeSeeds) {
-		this.scrapeSeeds = scrapeSeeds;
+		this.scrapeSeeds = Optional.ofNullable(scrapeSeeds).map(ByteBuffer::wrap).orElse(null);
 	}
 	
 	public void setScrapeSeeds(BloomFilterBEP33 scrapeSeeds) {
-		this.scrapeSeeds = scrapeSeeds != null ? scrapeSeeds.serialize() : null;
+		this.scrapeSeeds = scrapeSeeds != null ? scrapeSeeds.toBuffer() : null;
 	}
 
 
 	public BloomFilterBEP33 getScrapePeers() {
 		if(scrapePeers != null)
-			return new BloomFilterBEP33(scrapePeers);
+			return new BloomFilterBEP33(buf2ary(scrapePeers));
 		return null;
 	}
 
 	public void setScrapePeers(byte[] scrapePeers) {
-		this.scrapePeers = scrapePeers;
+		this.scrapePeers = Optional.ofNullable(scrapePeers).map(ByteBuffer::wrap).orElse(null);
 	}
 
 	public void setScrapePeers(BloomFilterBEP33 scrapePeers) {
-		this.scrapePeers = scrapePeers != null ? scrapePeers.serialize() : null;
+		this.scrapePeers = scrapePeers != null ? scrapePeers.toBuffer() : null;
 	}
 
 	@Override

@@ -1,24 +1,25 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad;
 
 import static java.lang.Math.log1p;
 
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
@@ -29,7 +30,7 @@ import lbms.plugins.mldht.kad.utils.BitVector;
 public class BloomFilterBEP33 implements Comparable<BloomFilterBEP33>, Cloneable {
 
 	public final static int m = 256 * 8;
-	private final static int k = 2; 
+	private final static int k = 2;
 
 	
 	MessageDigest sha1;
@@ -68,6 +69,7 @@ public class BloomFilterBEP33 implements Comparable<BloomFilterBEP33>, Cloneable
     }
 	
 	
+	@Override
 	protected BloomFilterBEP33 clone() {
 		BloomFilterBEP33 newFilter = null;
 		try
@@ -77,12 +79,12 @@ public class BloomFilterBEP33 implements Comparable<BloomFilterBEP33>, Cloneable
 		{
 			throw new Error("never happens");
 		}
-		newFilter.filter = new BitVector(filter);		
-		return newFilter;		
+		newFilter.filter = new BitVector(filter);
+		return newFilter;
 	}
 	
 	public int compareTo(BloomFilterBEP33 o) {
-		return (int) (size()-o.size());
+		return size()-o.size();
 	}
 
 	
@@ -107,6 +109,10 @@ public class BloomFilterBEP33 implements Comparable<BloomFilterBEP33>, Cloneable
 	
 	public byte[] serialize() {
 		return filter.getSerializedFormat();
+	}
+	
+	public ByteBuffer toBuffer() {
+		return filter.toBuffer();
 	}
 
 	

@@ -1,21 +1,22 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad.utils;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 
@@ -114,7 +115,7 @@ public final class BitVector {
 				c++;
 		}
 		
-		return c;		
+		return c;
 	}
 	
 	@Override
@@ -151,16 +152,20 @@ public final class BitVector {
 				c++;
 		}
 		
-		return c;		
+		return c;
 	}
 	
 	public byte[] getSerializedFormat() {
 		return vector.clone();
 	}
 	
+	public ByteBuffer toBuffer() {
+		return ByteBuffer.wrap(vector).asReadOnlyBuffer();
+	}
+	
 	public static void main(String[] args) {
 		BitVector bv = new BitVector(40, new byte[] {(byte) 0xF0,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF,(byte) 0xFF});
-		System.out.println(bv.rangeToInt(7, 2)); 
+		System.out.println(bv.rangeToInt(7, 2));
 	}
 	
 }

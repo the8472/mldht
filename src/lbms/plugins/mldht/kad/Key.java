@@ -20,6 +20,7 @@ import static java.lang.Math.min;
 
 import java.io.Serializable;
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -183,6 +184,10 @@ public class Key implements Radixable<Key>, Serializable {
 	 */
 	public byte[] getHash () {
 		return hash.clone();
+	}
+	
+	public void toBuffer(ByteBuffer dst) {
+		dst.put(hash);
 	}
 	
 	public int getInt(int offset) {

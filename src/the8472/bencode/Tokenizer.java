@@ -60,6 +60,10 @@ public class Tokenizer {
 		byte state;
 		byte dictExpect;
 		
+		private static final TokenType[] tokenEnums = TokenType.values();
+		
+		private static final DictState[] stateEnums = DictState.values();
+		
 		public Token() {
 			reset();
 		}
@@ -72,7 +76,7 @@ public class Tokenizer {
 		}
 		
 		public TokenType type() {
-			return TokenType.values()[state];
+			return tokenEnums[state];
 		}
 		
 		void type(TokenType t) {
@@ -80,7 +84,7 @@ public class Tokenizer {
 		}
 		
 		public DictState expect() {
-			return DictState.values()[dictExpect];
+			return stateEnums[dictExpect];
 		}
 		
 		void expect(DictState d) {

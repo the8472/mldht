@@ -311,12 +311,16 @@ public class Database {
 			return true;
 		
 		int size = entries.size();
+
+		if(size < DHTConstants.MAX_DB_ENTRIES_PER_KEY / 5)
+			return true;
+		
+		// TODO: send a token if the node requesting it is already in the DB
 		
 		if(size >= DHTConstants.MAX_DB_ENTRIES_PER_KEY)
 			return false;
 		
-		if(size < DHTConstants.MAX_DB_ENTRIES_PER_KEY / 5)
-			return true;
+
 		
 		// implement RED to throttle write attempts
 		return size < ThreadLocalRandom.current().nextInt(DHTConstants.MAX_DB_ENTRIES_PER_KEY);
@@ -341,7 +345,7 @@ public class Database {
 		bb.put(ip.getAddress());
 		bb.putShort((short) port);
 		bb.putLong(timestampCurrent.get());
-		bb.put(lookupKey.getHash());
+		lookupKey.toBuffer(bb);
 		bb.put(sessionSecret);
 		
 		// shorten 4bytes to not waste packet size

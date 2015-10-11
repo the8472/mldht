@@ -39,8 +39,7 @@ import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
  * 
  */
 public class Database {
-	private ConcurrentMap<Key, ItemSet>	items;
-	private DatabaseStats			stats;
+	private ConcurrentMap<Key, PeersSeeds>	items;
 	private AtomicLong timestampCurrent = new AtomicLong();
 	private volatile long timestampPrevious;
 	
@@ -50,57 +49,106 @@ public class Database {
 		ThreadLocalUtils.getThreadLocalRandom().nextBytes(sessionSecret);
 	}
 
-	Database()
-	{
-		stats = new DatabaseStats();
-		items = new ConcurrentHashMap<Key, ItemSet>(3000);
+	Database() {
+		items = new ConcurrentHashMap<Key, PeersSeeds>(3000);
 	}
 	
+	
+	private static class PeersSeeds {
+		ItemSet seeds;
+		ItemSet peers;
+		
+		public PeersSeeds(PeerAddressDBItem[] seeds, PeerAddressDBItem[] peers) {
+			this.seeds = new ItemSet(seeds);
+			this.peers = new ItemSet(peers);
+		}
+		
+		
+		boolean add(PeerAddressDBItem it) {
+			ItemSet removeTarget = it.seed ? peers : seeds;
+			ItemSet insertTarget = it.seed ? seeds : peers;
+			
+			removeTarget.remove(it);
+			return insertTarget.add(it);
+		}
+		
+		void expire() {
+			seeds.expire();
+			peers.expire();
+		}
+		
+		int size() {
+			return peers.size() + seeds.size();
+		}
+	}
+
+	
 	private static class ItemSet {
-		static final DBItem[] NO_ITEMS = new DBItem[0];
+		static final PeerAddressDBItem[] NO_ITEMS = new PeerAddressDBItem[0];
 		
-		private volatile DBItem[] items = NO_ITEMS;
-		private volatile BloomFilterBEP33 seedFilter = null;
-		private volatile BloomFilterBEP33 peerFilter = null;
 		
-		public ItemSet(DBItem... initial) {
-			items = initial;
+		
+		private volatile PeerAddressDBItem[] items = NO_ITEMS;
+		private volatile BloomFilterBEP33 filter = null;
+		
+		public ItemSet(PeerAddressDBItem[] initial) {
+			this.items = initial;
+		}
+		
+		private void remove(PeerAddressDBItem it) {
+			synchronized (this) {
+				PeerAddressDBItem[] current = items;
+				
+				if(current.length == 0)
+					return;
+				
+				
+				
+				int idx = Arrays.asList(current).indexOf(it);
+				if(idx < 0) {
+					return;
+				}
+				
+				PeerAddressDBItem[] newItems = Arrays.copyOf(current, current.length - 1);
+				
+				System.arraycopy(current, idx+1, newItems, idx, newItems.length - idx);
+				
+				items = newItems;
+				invalidateFilters();
+			}
 		}
 		
 		/**
 		 * @return true when inserting, false when replacing
 		 */
-		private boolean add(DBItem toAdd) {
+		private boolean add(PeerAddressDBItem toAdd) {
 			synchronized (this) {
-				DBItem[] current = items;
+				PeerAddressDBItem[] current = items;
 				int idx = Arrays.asList(current).indexOf(toAdd);
 				if(idx >= 0) {
 					current[idx] = toAdd;
 					return false;
 				}
 				
-				DBItem[] newItems = Arrays.copyOf(current, current.length + 1);
+				PeerAddressDBItem[] newItems = Arrays.copyOf(current, current.length + 1);
 				newItems[newItems.length-1] = toAdd;
 				Collections.shuffle(Arrays.asList(newItems));
 
 				items = newItems;
 				
 				// bloom filter supports adding, only deletions need a rebuild.
-				if(toAdd instanceof PeerAddressDBItem) {
-					BloomFilterBEP33 currentFilter = ((PeerAddressDBItem) toAdd).isSeed() ? seedFilter : peerFilter;
-					if(currentFilter != null)
-						synchronized (currentFilter) {
-							currentFilter.insert(((PeerAddressDBItem) toAdd).getInetAddress());
-						}
-				}
+				BloomFilterBEP33 currentFilter = filter;
+				if(currentFilter != null)
+					synchronized (currentFilter) {
+						currentFilter.insert(toAdd.getInetAddress());
+					}
 				
 				
 				return true;
-												
 			}
 		}
 		
-		DBItem[] snapshot() {
+		PeerAddressDBItem[] snapshot() {
 			return items;
 		}
 		
@@ -113,43 +161,26 @@ public class Database {
 		}
 		
 		private void invalidateFilters() {
-			peerFilter = null;
-			seedFilter = null;
+			filter = null;
 		}
 		
-		public BloomFilterBEP33 getSeedFilter() {
-			BloomFilterBEP33 f = seedFilter;
+		public BloomFilterBEP33 getFilter() {
+			BloomFilterBEP33 f = filter;
 			if(f == null) {
-				f = buildFilter(true);
-				seedFilter = f;
+				f = filter = buildFilter();
 			}
 			
 			return f;
 		}
 		
-		public BloomFilterBEP33 getPeerFilter() {
-			BloomFilterBEP33 f = peerFilter;
-			if(f == null) {
-				f = buildFilter(false);
-				peerFilter = f;
-			}
-			
-			return f;
-		}
-		
-		private BloomFilterBEP33 buildFilter(boolean seed) {
+		private BloomFilterBEP33 buildFilter() {
 			if(items.length == 0)
 				return null;
 			
 			BloomFilterBEP33 filter = new BloomFilterBEP33();
 
-			for (DBItem item : items)
-			{
-				if (!(item instanceof PeerAddressDBItem))
-					continue;
-				PeerAddressDBItem it = (PeerAddressDBItem) item;
-				if (seed == it.isSeed())
-					filter.insert(it.getInetAddress());
+			for (PeerAddressDBItem item : items) {
+				filter.insert(item.getInetAddress());
 			}
 			
 			return filter;
@@ -159,8 +190,8 @@ public class Database {
 			synchronized (this) {
 				long now = System.currentTimeMillis();
 				
-				DBItem[] items = this.items;
-				DBItem[] newItems = new DBItem[items.length];
+				PeerAddressDBItem[] items = this.items;
+				PeerAddressDBItem[] newItems = new PeerAddressDBItem[items.length];
 				
 				// don't remove all at once -> smears out new registrations on popular keys over time
 				int toRemove = DHTConstants.MAX_DB_ENTRIES_PER_KEY / 5;
@@ -168,7 +199,7 @@ public class Database {
 				int insertPoint = 0;
 				
 				for(int i=0;i<items.length;i++) {
-					DBItem e = items[i];
+					PeerAddressDBItem e = items[i];
 					if(toRemove == 0 || !e.expired(now))
 						newItems[insertPoint++] = e;
 					else
@@ -193,23 +224,19 @@ public class Database {
 	 * @param dbi
 	 *            The DBItem to store
 	 */
-	public void store(Key key, DBItem dbi) {
+	public void store(Key key, PeerAddressDBItem dbi) {
 		
 		
-		ItemSet keyEntries = null;
+		PeersSeeds keyEntries = null;
 		
-		ItemSet insertCanidate = new ItemSet(dbi);
-		
-		keyEntries = items.putIfAbsent(key, insertCanidate);
-		
-		if(keyEntries == null)
-		{ // this only happens when inserting new keys... the load of .size should be bearable
-			keyEntries = insertCanidate;
-			stats.setKeyCount(items.size());
-		}
-		
-		if(keyEntries.add(dbi))
-			stats.setItemCount(stats.getItemCount() + 1);
+		items.compute(key, (k, v) -> {
+			if(v != null) {
+				v.add(dbi);
+				return v;
+			}
+			
+			return new PeersSeeds(dbi.seed ? new PeerAddressDBItem[] {dbi} : ItemSet.NO_ITEMS , dbi.seed ? ItemSet.NO_ITEMS : new PeerAddressDBItem[] {dbi});
+		});
 	}
 
 	/**
@@ -226,58 +253,77 @@ public class Database {
 	 *            The maximum number entries
 	 */
 	List<DBItem> sample(Key key, int max_entries, DHTtype forType, boolean preferPeers) {
-		ItemSet keyEntry = null;
-		DBItem[] snapshot = null;
+		PeersSeeds keyEntry = null;
+		PeerAddressDBItem[] seedSnapshot = null;
+		PeerAddressDBItem[] peerSnapshot = null;
 
 
 		keyEntry = items.get(key);
 		if(keyEntry == null)
 			return null;
 		
-		snapshot = keyEntry.snapshot();
+		seedSnapshot = keyEntry.seeds.snapshot();
+		peerSnapshot = keyEntry.peers.snapshot();
 		
-		if(snapshot.length == 0)
+		int lengthSum = peerSnapshot.length + seedSnapshot.length;
+		
+		if(lengthSum == 0)
 			return null;
 		
-		List<DBItem> peerlist = new ArrayList<DBItem>(Math.min(max_entries, snapshot.length));
+		List<DBItem> peerlist = new ArrayList<DBItem>(Math.min(max_entries, lengthSum));
 		
-		int offset = ThreadLocalRandom.current().nextInt(snapshot.length);
+		preferPeers &= lengthSum > max_entries;
 		
-		preferPeers &= snapshot.length > max_entries;
+		PeerAddressDBItem[] source;
 		
-		// try to fill with peer items if so requested
-		for(int i=0;i<snapshot.length;i++) {
-			PeerAddressDBItem item = (PeerAddressDBItem) snapshot[(i + offset)%snapshot.length];
-			assert(item.getAddressType() == forType.PREFERRED_ADDRESS_TYPE);
-			if(!item.isSeed() || !preferPeers)
-				peerlist.add(item);
-			if(peerlist.size() == max_entries)
-				break;
+		if(preferPeers)
+			source = peerSnapshot;
+		else {
+			// proportional sampling
+			source = ThreadLocalRandom.current().nextInt(lengthSum) < peerSnapshot.length ? peerSnapshot : seedSnapshot;
 		}
 		
-		// failed to find enough peer items, try seeds
-		if(preferPeers && peerlist.size() < max_entries) {
-			for(int i=0;i<snapshot.length;i++) {
-				PeerAddressDBItem item = (PeerAddressDBItem) snapshot[(i + offset)%snapshot.length];
-				assert(item.getAddressType() == forType.PREFERRED_ADDRESS_TYPE);
-				if(item.isSeed())
-					peerlist.add(item);
-				if(peerlist.size() == max_entries)
-					break;
-			}
-		}
-
+		fill(peerlist, source, max_entries);
+		
+		source = source == peerSnapshot ? seedSnapshot : peerSnapshot;
+		
+		fill(peerlist, source, max_entries);
+		
 		return peerlist;
+	}
+	
+	
+	static void fill(List<DBItem> target, PeerAddressDBItem[] source, int max) {
+		if(source.length == 0)
+			return;
+		
+		if(source.length < max - target.size()) {
+			// copy whole
+			for(int i=0;i<source.length;i++) {
+				target.add(source[i]);
+			}
+		} else {
+			// sample random sublist
+			int offset = ThreadLocalRandom.current().nextInt(source.length);
+			
+			for(int i=0;i<source.length && target.size() < max;i++) {
+				PeerAddressDBItem toInsert = source[(i+offset)%source.length];
+				target.add(toInsert);
+			}
+			
+		}
+		
+		
 	}
 	
 	BloomFilterBEP33 createScrapeFilter(Key key, boolean seedFilter)
 	{
-		ItemSet dbl = items.get(key);
+		PeersSeeds dbl = items.get(key);
 		
 		if (dbl == null)
 			return null;
 		
-		return seedFilter ? dbl.getSeedFilter() : dbl.getPeerFilter();
+		return seedFilter ? dbl.seeds.getFilter() : dbl.peers.getFilter();
 	}
 
 	/**
@@ -289,24 +335,19 @@ public class Database {
 	 */
 	void expire(long now) {
 		
-		int itemCount = 0;
-		for (ItemSet dbl : items.values())
+		for (PeersSeeds dbl : items.values())
 		{
 			dbl.expire();
-			itemCount += dbl.size();
 		}
 		
-		items.entrySet().removeIf(e -> e.getValue().isEmpty());
+		items.entrySet().removeIf(e -> e.getValue().size() == 0);
 		
-
-		stats.setKeyCount(items.size());
-		stats.setItemCount(itemCount);
 	}
 	
 	
 	boolean insertForKeyAllowed(Key target)
 	{
-		ItemSet entries = items.get(target);
+		PeersSeeds entries = items.get(target);
 		if(entries == null)
 			return true;
 		
@@ -409,7 +450,10 @@ public class Database {
 		return items.entrySet().stream().collect(Collectors.toMap((e) -> {
 			return e.getKey();
 		}, (e) -> {
-			return Arrays.asList(e.getValue().snapshot());
+			List<DBItem> l = new ArrayList(e.getValue().seeds.size() + e.getValue().peers.size());
+			l.addAll(Arrays.asList(e.getValue().peers.snapshot()));
+			l.addAll(Arrays.asList(e.getValue().seeds.snapshot()));
+			return l;
 		}));
 	}
 
@@ -418,6 +462,20 @@ public class Database {
 	 * @return the stats
 	 */
 	public DatabaseStats getStats() {
-		return stats;
+		
+		return new DatabaseStats() {
+			
+			
+			@Override
+			public int getKeyCount() {
+				// TODO Auto-generated method stub
+				return items.size();
+			}
+			
+			@Override
+			public int getItemCount() {
+				return items.values().stream().mapToInt(PeersSeeds::size).sum();
+			}
+		};
 	}
 }

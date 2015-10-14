@@ -45,10 +45,20 @@ public class Tokenizer {
 	int stackIdx = 0;
 	
 	Token[] stack = new Token[256];
-	{
+	
+	
+	public Tokenizer() {
 		IntStream.range(0, stack.length).forEach(i -> {
 			stack[i] = new Token();
 		});
+	}
+	
+	void reset() {
+		for(int i=0;i<stack.length;i++)
+			stack[i].reset();
+		stackIdx = 0;
+		lastString = null;
+		buf = null;
 	}
 	
 	ByteBuffer buf;

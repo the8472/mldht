@@ -5,6 +5,7 @@ import static the8472.bencode.Utils.buf2str;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -22,8 +23,6 @@ public class BDecoder {
 	}
 	
 	private class Consumer implements TokenConsumer {
-		
-		Tokenizer t;
 		
 		Object[] stack = new Object[256];
 		
@@ -117,6 +116,12 @@ public class BDecoder {
 			
 		}
 		
+		void reset() {
+			Arrays.fill(stack, null);
+			keyPendingInsert = null;
+			depth = 0;
+		}
+		
 
 	}
 	
@@ -129,16 +134,23 @@ public class BDecoder {
 		throw new RuntimeException("expected dictionary as root object");
 	}
 	
+	final Tokenizer t;
+	final Consumer c;
+	
+	public BDecoder() {
+		t = new Tokenizer();
+		c = new Consumer();
+		t.consumer(c);
+	}
+	
 	private Object decodeInternal(ByteBuffer buf) {
-		Consumer consumer = new Consumer();
 		
-		
-		Tokenizer t = new Tokenizer();
-		consumer.t = t;
+		t.reset();
+		c.reset();
+	
 		t.inputBuffer(buf);
-		t.consumer(consumer);
 		t.tokenize();
-		return consumer.stack[0];
+		return c.stack[0];
 	}
 
 

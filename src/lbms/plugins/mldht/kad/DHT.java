@@ -282,7 +282,7 @@ public class DHT implements DHTBase {
 		Key k = req.getTarget();
 		
 		
-		Optional.ofNullable(db.genToken(req.getOrigin().getAddress(), req.getOrigin().getPort(), k)).ifPresent(token -> {
+		Optional.ofNullable(db.genToken(req.getID(), req.getOrigin().getAddress(), req.getOrigin().getPort(), k)).ifPresent(token -> {
 			rsp.setToken(token.arr);
 		});
 		
@@ -306,7 +306,7 @@ public class DHT implements DHTBase {
 		
 		Key k = req.deriveTargetKey();
 		
-		if(!db.checkToken(new ByteWrapper(req.getToken()), req.getOrigin().getAddress(), req.getOrigin().getPort(), k)) {
+		if(!db.checkToken(new ByteWrapper(req.getToken()), req.getID(), req.getOrigin().getAddress(), req.getOrigin().getPort(), k)) {
 			sendError(req, ErrorCode.ProtocolError.code, "received invalid or expired token for PUT request");
 			return;
 		}
@@ -375,7 +375,7 @@ public class DHT implements DHTBase {
 		// generate a token
 		ByteWrapper token = null;
 		if(db.insertForKeyAllowed(r.getInfoHash()))
-			token = db.genToken(r.getOrigin().getAddress(), r.getOrigin().getPort(), r.getInfoHash());
+			token = db.genToken(r.getID(), r.getOrigin().getAddress(), r.getOrigin().getPort(), r.getInfoHash());
 
 		int want4 = r.doesWant4() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0;
 		int want6 = r.doesWant6() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0;
@@ -421,7 +421,7 @@ public class DHT implements DHTBase {
 
 		// first check if the token is OK
 		ByteWrapper token = new ByteWrapper(r.getToken());
-		if (!db.checkToken(token, r.getOrigin().getAddress(), r.getOrigin().getPort(), r.getInfoHash())) {
+		if (!db.checkToken(token, r.getID(), r.getOrigin().getAddress(), r.getOrigin().getPort(), r.getInfoHash())) {
 			logDebug("DHT Received Announce Request with invalid token.");
 			sendError(r, ErrorCode.ProtocolError.code, "Invalid Token; tokens expire after "+DHTConstants.TOKEN_TIMEOUT+"ms; only valid for the IP/port to which it was issued; only valid for the infohash for which it was issued");
 			return;

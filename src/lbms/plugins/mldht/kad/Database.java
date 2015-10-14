@@ -389,13 +389,14 @@ public class Database {
 	 *            The port of the peer
 	 * @return A Key
 	 */
-	ByteWrapper genToken(InetAddress ip, int port, Key lookupKey) {
+	ByteWrapper genToken(Key nodeId, InetAddress ip, int port, Key lookupKey) {
 		updateTokenTimestamps();
 		
-		byte[] tdata = new byte[ip.getAddress().length + 2 + 8 + Key.SHA1_HASH_LENGTH + sessionSecret.length];
+		byte[] tdata = new byte[Key.SHA1_HASH_LENGTH + ip.getAddress().length + 2 + 8 + Key.SHA1_HASH_LENGTH + sessionSecret.length];
 		// generate a hash of the ip port and the current time
 		// should prevent anybody from crapping things up
 		ByteBuffer bb = ByteBuffer.wrap(tdata);
+		nodeId.toBuffer(bb);
 		bb.put(ip.getAddress());
 		bb.putShort((short) port);
 		bb.putLong(timestampCurrent.get());
@@ -435,19 +436,20 @@ public class Database {
 	 *            The port of the sender
 	 * @return true if the token was given to this peer, false other wise
 	 */
-	boolean checkToken(ByteWrapper token, InetAddress ip, int port, Key lookupKey) {
+	boolean checkToken(ByteWrapper token, Key nodeId, InetAddress ip, int port, Key lookupKey) {
 		updateTokenTimestamps();
-		boolean valid = checkToken(token, ip, port, lookupKey, timestampCurrent.get()) || checkToken(token, ip, port, lookupKey, timestampPrevious);
+		boolean valid = checkToken(token, nodeId, ip, port, lookupKey, timestampCurrent.get()) || checkToken(token, nodeId, ip, port, lookupKey, timestampPrevious);
 		if(!valid)
 			DHT.logDebug("Received Invalid token from " + ip.getHostAddress());
 		return valid;
 	}
 
 
-	private boolean checkToken(ByteWrapper toCheck, InetAddress ip, int port, Key lookupKey, long timeStamp) {
+	private boolean checkToken(ByteWrapper toCheck, Key nodeId, InetAddress ip, int port, Key lookupKey, long timeStamp) {
 
-		byte[] tdata = new byte[ip.getAddress().length + 2 + 8 + Key.SHA1_HASH_LENGTH + sessionSecret.length];
+		byte[] tdata = new byte[Key.SHA1_HASH_LENGTH + ip.getAddress().length + 2 + 8 + Key.SHA1_HASH_LENGTH + sessionSecret.length];
 		ByteBuffer bb = ByteBuffer.wrap(tdata);
+		nodeId.toBuffer(bb);
 		bb.put(ip.getAddress());
 		bb.putShort((short) port);
 		bb.putLong(timeStamp);

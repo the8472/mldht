@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,7 +29,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.utils.ByteWrapper;
@@ -54,11 +55,11 @@ public class Database {
 	}
 	
 	
-	private static class PeersSeeds {
+	public static class PeersSeeds {
 		ItemSet seeds;
 		ItemSet peers;
 		
-		public PeersSeeds(PeerAddressDBItem[] seeds, PeerAddressDBItem[] peers) {
+		PeersSeeds(PeerAddressDBItem[] seeds, PeerAddressDBItem[] peers) {
 			this.seeds = new ItemSet(seeds);
 			this.peers = new ItemSet(peers);
 		}
@@ -77,13 +78,21 @@ public class Database {
 			peers.expire();
 		}
 		
-		int size() {
+		public ItemSet peers() {
+			return peers;
+		}
+		
+		public ItemSet seeds() {
+			return seeds;
+		}
+		
+		public int size() {
 			return peers.size() + seeds.size();
 		}
 	}
 
 	
-	private static class ItemSet {
+	public static class ItemSet {
 		static final PeerAddressDBItem[] NO_ITEMS = new PeerAddressDBItem[0];
 		
 		
@@ -91,7 +100,7 @@ public class Database {
 		private volatile PeerAddressDBItem[] items = NO_ITEMS;
 		private volatile BloomFilterBEP33 filter = null;
 		
-		public ItemSet(PeerAddressDBItem[] initial) {
+		ItemSet(PeerAddressDBItem[] initial) {
 			this.items = initial;
 		}
 		
@@ -156,15 +165,19 @@ public class Database {
 			return items.length == 0;
 		}
 		
-		int size() {
+		public int size() {
 			return items.length;
+		}
+		
+		public Stream<PeerAddressDBItem> stream() {
+			return Arrays.stream(items);
 		}
 		
 		private void invalidateFilters() {
 			filter = null;
 		}
 		
-		public BloomFilterBEP33 getFilter() {
+		BloomFilterBEP33 getFilter() {
 			BloomFilterBEP33 f = filter;
 			if(f == null) {
 				f = filter = buildFilter();
@@ -351,7 +364,7 @@ public class Database {
 		if(entries == null)
 			return true;
 		
-		int size = entries.size();
+		int size = Math.max(entries.peers.size(), entries.seeds.size());
 
 		if(size < DHTConstants.MAX_DB_ENTRIES_PER_KEY / 5)
 			return true;
@@ -446,15 +459,8 @@ public class Database {
 		return toCheck.equals(new ByteWrapper(rawToken));
 	}
 	
-	public Map<Key, List<DBItem>> getData() {
-		return items.entrySet().stream().collect(Collectors.toMap((e) -> {
-			return e.getKey();
-		}, (e) -> {
-			List<DBItem> l = new ArrayList(e.getValue().seeds.size() + e.getValue().peers.size());
-			l.addAll(Arrays.asList(e.getValue().peers.snapshot()));
-			l.addAll(Arrays.asList(e.getValue().seeds.snapshot()));
-			return l;
-		}));
+	public Map<Key, PeersSeeds> getData() {
+		return new HashMap<>(items);
 	}
 
 

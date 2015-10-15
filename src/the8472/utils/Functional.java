@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -86,6 +88,10 @@ public class Functional {
 		static private <T extends Throwable> void asUnchecked(Throwable t) throws T {
 		    throw (T) t;
 		}
+	}
+
+	public static <K, T> Optional<T> typedGet(Map<K, ?> map, K key, Class<T> clazz) {
+		return Optional.ofNullable(map.get(key)).filter(clazz::isInstance).map(clazz::cast);
 	}
 
 

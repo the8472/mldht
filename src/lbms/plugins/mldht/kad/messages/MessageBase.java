@@ -16,11 +16,14 @@
  */
 package lbms.plugins.mldht.kad.messages;
 
+import static the8472.bencode.Utils.prettyPrint;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -57,7 +60,7 @@ public abstract class MessageBase {
 	// for incoming messages this is the IP they told us
 	protected InetSocketAddress publicIP;
 
-	protected String			version;
+	protected byte[]			version;
 	protected RPCServer			srv;
 	protected RPCCall			associatedCall;
 
@@ -151,11 +154,11 @@ public abstract class MessageBase {
 	}
 
 
-	public String getVersion () {
-    	return version;
+	public Optional<byte[]> getVersion () {
+    	return Optional.ofNullable(version).map(b -> b.clone());
     }
 
-	public void setVersion (String version) {
+	public void setVersion (byte[] version) {
     	this.version = version;
     }
 	
@@ -197,7 +200,7 @@ public abstract class MessageBase {
 	
 	@Override
 	public String toString() {
-		return " Method:" + method + " Type:" + type + " MessageID:" + (mtid != null ? new String(mtid) : null) + (version != null ? " version:"+version : "")+"  ";
+		return " Method:" + method + " Type:" + type + " MessageID:" + (mtid != null ? prettyPrint(mtid) : null) + (version != null ? " version:"+prettyPrint(version) : "")+"  ";
 	}
 
 	public static enum Type {

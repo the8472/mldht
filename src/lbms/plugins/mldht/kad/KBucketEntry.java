@@ -17,13 +17,17 @@
 package lbms.plugins.mldht.kad;
 
 import static the8472.bencode.Utils.prettyPrint;
+import static the8472.utils.Functional.typedGet;
 
-import java.io.IOException;
-import java.io.Serializable;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Comparator;
+import java.util.Map;
+import java.util.TreeMap;
 
+import lbms.plugins.mldht.kad.DHT.DHTtype;
+import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
 
 /**
@@ -32,7 +36,7 @@ import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
  *
  * @author Damokles
  */
-public class KBucketEntry implements Serializable {
+public class KBucketEntry {
 	
 	private static final double RTT_EMA_WEIGHT = 0.3;
 	
@@ -65,10 +69,8 @@ public class KBucketEntry implements Serializable {
 	}
 	
 
-	private static final long	serialVersionUID	= 3230342110307814047L;
-
-	private InetSocketAddress	addr;
-	private Key					nodeID;
+	private final InetSocketAddress	addr;
+	private final Key				nodeID;
 	private long				lastSeen;
 	
 	/**
@@ -78,32 +80,46 @@ public class KBucketEntry implements Serializable {
 	 */
 	private int					failedQueries	= -1;
 	private long				timeCreated;
-	private String				version;
-	private transient ExponentialWeightendMovingAverage avgRTT;
-	private transient long lastSendTime;
+	private byte[]				version;
+	private ExponentialWeightendMovingAverage avgRTT = new ExponentialWeightendMovingAverage().setWeight(RTT_EMA_WEIGHT);;
+	private long lastSendTime = -1;
 
-	{ // delegate transient stuff to be handled the same way as on deserialization
-		fieldInitializers();
+	
+	public static KBucketEntry fromBencoded(Map<String, Object> serialized, DHTtype expectedType) {
+		
+		InetSocketAddress addr = typedGet(serialized, "addr", byte[].class).map(AddressUtils::unpackAddress).orElseThrow(() -> new IllegalArgumentException("address missing"));
+		Key id = typedGet(serialized, "id", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).map(Key::new).orElseThrow(() -> new IllegalArgumentException("key missing"));
+		
+		KBucketEntry built = new KBucketEntry(addr, id);
+		
+		typedGet(serialized, "version", byte[].class).ifPresent(built::setVersion);
+		typedGet(serialized, "created", Long.class).ifPresent(l -> built.timeCreated = l);
+		typedGet(serialized, "lastSeen", Long.class).ifPresent(l -> built.lastSeen = l);
+		typedGet(serialized, "lastSend", Long.class).ifPresent(l -> built.lastSendTime = l);
+		typedGet(serialized, "failedCount", Long.class).ifPresent(l -> built.failedQueries = l.intValue());
+		typedGet(serialized, "verified", Long.class).ifPresent(l -> built.setVerified(l == 1));
+		
+		
+		return built;
 	}
 	
-	private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
-		in.defaultReadObject();
-		fieldInitializers();
-	}
-	
-	private void fieldInitializers() {
-		avgRTT = new ExponentialWeightendMovingAverage().setWeight(RTT_EMA_WEIGHT);
-		lastSendTime = -1;
+	public Map<String, Object> toBencoded() {
+		Map<String, Object> map = new TreeMap<>();
+		
+		map.put("addr", AddressUtils.packAddress(addr));
+		map.put("id", nodeID.getHash());
+		map.put("created", timeCreated);
+		map.put("lastSeen", lastSeen);
+		map.put("lastSend", lastSendTime);
+		map.put("failedCount", failedQueries());
+		if(version != null)
+			map.put("version", version);
+		if(verifiedReachable())
+			map.put("verified", 1L);
+		
+		return map;
 	}
 
-	/**
-	 * Constructor, sets everything to 0.
-	 * @return
-	 */
-	public KBucketEntry () {
-		lastSeen = System.currentTimeMillis();
-		timeCreated = lastSeen;
-	}
 
 	/**
 	 * Constructor, set the ip, port and key
@@ -185,15 +201,15 @@ public class KBucketEntry implements Serializable {
 	/**
      * @param version the version to set
      */
-    public void setVersion (String version) {
+    public void setVersion (byte[] version) {
 	    this.version = version;
     }
 
 	/**
      * @return the version
      */
-    public String getVersion () {
-	    return version;
+    public ByteBuffer getVersion () {
+	    return ByteBuffer.wrap(version).asReadOnlyBuffer();
     }
 
 	/**
@@ -337,5 +353,14 @@ public class KBucketEntry implements Serializable {
 			failedQueries = fq+1;
 		else
 			failedQueries = fq-1;
+	}
+	
+	
+	void setVerified(boolean ver) {
+		if(ver)
+			failedQueries = Math.abs(failedQueries);
+		else
+			failedQueries = Math.min(-1, -Math.abs(failedQueries));
+		
 	}
 }

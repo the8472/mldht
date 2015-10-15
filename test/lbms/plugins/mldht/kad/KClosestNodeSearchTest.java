@@ -3,7 +3,7 @@ package lbms.plugins.mldht.kad;
 import static lbms.plugins.mldht.kad.NodeFactory.fillTable;
 import static org.junit.Assert.assertEquals;
 
-import java.io.File;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -24,8 +24,7 @@ public class KClosestNodeSearchTest {
 	public void setup() {
 		DHT dht = new DHT(DHTtype.IPV6_DHT);
 		dht.populate();
-		node = dht.getNode();
-		node.initDataStore(new DHTConfiguration() {
+		dht.config = new DHTConfiguration() {
 			
 			@Override
 			public boolean noRouterBootstrap() {
@@ -40,8 +39,8 @@ public class KClosestNodeSearchTest {
 			}
 			
 			@Override
-			public File getNodeCachePath() {
-				return Paths.get("./does.not.exist").toFile();
+			public Path getStoragePath() {
+				return Paths.get("./does.not.exist");
 			}
 			
 			@Override
@@ -55,7 +54,9 @@ public class KClosestNodeSearchTest {
 				// TODO Auto-generated method stub
 				return false;
 			}
-		});
+		};
+		node = dht.getNode();
+		node.initKey(dht.config);
 		node.registerId();
 		//node.registerServer(null);
 		//node.registerServer(null);

@@ -16,7 +16,8 @@
  */
 package lbms.plugins.mldht.kad;
 
-import java.io.File;
+import static the8472.bencode.Utils.prettyPrint;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.Inet4Address;
@@ -25,6 +26,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -134,7 +136,7 @@ public class DHT implements DHTBase {
 	private GenericStorage					storage;
 	private Database						db;
 	private TaskManager						tman;
-	private File							table_file;
+	private Path							table_file;
 	private boolean							useRouterBootstrapping;
 
 	private List<DHTStatsListener>			statsListeners;
@@ -432,6 +434,7 @@ public class DHT implements DHTBase {
 
 		// everything OK, so store the value
 		PeerAddressDBItem item = PeerAddressDBItem.createFromAddress(r.getOrigin().getAddress(), r.getPort(), r.isSeed());
+		r.getVersion().ifPresent(item::setVersion);
 		if(!AddressUtils.isBogon(item))
 			db.store(r.getInfoHash(), item);
 
@@ -444,8 +447,12 @@ public class DHT implements DHTBase {
 	}
 
 	public void error (ErrorMessage r) {
-		DHT.logError("Error [" + r.getCode() + "] from: " + r.getOrigin()
-				+ " Message: \"" + r.getMessage() + "\" version:"+r.getVersion());
+		StringBuilder b = new StringBuilder();
+		b.append("Error [").append( r.getCode() ).append("] from: " ).append(r.getOrigin());
+		b.append(" Message: \"").append(r.getMessage()).append("\"");
+		r.getVersion().ifPresent(v -> b.append(" version:").append(prettyPrint(v)));
+		
+		DHT.logError(b.toString());
 	}
 
 	public void timeout (RPCCall r) {
@@ -603,12 +610,11 @@ public class DHT implements DHTBase {
 			this.scheduler = getDefaultScheduler();
 		this.config = config;
 		useRouterBootstrapping = !config.noRouterBootstrap();
+		
+		table_file = config.getStoragePath().resolve(type.shortName+"-table.cache");
 
 		setStatus(DHTStatus.Initializing);
 		stats.resetStartedTimestamp();
-
-		table_file = config.getNodeCachePath();
-		Node.initDataStore(config);
 
 		logInfo("Starting DHT on port " + getPort());
 		resolveBootstrapAddresses();
@@ -616,6 +622,9 @@ public class DHT implements DHTBase {
 		connectionManager = new NIOConnectionManager("mlDHT "+type.shortName+" NIO Selector");
 		
 		populate();
+		
+		node.initKey(config);
+		node.loadTable(table_file);
 		
 
 		// these checks are fairly expensive on large servers (network interface enumeration)
@@ -635,7 +644,6 @@ public class DHT implements DHTBase {
 		
 		
 		bootstrapping = true;
-		node.loadTable();
 		
 		
 		started();

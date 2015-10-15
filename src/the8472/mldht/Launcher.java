@@ -1,6 +1,5 @@
 package the8472.mldht;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
@@ -60,8 +59,8 @@ public class Launcher {
 		}
 
 		@Override
-		public File getNodeCachePath() {
-			return new File("./dht.cache");
+		public Path getStoragePath() {
+			return Paths.get(".");
 		}
 
 		@Override
@@ -269,9 +268,9 @@ public class Launcher {
 	}
 	
 	void shutdownCleanup() {
-			components.forEach(Component::stop);
-			dhts.forEach(DHT::stop);
-		}
+		components.forEach(Component::stop);
+		dhts.forEach(DHT::stop);
+	}
 
 	/**
 	 * @param args

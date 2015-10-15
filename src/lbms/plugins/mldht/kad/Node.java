@@ -18,16 +18,17 @@ package lbms.plugins.mldht.kad;
 
 import static java.lang.Math.max;
 import static java.lang.Math.min;
+import static the8472.utils.Functional.typedGet;
 
-import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -43,10 +44,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.TreeMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -58,6 +61,8 @@ import lbms.plugins.mldht.kad.tasks.NodeLookup;
 import lbms.plugins.mldht.kad.tasks.PingRefreshTask;
 import lbms.plugins.mldht.kad.tasks.Task;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
+import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
+import the8472.bencode.BEncoder;
 import the8472.utils.CowSet;
 import the8472.utils.Pair;
 import the8472.utils.io.NetMask;
@@ -249,14 +254,13 @@ public class Node {
 	private long timeOfLastReceiveCountChange;
 	private long timeOfRecovery;
 	private int num_entries;
+	private Key baseKey;
 	private final CowSet<Key> usedIDs = new CowSet<>();
 	private volatile Map<InetAddress,RoutingTableEntry> knownNodes = new HashMap<InetAddress, RoutingTableEntry>();
 	private Map<KBucket, Task> maintenanceTasks = new IdentityHashMap<>();
 	
 	Collection<NetMask> trustedNodes = Collections.emptyList();
 	
-	private static Map<String,Serializable> dataStore;
-
 	/**
 	 * @param srv
 	 */
@@ -350,7 +354,7 @@ public class Node {
 			return;
 
 		KBucketEntry newEntry = new KBucketEntry(msg.getOrigin(), id);
-		newEntry.setVersion(msg.getVersion());
+		msg.getVersion().ifPresent(newEntry::setVersion);
 		associatedCall.ifPresent(c -> {
 			newEntry.signalResponse(c.getRTT());
 			// fudge it. it's not actually the sent time, but it's a successful response, so who cares
@@ -476,10 +480,7 @@ public class Node {
 	 * @return OurID
 	 */
 	public Key getRootID () {
-		if(dataStore != null)
-			return (Key)dataStore.get("commonKey");
-		// return a fake key if we're not initialized yet
-		return Key.MIN_KEY;
+		return baseKey;
 	}
 	
 	public boolean isLocalId(Key id) {
@@ -779,62 +780,92 @@ public class Node {
 	 * @param file to save to
 	 * @throws IOException
 	 */
-	void saveTable(File file) throws IOException {
+	void saveTable(Path saveTo) throws IOException {
+		
+		// TODO: mmap + truncate instead?
+		ByteBuffer tableBuffer = ByteBuffer.allocateDirect(50*1024*1024);
 		
 		
-		Path saveTo = file.toPath();
+		Map<String,Object> tableMap = new TreeMap<String, Object>();
+
+		RoutingTable table = routingTableCOW;
+		
+		List<Map<String, Object>> main = new ArrayList<>();
+		List<Map<String, Object>> replacements = new ArrayList<>();
+		
+		table.stream().map(RoutingTableEntry::getBucket).forEach(b -> {
+			b.entriesStream().map(KBucketEntry::toBencoded).collect(Collectors.toCollection(() -> main));
+			b.getReplacementEntries().stream().map(KBucketEntry::toBencoded).collect(Collectors.toCollection(() -> replacements));
+		});
+		
+		tableMap.put("mainEntries", main);
+		tableMap.put("replacements", replacements);
+		
+		ByteBuffer doubleBuf = ByteBuffer.wrap(new byte[8]);
+		doubleBuf.putDouble(0, dht.getEstimator().getRawDistanceEstimate());
+		tableMap.put("log2estimate", doubleBuf);
+		
+		tableMap.put("timestamp", System.currentTimeMillis());
+		tableMap.put("oldKey", getRootID().getHash());
+		
+		new BEncoder().encodeInto(tableMap, tableBuffer);
 		
 		Path tempFile = Files.createTempFile(saveTo.getParent(), "saveTable", "tmp");
 		
-		try(ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(Files.newOutputStream(tempFile, StandardOpenOption.WRITE, StandardOpenOption.SYNC), 512*1024))) {
-			HashMap<String,Serializable> tableMap = new HashMap<String, Serializable>();
-			
-			dataStore.put("table"+dht.getType().name(), tableMap);
-			
-			tableMap.put("oldKey", getRootID());
-			
-			RoutingTable table = routingTableCOW;
-			
-			KBucket[] bucket = new KBucket[table.size()];
-			for(int i=0;i<bucket.length;i++)
-				bucket[i] = table.get(i).bucket;
-				
-			tableMap.put("bucket", bucket);
-			tableMap.put("log2estimate", dht.getEstimator().getRawDistanceEstimate());
-			tableMap.put("timestamp", System.currentTimeMillis());
-			
-			oos.writeObject(dataStore);
-			oos.close();
-			
+		try(SeekableByteChannel chan = Files.newByteChannel(tempFile, StandardOpenOption.WRITE, StandardOpenOption.SYNC)) {
+			chan.write(tableBuffer);
+			chan.close();
 			Files.move(tempFile, saveTo, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-		}
+		};
+
 	}
 	
-	synchronized static void initDataStore(DHTConfiguration config)
+	void initKey(DHTConfiguration config)
 	{
-		File file = config.getNodeCachePath();
+		// TODO: refactor into an external key-supplier?
 		
-		if(dataStore != null)
-			return;
-		
-		if (file.exists()) {
-			try (FileInputStream fis = new FileInputStream(file); ObjectInputStream ois = new ObjectInputStream(fis)) {
-				dataStore = (Map<String, Serializable>) ois.readObject();
-			} catch (Exception e) {
-				e.printStackTrace();
+		if(config != null) {
+			Path keyPath = config.getStoragePath().resolve("baseID.config");
+			File keyFile = keyPath.toFile();
+			
+			if (keyFile.exists() && keyFile.isFile()) {
+				try {
+					List<String> raw = Files.readAllLines(keyPath);
+					baseKey = raw.stream().map(String::trim).filter(Key.STRING_PATTERN.asPredicate()).findAny().map(Key::new).orElseThrow(() -> new IllegalArgumentException(keyPath.toString()+" did not contain valid node ID"));
+					return;
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
 			}
 		}
 		
-		if(dataStore == null)
-		{
-			dataStore = new ConcurrentSkipListMap<>();
-			dataStore.put("commonKey", Key.createRandomKey());
+		baseKey = Key.createRandomKey();
+		
+		persistKey();
+	}
+	
+	void persistKey() {
+		DHTConfiguration config = dht.getConfig();
+		
+		if(config == null || !config.isPersistingID())
+			return;
+		
+		Path keyPath = config.getStoragePath().resolve("baseID.config");
+		
+		try {
+			Path tmpFile = Files.createTempFile(config.getStoragePath(), "baseID", ".tmp");
+			
+			Files.write(tmpFile, Collections.singleton(baseKey.toString(false)), StandardCharsets.ISO_8859_1);
+			Files.move(tmpFile, keyPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+			
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
 		
-		if(!config.isPersistingID())
-		{
-			dataStore.put("commonKey", Key.createRandomKey());
-		}
+		
+		
+		
 		
 	}
 
@@ -845,48 +876,56 @@ public class Node {
 	 * @param runWhenLoaded is executed when all load operations are finished
 	 * @throws IOException
 	 */
-	void loadTable () {
-
-		try {
-			Map<String,Serializable> table = (Map<String,Serializable>)dataStore.get("table"+dht.getType().name());
-			if(table == null)
-				return;
-
-			KBucket[] loadedBuckets = (KBucket[])table.get("bucket");
-			Key oldID = (Key)table.get("oldKey");
-			dht.getEstimator().setInitialRawDistanceEstimate((Double)table.get("log2estimate"));
-			long timestamp = (Long)table.get("timestamp");
-
-
-
-			// integrate loaded objects
-
-			int entriesLoaded = 0;
+	void loadTable (Path tablePath) {
+		
+		File f = tablePath.toFile();
+		
+		if(!f.exists() || !f.isFile())
+			return;
+		
+		try(FileChannel chan = FileChannel.open(tablePath, StandardOpenOption.READ)) {
+			ByteBuffer buf = chan.map(MapMode.READ_ONLY, 0, chan.size());
 			
-			for(int i=0;i<loadedBuckets.length;i++)
-			{
-				KBucket b = loadedBuckets[i];
-				if(b == null)
-					continue;
-				entriesLoaded += b.getNumEntries();
-				entriesLoaded += b.getReplacementEntries().size();
-				for(KBucketEntry e : b.getEntries())
-					insertEntry(e,true);
-				for(KBucketEntry e : b.getReplacementEntries())
-					insertEntry(e,true);
-			}
+			Map<String, Object> table = ThreadLocalUtils.getDecoder().decode(buf);
+			
+			AtomicInteger counter = new AtomicInteger();
+			
+			
+			typedGet(table, "mainEntries", List.class).ifPresent(l -> {
+				l.stream().filter(Map.class::isInstance).map(Map.class::cast).forEach(entryMap -> {
+					KBucketEntry be = KBucketEntry.fromBencoded((Map<String, Object>) entryMap, dht.getType());
+					insertEntry(be, true);
+					counter.incrementAndGet();
+				});
+			});
+			
+			typedGet(table, "replacements", List.class).ifPresent(l -> {
+				l.stream().filter(Map.class::isInstance).map(Map.class::cast).forEach(replacementMap -> {
+					KBucketEntry be = KBucketEntry.fromBencoded((Map<String, Object>) replacementMap, dht.getType());
+					routingTableCOW.entryForId(be.getID()).bucket.insertInReplacementBucket(be);
+					counter.incrementAndGet();
+				});
+			});
+			
+			typedGet(table, "log2estimate", byte[].class).filter(b -> b.length == 8).ifPresent(b -> {
+				ByteBuffer doubleBuf = ByteBuffer.wrap(b);
+				dht.getEstimator().setInitialRawDistanceEstimate(doubleBuf.getDouble());
+			});
+			
+			Key oldKey = typedGet(table, "oldKey", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).map(Key::new).orElse(null);
+			long timeStamp = typedGet(table, "timestamp", Long.class).orElse(-1L);
+
+			
+			DHT.logInfo("Loaded " + counter.get() + " entries from cache. Cache was "
+					+ ((System.currentTimeMillis() - timeStamp) / (60 * 1000))
+					+ "min old. Reusing old id = " + getRootID().equals(oldKey));
+
 			
 			rebuildAddressCache();
-
-			DHT.logInfo("Loaded " + entriesLoaded + " from cache. Cache was "
-					+ ((System.currentTimeMillis() - timestamp) / (60 * 1000))
-					+ "min old. Reusing old id = " + oldID.equals(getRootID()));
-
-			return;
-		} catch (Exception e) {
-			// loading the cache can fail for various reasons... just log and bootstrap if we have to
-			DHT.log(e,LogLevel.Error);
-		}
+		} catch (IOException e) {
+			DHT.log(e, LogLevel.Error);
+		};
+		
 	}
 
 	/**

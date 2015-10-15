@@ -32,8 +32,22 @@ public class Utils {
 	}
 	
 	public static String buf2str(ByteBuffer buf) {
-		byte[] arr = buf.array();
-		return new String(arr,buf.arrayOffset() + buf.position(),buf.remaining(), StandardCharsets.ISO_8859_1);
+		byte[] arr;
+		int offset;
+		int len;
+		
+		if(buf.hasArray()) {
+			arr = buf.array();
+			offset = buf.arrayOffset() + buf.position();
+			len = buf.remaining();
+		} else {
+			arr = new byte[buf.remaining()];
+			buf.get(arr, buf.position(), arr.length);
+			offset = 0;
+			len = arr.length;
+		}
+		
+		return new String(arr,offset,len, StandardCharsets.ISO_8859_1);
 	}
 	
 	public static byte[] buf2ary(ByteBuffer buf) {
@@ -101,9 +115,10 @@ public class Utils {
 			byte[] bytes;
 			if(buf.hasArray() && buf.arrayOffset() == 0 && buf.capacity() == buf.limit())
 				bytes = buf.array();
-			else
+			else {
 				bytes = new byte[buf.remaining()];
-			buf.get(bytes);
+				buf.get(bytes);
+			}
 			o = bytes;
 		}
 		

@@ -18,7 +18,6 @@ package lbms.plugins.mldht.kad;
 
 import static java.lang.Math.min;
 
-import java.io.Serializable;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -34,7 +33,7 @@ import lbms.plugins.mldht.utils.Radixable;
  * @author Damokles
  *
  */
-public class Key implements Radixable<Key>, Serializable {
+public class Key implements Radixable<Key> {
 	
 	/**
 	 * sorts the closest entries to the head, the furthest to the tail
@@ -62,7 +61,6 @@ public class Key implements Radixable<Key>, Serializable {
 		Arrays.fill(MAX_KEY.hash, (byte)0xFF);
 	}
 
-	private static final long	serialVersionUID	= -1180893806923345652L;
 	public static final int		SHA1_HASH_LENGTH	= 20;
 	public static final int		KEY_BITS			= SHA1_HASH_LENGTH * 8;
 	public static final Pattern STRING_PATTERN		= Pattern.compile("[a-fA-F0-9]{40}");

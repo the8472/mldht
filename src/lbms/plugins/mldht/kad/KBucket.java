@@ -16,18 +16,11 @@
  */
 package lbms.plugins.mldht.kad;
 
-import java.io.Externalizable;
-import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -46,9 +39,8 @@ import lbms.plugins.mldht.kad.messages.MessageBase.Type;
  *
  * @author Damokles
  */
-public class KBucket implements Externalizable {
+public class KBucket {
 
-	private static final long	serialVersionUID	= -5507455162198975209L;
 	
 	/**
 	 * use {@link #insertOrRefresh}, {@link #sortedInsert} or {@link #removeEntry} to handle this<br>
@@ -301,7 +293,7 @@ public class KBucket implements Externalizable {
 		}
 	}
 	
-	private void insertInReplacementBucket(KBucketEntry toInsert)
+	void insertInReplacementBucket(KBucketEntry toInsert)
 	{
 		if(toInsert == null)
 			return;
@@ -399,37 +391,4 @@ public class KBucket implements Externalizable {
 	}
 
 
-	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-		Map<String,Object> serialized = (Map<String, Object>) in.readObject();
-		Object obj = serialized.get("mainBucket");
-		if(obj instanceof Collection<?>)
-			entries.addAll((Collection<KBucketEntry>)obj);
-		obj = serialized.get("replacementBucket");
-		if(obj instanceof Collection<?>)
-		{
-			// we are possibly violating the last-seen ordering of the replacement bucket here
-			// but since we're probably deserializing old data that's hardly relevant
-			for(KBucketEntry e : (Collection<KBucketEntry>)obj)
-				insertInReplacementBucket(e);
-		}
-			
-		obj = serialized.get("lastModifiedTime");
-		if(obj instanceof Long)
-			lastRefresh = (Long)obj;
-		obj = serialized.get("prefix");
-		
-		entries.removeAll(Collections.singleton(null));
-		Collections.sort(entries, KBucketEntry.AGE_ORDER);
-		//Collections.sort(replacementBucket,KBucketEntry.LAST_SEEN_ORDER);
-	}
-	
-	public void writeExternal(ObjectOutput out) throws IOException {
-		Map<String,Object> serialized = new HashMap<String, Object>();
-		// put entries as any type of collection, will convert them on deserialisation
-		serialized.put("mainBucket", entries);
-		serialized.put("replacementBucket", getReplacementEntries());
-		serialized.put("lastModifiedTime", lastRefresh);
-
-		out.writeObject(serialized);
-	}
 }

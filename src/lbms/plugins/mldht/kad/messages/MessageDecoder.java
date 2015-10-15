@@ -20,6 +20,7 @@ import static the8472.bencode.Utils.prettyPrint;
 import static the8472.utils.Functional.castOrThrow;
 import static the8472.utils.Functional.tap;
 import static the8472.utils.Functional.tapThrow;
+import static the8472.utils.Functional.typedGet;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -47,6 +48,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import the8472.bencode.PathMatcher;
 import the8472.bencode.Tokenizer;
+import the8472.utils.Functional;
 
 /**
  * @author Damokles
@@ -76,8 +78,9 @@ public class MessageDecoder {
 			if (msgType == null) {
 				throw new MessageException("message type (y) missing", ErrorCode.ProtocolError);
 			}
-
-			String version = getStringFromBytes((byte[]) rootMap.get(MessageBase.VERSION_KEY),true);
+			
+			
+			Optional<byte[]> version = typedGet(rootMap, MessageBase.VERSION_KEY, byte[].class);
 
 			MessageBase mb = null;
 			if (msgType.equals(Type.REQ_MSG.getRPCTypeName())) {
@@ -89,8 +92,8 @@ public class MessageDecoder {
 			} else
 				throw new MessageException("unknown RPC type (y="+msgType+")");
 
-			if (mb != null && version != null) {
-				mb.setVersion(version);
+			if (mb != null) {
+				version.ifPresent(mb::setVersion);
 			}
 
 			return mb;
@@ -195,14 +198,14 @@ public class MessageDecoder {
 				//return null;
 			
 			msg = tap(new FindNodeResponse(mtid), (m) -> {
-				typedGet(args, "nodes", byte[].class).ifPresent(b -> m.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V4)));
-				typedGet(args, "nodes6", byte[].class).ifPresent(b -> m.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V6)));
+				Functional.typedGet(args, "nodes", byte[].class).ifPresent(b -> m.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V4)));
+				Functional.typedGet(args, "nodes6", byte[].class).ifPresent(b -> m.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V6)));
 			});
 			break;
 		case GET_PEERS:
-			byte[] token = typedGet(args, "token", byte[].class).orElse(null);
-			Optional<byte[]> nodes = typedGet(args, "nodes", byte[].class);
-			Optional<byte[]> nodes6 = typedGet(args, "nodes6", byte[].class);
+			byte[] token = Functional.typedGet(args, "token", byte[].class).orElse(null);
+			Optional<byte[]> nodes = Functional.typedGet(args, "nodes", byte[].class);
+			Optional<byte[]> nodes6 = Functional.typedGet(args, "nodes6", byte[].class);
 
 			
 			List<DBItem> dbl = null;
@@ -263,10 +266,6 @@ public class MessageDecoder {
 		return msg;
 	}
 	
-	static <K, T> Optional<T> typedGet(Map<K, ?> map, K key, Class<T> clazz) {
-		return Optional.ofNullable(map.get(key)).filter(clazz::isInstance).map(clazz::cast);
-	}
-
 	/**
 	 * @param map
 	 * @return
@@ -278,8 +277,8 @@ public class MessageDecoder {
 		if (rawRequestMethod == null || args == null)
 			return null;
 
-		byte[] mtid = typedGet(map, MessageBase.TRANSACTION_KEY, byte[].class).filter(tid -> tid.length > 0).orElseThrow(() -> new MessageException("missing or zero-length transaction ID in request", ErrorCode.ProtocolError));
-		byte[] hash = typedGet(args,"id", byte[].class).filter(id -> id.length == Key.SHA1_HASH_LENGTH).orElseThrow(() -> new MessageException("missing or invalid node ID", ErrorCode.ProtocolError));
+		byte[] mtid = Functional.typedGet(map, MessageBase.TRANSACTION_KEY, byte[].class).filter(tid -> tid.length > 0).orElseThrow(() -> new MessageException("missing or zero-length transaction ID in request", ErrorCode.ProtocolError));
+		byte[] hash = Functional.typedGet(args,"id", byte[].class).filter(id -> id.length == Key.SHA1_HASH_LENGTH).orElseThrow(() -> new MessageException("missing or invalid node ID", ErrorCode.ProtocolError));
 		
 		Key id = new Key(hash);
 
@@ -357,20 +356,20 @@ public class MessageDecoder {
 				msg = tapThrow(new PutRequest(), put -> {
 					if(rawVal != null)
 						put.setValue(rawVal);
-					put.pubkey = typedGet(args, "k", byte[].class).orElse(null);
-					put.sequenceNumber = typedGet(args, "seq", Long.class).orElse(-1L);
-					put.expectedSequenceNumber = typedGet(args, "cas", Long.class).orElse(-1L);
-					put.salt = typedGet(args, "salt", byte[].class).orElse(null);
-					put.signature = typedGet(args, "sig", byte[].class).orElse(null);
-					put.token = typedGet(args, "token", byte[].class).filter(b -> b.length > 0).orElseThrow(() -> new MessageException("missing or invalid token in PUT request"));
+					put.pubkey = Functional.typedGet(args, "k", byte[].class).orElse(null);
+					put.sequenceNumber = Functional.typedGet(args, "seq", Long.class).orElse(-1L);
+					put.expectedSequenceNumber = Functional.typedGet(args, "cas", Long.class).orElse(-1L);
+					put.salt = Functional.typedGet(args, "salt", byte[].class).orElse(null);
+					put.signature = Functional.typedGet(args, "sig", byte[].class).orElse(null);
+					put.token = Functional.typedGet(args, "token", byte[].class).filter(b -> b.length > 0).orElseThrow(() -> new MessageException("missing or invalid token in PUT request"));
 					put.validate();
 				});
 				break;
 			case ANNOUNCE_PEER:
 				
-				hash = typedGet(args, "info_hash", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).orElse(null);
-				int port = typedGet(args, "port", Long.class).filter(p -> p > 0 && p <= 65535).orElse(0L).intValue();
-				byte[] token = typedGet(args, "token", byte[].class).orElse(null);
+				hash = Functional.typedGet(args, "info_hash", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).orElse(null);
+				int port = Functional.typedGet(args, "port", Long.class).filter(p -> p > 0 && p <= 65535).orElse(0L).intValue();
+				byte[] token = Functional.typedGet(args, "token", byte[].class).orElse(null);
 				boolean isSeed = Long.valueOf(1).equals(args.get("seed"));
 				
 				if(hash == null || token == null || port == 0)

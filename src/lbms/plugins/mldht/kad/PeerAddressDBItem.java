@@ -23,11 +23,13 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import lbms.plugins.mldht.kad.DHT.DHTtype;
+import the8472.bencode.Utils;
 
 public class PeerAddressDBItem extends DBItem {
 	
 	
 	boolean seed;
+	byte[] originatorVersion;
 	
 	public static PeerAddressDBItem createFromAddress(InetAddress addr, int port, boolean isSeed) {
 		byte[] tdata = new byte[addr.getAddress().length + 2];
@@ -42,6 +44,10 @@ public class PeerAddressDBItem extends DBItem {
 		if(data.length != DHTtype.IPV4_DHT.ADDRESS_ENTRY_LENGTH && data.length != DHTtype.IPV6_DHT.ADDRESS_ENTRY_LENGTH)
 			throw new IllegalArgumentException("byte array length does not match ipv4 or ipv6 raw InetAddress+Port length");
 		seed = isSeed;
+	}
+	
+	public void setVersion(byte[] ary) {
+		originatorVersion = ary;
 	}
 	
 	public InetAddress getInetAddress() {
@@ -98,7 +104,15 @@ public class PeerAddressDBItem extends DBItem {
 
 	@Override
 	public String toString() {
-		return " addr:"+toSocketAddress()+" seed:"+seed;
+		StringBuilder b = new StringBuilder(25);
+		b.append(" addr:");
+		b.append(toSocketAddress());
+		b.append(" seed:");
+		b.append(seed);
+		if(originatorVersion != null)
+			b.append(" version:").append(Utils.prettyPrint(originatorVersion));
+
+		return b.toString();
 	}
 	
 	public int getPort() {

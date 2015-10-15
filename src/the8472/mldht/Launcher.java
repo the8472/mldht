@@ -94,8 +94,8 @@ public class Launcher {
 	}
 
 	private void onVmShutdown() {
-		running = false;
-		stop();
+		initiateShutdown();
+		shutdownCleanup();
 	}
 	
 	FilesystemNotifications notifications = new FilesystemNotifications();
@@ -221,7 +221,7 @@ public class Launcher {
 		
 		notifications.addRegistration(shutdown, (path, kind) -> {
 			if(path.equals(shutdown)) {
-				stop();
+				initiateShutdown();
 			}
 		});
 		
@@ -231,6 +231,9 @@ public class Launcher {
 				this.wait();
 			}
 		}
+		
+		shutdownCleanup();
+
 	}
 	
 	private void setLogLevel() {
@@ -256,16 +259,19 @@ public class Launcher {
 		return false;
 	}
 
-	public void stop() {
+	public void initiateShutdown() {
 		if(running) {
+			running = false;
 			synchronized (this) {
 				this.notifyAll();
 			}
-			running = false;
+		}
+	}
+	
+	void shutdownCleanup() {
 			components.forEach(Component::stop);
 			dhts.forEach(DHT::stop);
 		}
-	}
 
 	/**
 	 * @param args

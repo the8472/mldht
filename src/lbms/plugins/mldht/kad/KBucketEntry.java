@@ -72,13 +72,14 @@ public class KBucketEntry {
 	private final InetSocketAddress	addr;
 	private final Key				nodeID;
 	private long				lastSeen;
+	private boolean verified = false;
 	
 	/**
 	 *   -1 = never queried / learned about it from incoming requests
 	 *    0 = last query was a success
 	 *  > 0 = query failed
 	 */
-	private int					failedQueries	= -1;
+	private int					failedQueries;
 	private long				timeCreated;
 	private byte[]				version;
 	private ExponentialWeightendMovingAverage avgRTT = new ExponentialWeightendMovingAverage().setWeight(RTT_EMA_WEIGHT);;
@@ -115,7 +116,7 @@ public class KBucketEntry {
 		if(version != null)
 			map.put("version", version);
 		if(verifiedReachable())
-			map.put("verified", 1L);
+			map.put("verified", 1);
 		
 		return map;
 	}
@@ -177,7 +178,7 @@ public class KBucketEntry {
 	public boolean equals(KBucketEntry other) {
 		if(other == null)
 			return false;
-		return nodeID.equals(other.nodeID) && addr.getAddress().equals(other.addr.getAddress());
+		return nodeID.equals(other.nodeID) && addr.equals(other.addr);
 	}
 	
 	public boolean matchIPorID(KBucketEntry other) {
@@ -241,6 +242,8 @@ public class KBucketEntry {
 		b.append(";age:"+Duration.ofMillis(now-timeCreated));
 		if(failedQueries != 0)
 			b.append(";fail:"+failedQueries);
+		if(verified)
+			b.append(";verified");
 		double rtt = avgRTT.getAverage();
 		if(!Double.isNaN(rtt))
 			b.append(";rtt:"+rtt);
@@ -263,22 +266,20 @@ public class KBucketEntry {
 	
 	public boolean eligibleForNodesList() {
 		// 1 timeout can occasionally happen. should be fine to hand it out as long as we've verified it at least once
-		if(failedQueries < 0 || failedQueries > 1)
-			return false;
-		
-		return true;
+		return verifiedReachable() && failedQueries < 2;
 	}
 	
 	
 	public boolean eligibleForLocalLookup() {
 		// allow implicit initial ping during lookups
-		if(failedQueries < -1 || failedQueries > 3)
+		// TODO: make this work now that we don't keep unverified entries in the main bucket
+		if((!verifiedReachable() && failedQueries > 0) || failedQueries > 3)
 			return false;
 		return true;
 	}
 	
 	public boolean verifiedReachable() {
-		return failedQueries >= 0;
+		return verified;
 	}
 	
 	public boolean neverContacted() {
@@ -307,19 +308,21 @@ public class KBucketEntry {
 	public boolean removableWithoutReplacement() {
 		// some non-reachable nodes may contact us repeatedly, bumping the last seen counter. they might be interesting to keep around so the back off interval keeps getting bumped
 		// but things we haven't heard from in a while and never been verified can be discarded
-		return failedQueries < -3 && System.currentTimeMillis() - lastSeen > OLD_AND_STALE_TIME;
+		return !verifiedReachable() && failedQueries() > 2 && System.currentTimeMillis() - lastSeen > OLD_AND_STALE_TIME;
 	}
 	
 	public boolean needsReplacement() {
-		return failedQueries < -1 || failedQueries > MAX_TIMEOUTS || oldAndStale();
+		return (failedQueries > 1 && !verifiedReachable()) || failedQueries > MAX_TIMEOUTS || oldAndStale();
 	}
 
 	public void mergeInTimestamps(KBucketEntry other) {
-		if(!this.equals(other))
+		if(!this.equals(other) || this == other)
 			return;
 		lastSeen = Math.max(lastSeen, other.getLastSeen());
 		lastSendTime = Math.max(lastSendTime, other.lastSendTime);
 		timeCreated = Math.min(timeCreated, other.getCreationTime());
+		if(other.verifiedReachable())
+			setVerified(true);
 		if(!Double.isNaN(other.avgRTT.getAverage()) )
 			avgRTT.updateAverage(other.avgRTT.getAverage());
 	}
@@ -335,8 +338,13 @@ public class KBucketEntry {
 	public void signalResponse(long rtt) {
 		lastSeen = System.currentTimeMillis();
 		failedQueries = 0;
+		verified = true;
 		if(rtt > 0)
 			avgRTT.updateAverage(rtt);
+	}
+	
+	public void mergeRequestTime(long requestSent) {
+		lastSendTime = Math.max(lastSendTime, requestSent);
 	}
 	
 	public void signalScheduledRequest() {
@@ -348,19 +356,12 @@ public class KBucketEntry {
 	 * Should be called to signal that a request to this peer has timed out;
 	 */
 	public void signalRequestTimeout () {
-		int fq = failedQueries;
-		if(fq >= 0)
-			failedQueries = fq+1;
-		else
-			failedQueries = fq-1;
+		failedQueries++;
 	}
 	
 	
 	void setVerified(boolean ver) {
-		if(ver)
-			failedQueries = Math.abs(failedQueries);
-		else
-			failedQueries = Math.min(-1, -Math.abs(failedQueries));
+		verified = ver;
 		
 	}
 }

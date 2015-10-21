@@ -21,10 +21,12 @@ import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import lbms.plugins.mldht.kad.messages.MessageBase;
@@ -57,6 +59,8 @@ public class KBucket {
 		entries = new ArrayList<KBucketEntry>(); // using arraylist here since reading/iterating is far more common than writing.
 		currentReplacementPointer = new AtomicInteger(0);
 		replacementBucket = new AtomicReferenceArray<KBucketEntry>(DHTConstants.MAX_ENTRIES_PER_BUCKET);
+		// needed for bitmasking
+		assert(Integer.bitCount(replacementBucket.length()) == 1);
 	}
 
 	/**
@@ -70,7 +74,7 @@ public class KBucket {
 		List<KBucketEntry> entriesRef = entries;
 		
 		for(KBucketEntry existing : entriesRef) {
-			if(existing.equals(newEntry) && newEntry.getAddress().getPort() == existing.getAddress().getPort()) {
+			if(existing.equals(newEntry)) {
 				existing.mergeInTimestamps(newEntry);
 				return;
 			}
@@ -81,27 +85,29 @@ public class KBucket {
 			}
 		}
 		
-		
-		if (entriesRef.size() < DHTConstants.MAX_ENTRIES_PER_BUCKET)
-		{
-			// insert if not already in the list and we still have room
-			modifyMainBucket(null,newEntry);
-			return;
-		}
+		if(newEntry.verifiedReachable()) {
+			if (entriesRef.size() < DHTConstants.MAX_ENTRIES_PER_BUCKET)
+			{
+				// insert if not already in the list and we still have room
+				modifyMainBucket(null,newEntry);
+				return;
+			}
 
-		if (replaceBadEntry(newEntry))
-			return;
+			if (replaceBadEntry(newEntry))
+				return;
 
-		KBucketEntry youngest = entriesRef.get(entriesRef.size()-1);
+			KBucketEntry youngest = entriesRef.get(entriesRef.size()-1);
 
-		// older entries displace younger ones (although that kind of stuff should probably go through #modifyMainBucket directly)
-		// entries with a 2.5times lower RTT than the current youngest one displace the youngest. safety factor to prevent fibrilliation due to changing RTT-estimates / to only replace when it's really worth it
-		if (youngest.getCreationTime() > newEntry.getCreationTime() || newEntry.getRTT() * 2.5 < youngest.getRTT())
-		{
-			modifyMainBucket(youngest,newEntry);
-			// it was a useful entry, see if we can use it to replace something questionable
-			insertInReplacementBucket(youngest);
-			return;
+			// older entries displace younger ones (although that kind of stuff should probably go through #modifyMainBucket directly)
+			// entries with a 2.5times lower RTT than the current youngest one displace the youngest. safety factor to prevent fibrilliation due to changing RTT-estimates / to only replace when it's really worth it
+			if (youngest.getCreationTime() > newEntry.getCreationTime() || newEntry.getRTT() * 2.5 < youngest.getRTT())
+			{
+				modifyMainBucket(youngest,newEntry);
+				// it was a useful entry, see if we can use it to replace something questionable
+				insertInReplacementBucket(youngest);
+				return;
+			}
+
 		}
 		
 		insertInReplacementBucket(newEntry);
@@ -140,6 +146,7 @@ public class KBucket {
 				if(added)
 				{
 					newEntries.add(toInsert);
+					removeFromReplacement(toInsert).ifPresent(toInsert::mergeInTimestamps);
 				} else
 				{
 					insertInReplacementBucket(toInsert);
@@ -187,6 +194,10 @@ public class KBucket {
 		return entries.stream();
 	}
 	
+	Stream<KBucketEntry> replacementsStream() {
+		return IntStream.range(0, replacementBucket.length()).mapToObj(replacementBucket::get).filter(Objects::nonNull);
+	}
+	
 	public List<KBucketEntry> getReplacementEntries() {
 		List<KBucketEntry> repEntries = new ArrayList<KBucketEntry>(replacementBucket.length());
 		int current = currentReplacementPointer.get();
@@ -203,20 +214,28 @@ public class KBucket {
 	 * A peer failed to respond
 	 * @param addr Address of the peer
 	 */
-	public boolean onTimeout (InetSocketAddress addr) {
+	public void onTimeout(InetSocketAddress addr) {
 		List<KBucketEntry> entriesRef = entries;
 		for (int i = 0, n=entriesRef.size(); i < n; i++)
 		{
 			KBucketEntry e = entriesRef.get(i);
-			if (e.getAddress() == addr)
+			if (e.getAddress().equals(addr))
 			{
 				e.signalRequestTimeout();
 				//only removes the entry if it is bad
 				removeEntryIfBad(e, false);
-				return true;
+				return;
 			}
 		}
-		return false;
+		
+		for(int i=0, n=replacementBucket.length();i<n;i++) {
+			KBucketEntry e = replacementBucket.get(i);
+			if(e != null && e.getAddress().equals(addr)) {
+				e.signalRequestTimeout();
+				return;
+			}
+		}
+		return;
 	}
 
 	/**
@@ -226,9 +245,18 @@ public class KBucket {
 	 */
 	public boolean needsToBeRefreshed () {
 		long now = System.currentTimeMillis();
-
-		return (now - lastRefresh > DHTConstants.BUCKET_REFRESH_INTERVAL && entries.stream().anyMatch(KBucketEntry::needsPing)) || entries.stream().allMatch(KBucketEntry::neverContacted);
+		// TODO: timer may be somewhat redundant with needsPing logic
+		return now - lastRefresh > DHTConstants.BUCKET_REFRESH_INTERVAL && entries.stream().anyMatch(KBucketEntry::needsPing);
 	}
+	
+	public static final long REPLACEMENT_PING_MIN_INTERVAL = 30*1000;
+	
+	boolean needsReplacementPing() {
+		long now = System.currentTimeMillis();
+		
+		return now - lastRefresh > REPLACEMENT_PING_MIN_INTERVAL && entriesStream().anyMatch(KBucketEntry::needsReplacement) && replacementsStream().anyMatch(KBucketEntry::neverContacted);
+	}
+
 
 	/**
 	 * Resets the last modified for this Bucket
@@ -262,7 +290,7 @@ public class KBucket {
 		return false;
 	}
 	
-	private KBucketEntry getBestReplacementEntry()
+	private KBucketEntry pollVerifiedReplacementEntry()
 	{
 		while(true) {
 			int bestIndex = -1;
@@ -270,7 +298,7 @@ public class KBucket {
 			
 			for(int i=0;i<replacementBucket.length();i++) {
 				KBucketEntry entry = replacementBucket.get(i);
-				if(entry == null)
+				if(entry == null || !entry.verifiedReachable())
 					continue;
 				boolean isBetter = bestFound == null || entry.getRTT() < bestFound.getRTT() || (entry.getRTT() == bestFound.getRTT() && entry.getLastSeen() > bestFound.getLastSeen());
 				
@@ -293,6 +321,32 @@ public class KBucket {
 		}
 	}
 	
+	private Optional<KBucketEntry> removeFromReplacement(KBucketEntry toRemove) {
+		for(int i=0;i<replacementBucket.length();i++) {
+			KBucketEntry e = replacementBucket.get(i);
+			if(e == null || !e.matchIPorID(toRemove))
+				continue;
+			replacementBucket.compareAndSet(i, e, null);
+			if(e.equals(e))
+				return Optional.of(e);
+				
+		}
+		
+		return Optional.empty();
+		
+	}
+	
+	public Optional<KBucketEntry> findPingableReplacement() {
+		for(int i=0; i<replacementBucket.length();i++) {
+			KBucketEntry e = replacementBucket.get(i);
+			if(e == null || !e.neverContacted())
+				continue;
+			return Optional.of(e);
+		}
+		
+		return Optional.empty();
+	}
+	
 	void insertInReplacementBucket(KBucketEntry toInsert)
 	{
 		if(toInsert == null)
@@ -301,46 +355,50 @@ public class KBucket {
 		outer:
 		while(true)
 		{
-			int current = currentReplacementPointer.get();
-			int insertationPoint = (current+1) % replacementBucket.length();
+			int insertationPoint = currentReplacementPointer.incrementAndGet() & (replacementBucket.length() - 1);
 			
-			KBucketEntry nextEntry = replacementBucket.get(insertationPoint);
-			if(nextEntry == null || toInsert.getLastSeen() - nextEntry.getLastSeen() > 1000 || toInsert.getRTT() < nextEntry.getRTT())
-			{
-				for(int i=0;i<replacementBucket.length();i++)
-				{
-					// don't insert if already present
-					KBucketEntry potentialDuplicate = replacementBucket.get(i);
-					if(toInsert.matchIPorID(potentialDuplicate)) {
-						if(toInsert.equals(potentialDuplicate))
-							potentialDuplicate.mergeInTimestamps(toInsert);
-						break outer;
-					}
-						
-				}
-				if(currentReplacementPointer.compareAndSet(current, insertationPoint))
-				{
-					replacementBucket.set(insertationPoint, toInsert);
-					break;
-				}
-			} else
-			{
-				break;
+			KBucketEntry toOverwrite = replacementBucket.get(insertationPoint);
+			
+			boolean canOverwrite;
+			
+			if(toOverwrite == null) {
+				canOverwrite = true;
+			} else {
+				int lingerTime = toOverwrite.verifiedReachable() && !toInsert.verifiedReachable() ? 5*60*1000 : 1000;
+				canOverwrite = toInsert.getLastSeen() - toOverwrite.getLastSeen() > lingerTime || toInsert.getRTT() < toOverwrite.getRTT();
 			}
+			
+			if(!canOverwrite)
+				break;
+
+			for(int i=0;i<replacementBucket.length();i++)
+			{
+				// don't insert if already present
+				KBucketEntry potentialDuplicate = replacementBucket.get(i);
+				if(toInsert.matchIPorID(potentialDuplicate)) {
+					if(toInsert.equals(potentialDuplicate))
+						potentialDuplicate.mergeInTimestamps(toInsert);
+					break outer;
+				}
+
+			}
+
+			if(replacementBucket.compareAndSet(insertationPoint, toOverwrite, toInsert))
+				break;
 		}
 	}
 	
 	/**
-	 * only removes one bad entry at a time to prevent sudden flushing of the routing table
+	 * main list not full or contains entry that needs a replacement -> promote verified entry (if any) from replacement
 	 */
-	public void checkBadEntries() {
+	public void promoteVerifiedReplacement() {
 		List<KBucketEntry> entriesRef = entries;
 		KBucketEntry toRemove = entriesRef.stream().filter(KBucketEntry::needsReplacement).findAny().orElse(null);
 		
-		if (toRemove == null)
+		if (toRemove == null && entriesRef.size() >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
 			return;
 		
-		KBucketEntry replacement = getBestReplacementEntry();
+		KBucketEntry replacement = pollVerifiedReplacementEntry();
 		if (replacement != null)
 			modifyMainBucket(toRemove, replacement);
 	}
@@ -381,7 +439,7 @@ public class KBucket {
 		if (entriesRef.contains(toRemove) && (force || toRemove.needsReplacement()))
 		{
 			KBucketEntry replacement = null;
-			replacement = getBestReplacementEntry();
+			replacement = pollVerifiedReplacementEntry();
 
 			// only remove if we have a replacement or really need to
 			if(replacement != null || force)

@@ -18,6 +18,11 @@ package lbms.plugins.mldht.kad;
 
 import static java.lang.Math.max;
 import static java.lang.Math.min;
+import static lbms.plugins.mldht.kad.Node.InsertOptions.ALWAYS_SPLIT_IF_FULL;
+import static lbms.plugins.mldht.kad.Node.InsertOptions.FORCE_INTO_MAIN_BUCKET;
+import static lbms.plugins.mldht.kad.Node.InsertOptions.NEVER_SPLIT;
+import static lbms.plugins.mldht.kad.Node.InsertOptions.RELAXED_SPLIT;
+import static lbms.plugins.mldht.kad.Node.InsertOptions.REMOVE_IF_FULL;
 import static the8472.utils.Functional.typedGet;
 
 import java.io.File;
@@ -38,6 +43,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -357,8 +363,7 @@ public class Node {
 		msg.getVersion().ifPresent(newEntry::setVersion);
 		associatedCall.ifPresent(c -> {
 			newEntry.signalResponse(c.getRTT());
-			// fudge it. it's not actually the sent time, but it's a successful response, so who cares
-			newEntry.signalScheduledRequest();
+			newEntry.mergeRequestTime(c.getSentTime());
 		});
 		
 
@@ -366,8 +371,14 @@ public class Node {
 		// force trusted entry into the routing table (by splitting if necessary) if it passed all preliminary tests and it's not yet in the table
 		// although we can only trust responses, anything else might be spoofed to clobber our routing table
 		boolean trustedAndNotPresent = !entryById.isPresent() && msg.getType() == Type.RSP_MSG && trustedNodes.stream().anyMatch(mask -> mask.contains(ip));
+		
+		Set<InsertOptions> opts = EnumSet.noneOf(InsertOptions.class);
+		if(trustedAndNotPresent)
+			opts.addAll(EnumSet.of(FORCE_INTO_MAIN_BUCKET, REMOVE_IF_FULL));
+		if(msg.getType() == Type.RSP_MSG)
+			opts.add(RELAXED_SPLIT);
 			
-		insertEntry(newEntry, false, trustedAndNotPresent, msg.getType() == Type.RSP_MSG);
+		insertEntry(newEntry, opts);
 		
 		// we already should have the bucket. might be an old one by now due to splitting
 		// but it doesn't matter, we just need to update the entry, which should stay the same object across bucket splits
@@ -385,11 +396,20 @@ public class Node {
 	
 	
 	public void insertEntry(KBucketEntry entry, boolean internalInsert) {
-		insertEntry(entry, internalInsert, false, false);
+		insertEntry(entry, internalInsert ? EnumSet.of(FORCE_INTO_MAIN_BUCKET) : EnumSet.noneOf(InsertOptions.class) );
+	}
+	
+	static enum InsertOptions {
+		ALWAYS_SPLIT_IF_FULL,
+		NEVER_SPLIT,
+		RELAXED_SPLIT,
+		REMOVE_IF_FULL,
+		FORCE_INTO_MAIN_BUCKET
 	}
 	
 	
-	void insertEntry (KBucketEntry toInsert, boolean internalInsert, boolean isTrusted, boolean isResponse) {
+	void insertEntry (KBucketEntry toInsert, Set<InsertOptions> opts) {
+		
 		if(toInsert == null || usedIDs.contains(toInsert.getID()) || AddressUtils.isBogon(toInsert.getAddress()) || !dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(toInsert.getAddress().getAddress()))
 			return;
 		
@@ -397,9 +417,9 @@ public class Node {
 		
 		RoutingTableEntry tableEntry = routingTableCOW.entryForId(nodeID);
 
-		while(tableEntry.bucket.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET && tableEntry.prefix.getDepth() < Key.KEY_BITS - 1)
+		while(!opts.contains(NEVER_SPLIT) && tableEntry.bucket.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET && tableEntry.prefix.getDepth() < Key.KEY_BITS - 1)
 		{
-			if(!canSplit(tableEntry, toInsert, !internalInsert && isResponse))
+			if(!opts.contains(ALWAYS_SPLIT_IF_FULL) && !canSplit(tableEntry, toInsert, opts.contains(RELAXED_SPLIT)))
 				break;
 			
 			splitEntry(tableEntry);
@@ -410,11 +430,11 @@ public class Node {
 		
 		KBucketEntry toRemove = null;
 		
-		if(isTrusted) {
+		if(opts.contains(REMOVE_IF_FULL)) {
 			toRemove = tableEntry.bucket.getEntries().stream().filter(e -> trustedNodes.stream().noneMatch(mask -> mask.contains(e.getAddress().getAddress()))).max(KBucketEntry.AGE_ORDER).orElse(null);
 		}
 		
-		if(internalInsert || isTrusted)
+		if(opts.contains(FORCE_INTO_MAIN_BUCKET))
 			tableEntry.bucket.modifyMainBucket(toRemove,toInsert);
 		else
 			tableEntry.bucket.insertOrRefresh(toInsert);
@@ -455,7 +475,7 @@ public class Node {
 		{
 			RoutingTable current = routingTableCOW;
 			// check if we haven't entered the sync block after some other thread that did the same split operation
-			if(current.stream().noneMatch(e -> e.equals(entry)))
+			if(current.stream().noneMatch(e -> e == entry))
 				return;
 			
 			RoutingTableEntry a = new RoutingTableEntry(entry.prefix.splitPrefixBranch(false), new KBucket(), this::isLocalBucket);
@@ -464,11 +484,15 @@ public class Node {
 			RoutingTable newTable = current.modify(Arrays.asList(entry), Arrays.asList(a, b));
 			
 			routingTableCOW = newTable;
+			
+			// suppress recursive splitting to relinquish the lock faster. this method is generally called in a loop anyway
 			for(KBucketEntry e : entry.bucket.getEntries())
-				insertEntry(e, true);
-			for(KBucketEntry e : entry.bucket.getReplacementEntries())
-				insertEntry(e, true);
+				insertEntry(e, EnumSet.of(InsertOptions.NEVER_SPLIT, InsertOptions.FORCE_INTO_MAIN_BUCKET));
 		}
+		
+		// replacements are less important, transfer outside lock
+		for(KBucketEntry e : entry.bucket.getReplacementEntries())
+			insertEntry(e, EnumSet.noneOf(InsertOptions.class));
 		
 	}
 	
@@ -542,7 +566,7 @@ public class Node {
 		bucket.findByIPorID(c.getRequest().getDestination().getAddress(), expectedId).ifPresent(entry -> {
 			entry.signalScheduledRequest();
 		});
-		
+		bucket.replacementsStream().filter(r -> r.getAddress().equals(c.getRequest().getDestination())).findAny().ifPresent(KBucketEntry::signalScheduledRequest);
 	}
 	
 	Key registerId()
@@ -631,12 +655,16 @@ public class Node {
 			}*/
 				
 			
-			if (b.needsToBeRefreshed())
-				tryPingMaintenance(b, "Refreshing Bucket #" + e.prefix);
+			boolean refreshNeeded = b.needsToBeRefreshed();
+			boolean replacementNeeded = b.needsReplacementPing();
+			if(refreshNeeded || replacementNeeded)
+				tryPingMaintenance(b, "Refreshing Bucket #" + e.prefix, null, (task) -> {
+					task.probeUnverifiedReplacement(replacementNeeded);
+				});
 			
 			if(!survival)	{
 				// only replace 1 bad entry with a replacement bucket entry at a time (per bucket)
-				b.checkBadEntries();
+				b.promoteVerifiedReplacement();
 			}
 			
 			newEntryCount += e.bucket.getNumEntries();
@@ -650,6 +678,9 @@ public class Node {
 	}
 
 	void tryPingMaintenance(KBucket b, String reason, RPCServer srv, Consumer<PingRefreshTask> taskConfig) {
+		if(srv == null)
+			srv = dht.getServerManager().getRandomActiveServer(true);
+		
 		if(maintenanceTasks.containsKey(b))
 			return;
 		
@@ -671,28 +702,32 @@ public class Node {
 		}
 	}
 	
-	void tryPingMaintenance(KBucket b, String reason) {
-		RPCServer srv = dht.getServerManager().getRandomActiveServer(true);
-		tryPingMaintenance(b, reason, srv, null);
-	}
-	
-	
-	
 	
 	void mergeBuckets() {
-		synchronized (CoWLock) {
 			
-			// perform bucket merge operations where possible
-			for (int i = 1; i < routingTableCOW.size(); i++) {
-				if(i < 1)
-					continue;
+		int i = 0;
+
+		// perform bucket merge operations where possible
+		while(true) {
+			i++;
+			if(i < 1)
+				continue;
+			
+			// fine-grained locking to interfere less with other operations
+			synchronized (CoWLock) {
+				if(i >= routingTableCOW.size())
+					break;
+
 				RoutingTableEntry e1 = routingTableCOW.get(i - 1);
 				RoutingTableEntry e2 = routingTableCOW.get(i);
 
 				if (e1.prefix.isSiblingOf(e2.prefix)) {
+					int e1Size = (int) (e1.getBucket().getNumEntries() + e1.getBucket().replacementsStream().filter(KBucketEntry::eligibleForNodesList).count());
+					int e2Size = (int) (e2.getBucket().getNumEntries() + e2.getBucket().replacementsStream().filter(KBucketEntry::eligibleForNodesList).count());
+
 					// uplift siblings if the other one is dead
-					if (e1.getBucket().getNumEntries() == 0 || e2.getBucket().getNumEntries() == 0) {
-						KBucket toLift = e1.getBucket().getNumEntries() == 0 ? e2.getBucket() : e1.getBucket();
+					if (e1Size == 0 || e2Size == 0) {
+						KBucket toLift = e1Size == 0 ? e2.getBucket() : e1.getBucket();
 
 						RoutingTable table = routingTableCOW;
 						routingTableCOW = table.modify(Arrays.asList(e1, e2), Arrays.asList(new RoutingTableEntry(e2.prefix.getParentPrefix(), toLift, this::isLocalBucket)));
@@ -702,24 +737,31 @@ public class Node {
 
 					// check if the buckets can be merged without losing entries
 
-					if (e1.getBucket().getNumEntries() + e2.getBucket().getNumEntries() <= DHTConstants.MAX_ENTRIES_PER_BUCKET) {
+					if (e1Size + e2Size <= DHTConstants.MAX_ENTRIES_PER_BUCKET) {
 
 						RoutingTable table = routingTableCOW;
 						routingTableCOW = table.modify(Arrays.asList(e1, e2), Arrays.asList(new RoutingTableEntry(e1.prefix.getParentPrefix(), new KBucket(), this::isLocalBucket)));
-						// no need to carry over replacements. there shouldn't
-						// be any, otherwise the bucket(s) would be full
+						
+						// no splitting to avoid fibrillation between merge and split operations
+
 						for (KBucketEntry e : e1.bucket.getEntries())
-							insertEntry(e, true);
+							insertEntry(e, EnumSet.of(InsertOptions.NEVER_SPLIT, InsertOptions.FORCE_INTO_MAIN_BUCKET));
 						for (KBucketEntry e : e2.bucket.getEntries())
-							insertEntry(e, true);
+							insertEntry(e, EnumSet.of(InsertOptions.NEVER_SPLIT, InsertOptions.FORCE_INTO_MAIN_BUCKET));
+
+						e1.bucket.replacementsStream().forEach(r -> {
+							insertEntry(r, EnumSet.of(InsertOptions.NEVER_SPLIT));
+						});
+						e2.bucket.replacementsStream().forEach(r -> {
+							insertEntry(r, EnumSet.of(InsertOptions.NEVER_SPLIT));
+						});
+
 						i -= 2;
 						continue;
 					}
 				}
-				
-
-
 			}
+
 		}
 	}
 	
@@ -894,7 +936,7 @@ public class Node {
 			typedGet(table, "mainEntries", List.class).ifPresent(l -> {
 				l.stream().filter(Map.class::isInstance).map(Map.class::cast).forEach(entryMap -> {
 					KBucketEntry be = KBucketEntry.fromBencoded((Map<String, Object>) entryMap, dht.getType());
-					insertEntry(be, true);
+					insertEntry(be, EnumSet.of(ALWAYS_SPLIT_IF_FULL, FORCE_INTO_MAIN_BUCKET));
 					counter.incrementAndGet();
 				});
 			});

@@ -37,6 +37,7 @@ public class PingRefreshTask extends Task {
 
 	private boolean							cleanOnTimeout;
 	boolean									alsoCheckGood	= false;
+	boolean 								probeReplacement = false;
 	private Map<MessageBase, KBucketEntry>	lookupMap;
 	KBucket									bucket;
 
@@ -51,15 +52,17 @@ public class PingRefreshTask extends Task {
 		// TODO: remove target ID/make it optional?
 		super(rpc.getDerivedID(),rpc, node);
 		this.cleanOnTimeout = cleanOnTimeout;
-		if (cleanOnTimeout) {
-			lookupMap = new HashMap<MessageBase, KBucketEntry>();
-		}
+		lookupMap = new HashMap<MessageBase, KBucketEntry>();
 		
 		addBucket(bucket);
 	}
 	
 	public void checkGoodEntries(boolean val) {
 		alsoCheckGood = val;
+	}
+	
+	public void probeUnverifiedReplacement(boolean val) {
+		probeReplacement = true;
 	}
 	
 	public void addBucket(KBucket bucket) {
@@ -73,6 +76,11 @@ public class PingRefreshTask extends Task {
 					todo.add(e);
 				}
 			}
+			
+			if(probeReplacement) {
+				bucket.findPingableReplacement().ifPresent(todo::add);
+			}
+				
 		}
 	}
 
@@ -81,10 +89,9 @@ public class PingRefreshTask extends Task {
 	 */
 	@Override
 	void callFinished (RPCCall c, MessageBase rsp) {
-		if (cleanOnTimeout) {
-			synchronized (lookupMap) {
-				lookupMap.remove(c.getRequest());
-			}
+		// most of the success handling is done by bucket maintenance
+		synchronized (lookupMap) {
+			KBucketEntry e = lookupMap.remove(c.getRequest());
 		}
 	}
 
@@ -93,21 +100,22 @@ public class PingRefreshTask extends Task {
 	 */
 	@Override
 	void callTimeout (RPCCall c) {
-		if (cleanOnTimeout) {
-			MessageBase mb = c.getRequest();
+		MessageBase mb = c.getRequest();
 
-			synchronized (lookupMap) {
-				if (lookupMap.containsKey(mb)) {
-					KBucketEntry e = lookupMap.remove(mb);
-					
-					KBucket bucket = node.table().entryForId(e.getID()).getBucket();
-					if (bucket != null) {
-						DHT.logDebug("Removing invalid entry from cache.");
-						bucket.removeEntryIfBad(e, true);
-					}
+		synchronized (lookupMap) {
+			KBucketEntry e = lookupMap.remove(mb);
+			if(e == null)
+				return;
+			
+			KBucket bucket = node.table().entryForId(e.getID()).getBucket();
+			if (bucket != null) {
+				if(cleanOnTimeout) {
+					DHT.logDebug("Removing invalid entry from cache.");
+					bucket.removeEntryIfBad(e, true);
 				}
 			}
 		}
+
 	}
 	
 	
@@ -126,12 +134,12 @@ public class PingRefreshTask extends Task {
 
 			PingRequest pr = new PingRequest();
 			pr.setDestination(e.getAddress());
-			if (cleanOnTimeout) {
+			
+			if(rpcCall(pr,e.getID(),c -> {
 				synchronized (lookupMap) {
 					lookupMap.put(pr, e);
 				}
-			}
-			if(rpcCall(pr,e.getID(),null)) {
+			})) {
 				visited(e);
 				todo.remove(e);
 			}

@@ -801,7 +801,7 @@ public class DHT implements DHTBase {
 		}
 
 		//scheduler.shutdown();
-		logInfo("Stopping DHT");
+		logInfo("Initated DHT shutdown");
 		for (Task t : tman.getActiveTasks()) {
 			t.kill();
 		}
@@ -811,9 +811,12 @@ public class DHT implements DHTBase {
 		// scheduler.getQueue().removeAll(scheduledActions);
 		scheduledActions.clear();
 
+		logInfo("stopping servers");
 		serverManager.destroy();
 		try {
+			logInfo("persisting routing table on shutdown");
 			node.saveTable(table_file);
+			logInfo("table persisted");
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

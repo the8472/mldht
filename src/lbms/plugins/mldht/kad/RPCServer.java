@@ -69,6 +69,14 @@ public class RPCServer {
 	
 	private static final int MTID_LENGTH = 6;
 	
+	enum State {
+		INITIAL,
+		RUNNING,
+		STOPPED
+	}
+	
+	
+	private State									state = State.INITIAL;
 	private InetAddress								addr;
 	private DHT										dh_table;
 	private RPCServerManager						manager;
@@ -153,12 +161,19 @@ public class RPCServer {
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#start()
 	 */
 	public void start() {
+		if(state != State.INITIAL)
+			throw new IllegalStateException("already initialized");
+		state = State.RUNNING;
 		DHT.logInfo("Starting RPC Server");
 		sel = new SocketHandler();
 		startTime = Instant.now();
 	}
 	
 	public void stop() {
+		if(state == State.STOPPED)
+			return;
+		state = State.STOPPED;
+		
 		try
 		{
 			sel.close();
@@ -401,7 +416,7 @@ public class RPCServer {
 			
 			// either a bug or an attack -> drop message
 			
-			DHT.logError("mtid matched, IP did not, ignoring message, request: " + c.getRequest().getDestination() + " -> response: " + msg.getOrigin());
+			DHT.logError("mtid matched, socket address did not, ignoring message, request: " + c.getRequest().getDestination() + " -> response: " + msg.getOrigin());
 			
 			return;
 		}
@@ -663,6 +678,10 @@ public class RPCServer {
 							DHT.logDebug("RPC send message to " + es.toSend.getDestination() + " | "+ es.toSend.toString() + " | length: " +bytesSent);
 					} catch (IOException e)
 					{
+						// async close
+						if(!channel.isOpen())
+							return;
+						
 						// BSD variants may throw an exception (ENOBUFS) instead of just signaling 0 bytes sent when network queues are full -> back off just like we would in the 0 bytes case.
 						if(e.getMessage().equals("No buffer space available")) {
 							pipeline.add(es);
@@ -684,7 +703,7 @@ public class RPCServer {
 				}
 				
 				// release claim on the socket
-				writeState.set(WRITE_STATE_IDLE);
+				writeState.compareAndSet(WRITE_STATE_WRITING, WRITE_STATE_IDLE);
 				
 				// check if we might have to pick it up again due to races
 				// schedule async to avoid infinite stacks
@@ -712,6 +731,7 @@ public class RPCServer {
 			writeState.set(CLOSED);
 			stop();
 			connectionManager.deRegister(this);
+			channel.close();
 		}
 		
 		@Override

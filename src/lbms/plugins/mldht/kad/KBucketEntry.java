@@ -306,9 +306,12 @@ public class KBucketEntry {
 	}
 	
 	public boolean removableWithoutReplacement() {
-		// some non-reachable nodes may contact us repeatedly, bumping the last seen counter. they might be interesting to keep around so the back off interval keeps getting bumped
-		// but things we haven't heard from in a while and never been verified can be discarded
-		return !verifiedReachable() && failedQueries() > 2 && System.currentTimeMillis() - lastSeen > OLD_AND_STALE_TIME;
+		// some non-reachable nodes may contact us repeatedly, bumping the last seen counter. they might be interesting to keep around so we can keep track of the backoff interval to not waste pings on them
+		// but things we haven't heard from in a while can be discarded
+		
+		boolean seenSinceLastPing = lastSeen > lastSendTime;
+		
+		return failedQueries > MAX_TIMEOUTS && !seenSinceLastPing ;
 	}
 	
 	public boolean needsReplacement() {

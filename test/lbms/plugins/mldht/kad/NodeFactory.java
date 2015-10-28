@@ -6,6 +6,8 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.concurrent.ThreadLocalRandom;
 
+import lbms.plugins.mldht.kad.DHT.DHTtype;
+
 public class NodeFactory {
 
 	static InetAddress generateIp(byte subnet) {
@@ -18,6 +20,13 @@ public class NodeFactory {
 		addr[3] = subnet;
 	
 		return unchecked(() -> InetAddress.getByAddress(addr));
+	}
+	
+	static DHT buildDHT() {
+		DHT dht = new DHT(DHTtype.IPV6_DHT);
+		dht.populate();
+		
+		return dht;
 	}
 
 	static void fillTable(Node node) {

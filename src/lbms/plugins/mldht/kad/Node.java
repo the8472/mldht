@@ -620,7 +620,7 @@ public class Node {
 			for (KBucketEntry entry : entries)
 			{
 				// remove really old entries, ourselves and bootstrap nodes if the bucket is full
-				if ((!survival && entry.removableWithoutReplacement()) || localIds.contains(entry.getID()) || (wasFull && DHTConstants.BOOTSTRAP_NODE_ADDRESSES.contains(entry.getAddress()))) {
+				if (localIds.contains(entry.getID()) || (wasFull && DHTConstants.BOOTSTRAP_NODE_ADDRESSES.contains(entry.getAddress()))) {
 					b.removeEntryIfBad(entry, true);
 					continue;
 				}
@@ -642,18 +642,6 @@ public class Node {
 				});
 				
 			}
-			
-			/*
-			boolean allBad = b.getNumEntries() > 0 && b.entriesStream().allMatch(KBucketEntry::removableWithoutReplacement);
-
-
-			// clean out buckets full of bad nodes. merge operations will do the rest
-			if(!survival && allBad)
-			{
-				clearEntry(e);
-				continue;
-			}*/
-				
 			
 			boolean refreshNeeded = b.needsToBeRefreshed();
 			boolean replacementNeeded = b.needsReplacementPing();
@@ -722,12 +710,12 @@ public class Node {
 				RoutingTableEntry e2 = routingTableCOW.get(i);
 
 				if (e1.prefix.isSiblingOf(e2.prefix)) {
-					int e1Size = (int) (e1.getBucket().getNumEntries() + e1.getBucket().replacementsStream().filter(KBucketEntry::eligibleForNodesList).count());
-					int e2Size = (int) (e2.getBucket().getNumEntries() + e2.getBucket().replacementsStream().filter(KBucketEntry::eligibleForNodesList).count());
+					int effectiveSize1 = (int) (e1.getBucket().entriesStream().filter(e -> !e.removableWithoutReplacement()).count() + e1.getBucket().replacementsStream().filter(KBucketEntry::eligibleForNodesList).count());
+					int effectiveSize2 = (int) (e2.getBucket().entriesStream().filter(e -> !e.removableWithoutReplacement()).count() + e2.getBucket().replacementsStream().filter(KBucketEntry::eligibleForNodesList).count());
 
 					// uplift siblings if the other one is dead
-					if (e1Size == 0 || e2Size == 0) {
-						KBucket toLift = e1Size == 0 ? e2.getBucket() : e1.getBucket();
+					if (effectiveSize1 == 0 || effectiveSize2 == 0) {
+						KBucket toLift = effectiveSize1 == 0 ? e2.getBucket() : e1.getBucket();
 
 						RoutingTable table = routingTableCOW;
 						routingTableCOW = table.modify(Arrays.asList(e1, e2), Arrays.asList(new RoutingTableEntry(e2.prefix.getParentPrefix(), toLift, this::isLocalBucket)));
@@ -737,7 +725,7 @@ public class Node {
 
 					// check if the buckets can be merged without losing entries
 
-					if (e1Size + e2Size <= DHTConstants.MAX_ENTRIES_PER_BUCKET) {
+					if (effectiveSize1 + effectiveSize2 <= DHTConstants.MAX_ENTRIES_PER_BUCKET) {
 
 						RoutingTable table = routingTableCOW;
 						routingTableCOW = table.modify(Arrays.asList(e1, e2), Arrays.asList(new RoutingTableEntry(e1.prefix.getParentPrefix(), new KBucket(), this::isLocalBucket)));

@@ -691,7 +691,7 @@ public class RPCServer {
 							return;
 						}
 
-						DHT.log(new IOException(addr+" -> "+es.toSend.getDestination(), e), LogLevel.Error);
+						DHT.log(new IOException(addr+" -> "+es.toSend.getDestination()+" while attempting to send "+es.toSend, e), LogLevel.Error);
 						if(es.associatedCall != null)
 						{ // need to notify listeners
 							es.associatedCall.sendFailed();

@@ -408,10 +408,13 @@ public class Node {
 	}
 	
 	
-	void insertEntry (KBucketEntry toInsert, Set<InsertOptions> opts) {
-		
-		if(toInsert == null || usedIDs.contains(toInsert.getID()) || AddressUtils.isBogon(toInsert.getAddress()) || !dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(toInsert.getAddress().getAddress()))
+	void insertEntry(KBucketEntry toInsert, Set<InsertOptions> opts) {
+		if(usedIDs.contains(toInsert.getID()) || AddressUtils.isBogon(toInsert.getAddress()))
 			return;
+
+		if(!dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(toInsert.getAddress().getAddress()))
+			throw new IllegalArgumentException("attempting to insert "+toInsert+" expected address type: "+dht.getType().PREFERRED_ADDRESS_TYPE.getSimpleName());
+		
 		
 		Key nodeID = toInsert.getID();
 		

@@ -18,6 +18,8 @@ public interface NodeList {
 		V4, V6;
 	}
 	
+	AddressType type();
+	
 	Stream<KBucketEntry> entries();
 	
 	int packedSize();
@@ -89,6 +91,11 @@ public interface NodeList {
 						return src.remaining();
 					}
 				};
+			}
+
+			@Override
+			public AddressType type() {
+				return type;
 			}
 		};
 	}

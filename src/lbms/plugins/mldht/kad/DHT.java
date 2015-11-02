@@ -259,7 +259,7 @@ public class DHT implements DHTBase {
 			getSiblingByType(DHTtype.IPV6_DHT).ifPresent(sib -> {
 				KClosestNodesSearch kns = new KClosestNodesSearch(target, v6, sib);
 				kns.fill(DHTtype.IPV6_DHT != type);
-				rsp.setNodes6(kns.asNodeList());
+				rsp.setNodes(kns.asNodeList());
 			});
 		}
 	}

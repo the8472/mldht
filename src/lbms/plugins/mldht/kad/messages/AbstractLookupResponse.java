@@ -14,13 +14,18 @@ public class AbstractLookupResponse extends MessageBase {
 	private byte[]			token;
 
 	public void setNodes(NodeList nodes) {
-		this.nodes = nodes;
+		switch (nodes.type()) {
+			case V4:
+				this.nodes = nodes;
+				break;
+
+			case V6:
+				this.nodes6 = nodes;
+				break;
+			default:
+				throw new UnsupportedOperationException("should not happen");
+		}
 	}
-	
-	public void setNodes6(NodeList nodes6) {
-		this.nodes6 = nodes6;
-	}
-	
 
 	public byte[] getToken () {
 		return token;

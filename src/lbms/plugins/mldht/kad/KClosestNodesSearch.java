@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
+import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.Node.RoutingTable;
 import lbms.plugins.mldht.kad.utils.PackUtil;
 
@@ -221,6 +222,11 @@ This requires a non-contiguous search
 			@Override
 			public Stream<KBucketEntry> entries() {
 				return entries.stream();
+			}
+
+			@Override
+			public AddressType type() {
+				return owner.getType() == DHTtype.IPV4_DHT ? AddressType.V4 : AddressType.V6;
 			}
 		};
 	}

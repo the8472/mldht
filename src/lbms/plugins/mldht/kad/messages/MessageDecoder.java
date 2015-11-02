@@ -41,6 +41,7 @@ import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.NodeList;
+import lbms.plugins.mldht.kad.NodeList.AddressType;
 import lbms.plugins.mldht.kad.PeerAddressDBItem;
 import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
@@ -197,15 +198,15 @@ public class MessageDecoder {
 				throw new MessageException("received response to find_node request with neither 'nodes' nor 'nodes6' entry", ErrorCode.ProtocolError);
 				//return null;
 			
-			msg = tap(new FindNodeResponse(mtid), (m) -> {
-				Functional.typedGet(args, "nodes", byte[].class).ifPresent(b -> m.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V4)));
-				Functional.typedGet(args, "nodes6", byte[].class).ifPresent(b -> m.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V6)));
+			msg = tapThrow(new FindNodeResponse(mtid), (m) -> {
+				extractNodes(args, "nodes", DHTtype.IPV4_DHT).ifPresent(n -> m.setNodes(n));
+				extractNodes(args, "nodes6", DHTtype.IPV6_DHT).ifPresent(n -> m.setNodes(n));
 			});
 			break;
 		case GET_PEERS:
 			byte[] token = Functional.typedGet(args, "token", byte[].class).orElse(null);
-			Optional<byte[]> nodes = Functional.typedGet(args, "nodes", byte[].class);
-			Optional<byte[]> nodes6 = Functional.typedGet(args, "nodes6", byte[].class);
+			Optional<NodeList> nodes = extractNodes(args, "nodes", DHTtype.IPV4_DHT);
+			Optional<NodeList> nodes6 = extractNodes(args, "nodes6", DHTtype.IPV4_DHT);
 
 			
 			List<DBItem> dbl = null;
@@ -236,8 +237,8 @@ public class MessageDecoder {
 			if (dbl != null || nodes.isPresent() || nodes6.isPresent())
 			{
 				GetPeersResponse resp = new GetPeersResponse(mtid);
-				nodes.ifPresent(b -> resp.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V4)));
-				nodes6.ifPresent(b -> resp.setNodes(NodeList.fromBuffer(ByteBuffer.wrap(b), NodeList.AddressType.V6)));
+				nodes.ifPresent(l -> resp.setNodes(l));
+				nodes6.ifPresent(l -> resp.setNodes(l));
 				resp.setPeerItems(dbl);
 				resp.setToken(token);
 				resp.setScrapePeers(peerFilter);
@@ -265,6 +266,16 @@ public class MessageDecoder {
 		
 		return msg;
 	}
+	
+	private Optional<NodeList> extractNodes(Map<String, Object> args, String key, DHTtype nodesType) throws MessageException {
+		byte[] raw = typedGet(args, key, byte[].class).orElse(null);
+		if(raw == null)
+			return Optional.empty();
+		if(raw.length % nodesType.NODES_ENTRY_LENGTH != 0)
+			throw new MessageException("expected "+key+" length to be a multiple of "+nodesType.NODES_ENTRY_LENGTH+", received "+raw.length, ErrorCode.ProtocolError);
+		return Optional.of(NodeList.fromBuffer(ByteBuffer.wrap(raw), nodesType == DHTtype.IPV4_DHT ? AddressType.V4 : AddressType.V6));
+	}
+	
 	
 	/**
 	 * @param map

@@ -166,6 +166,7 @@ public class RPCServer {
 		state = State.RUNNING;
 		DHT.logInfo("Starting RPC Server");
 		sel = new SocketHandler();
+		sel.start();
 		startTime = Instant.now();
 	}
 	
@@ -564,6 +565,10 @@ public class RPCServer {
 		NIOConnectionManager connectionManager;
 		
 		public SocketHandler() {
+
+		}
+		
+		void start() {
 			try
 			{
 				timeoutFilter.reset();

@@ -754,6 +754,8 @@ public class DHT implements DHTBase {
 
 		}, 1000, DHTConstants.CHECK_FOR_EXPIRED_ENTRIES, TimeUnit.MILLISECONDS));
 		
+		scheduledActions.add(scheduler.scheduleWithFixedDelay(node::decayThrottle, 1, Node.throttleUpdateIntervalMinutes, TimeUnit.MINUTES));
+		
 		// single ping to a random node per server to check socket liveness
 		scheduledActions.add(scheduler.scheduleWithFixedDelay(() -> {
 			

@@ -4,6 +4,7 @@ import static the8472.utils.Functional.unchecked;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,6 +12,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Formatter;
 import java.util.List;
 import java.util.Map;
@@ -145,6 +147,19 @@ public class Diagnostics {
 		Formatter f = new Formatter(writer);
 		
 		f.format("Type: %s%n", node.getDHT().getType().shortName);
+		
+		
+		f.format("%nThrottled:%n");
+		
+		Comparator<Map.Entry<InetAddress, Long>> comp = Map.Entry.<InetAddress, Long>comparingByValue()
+				.reversed().thenComparing(Comparator.comparing(e -> e.getKey().getAddress(), Arrays::compareUnsigned));
+		
+		node.throttledEntries().filter(e -> e.getValue() > Node.throttleThreshold).sorted(comp).forEach(e -> {
+			f.format("%5d %s%n", e.getValue().intValue(), e.getKey());
+		});
+		
+		f.format("%n");
+		
 		
 		Consumer<Prefix> dbMapper = (Prefix p) -> {
 			NavigableMap<Key, PeersSeeds> subPeers = peerDB.subMap(p.first(), true, p.last(), true);

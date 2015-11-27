@@ -114,6 +114,17 @@ public class KBucket {
 	}
 	
 	
+	public void refresh(KBucketEntry toRefresh) {
+		entries.stream().findAny().ifPresent(e -> {
+			e.mergeInTimestamps(toRefresh);
+		});
+		
+		replacementsStream().findAny().ifPresent(e -> {
+			e.mergeInTimestamps(toRefresh);
+		});
+		
+	}
+
 	/**
 	 * mostly meant for internal use or transfering entries into a new bucket.
 	 * to update a bucket properly use {@link #insertOrRefresh(KBucketEntry)}

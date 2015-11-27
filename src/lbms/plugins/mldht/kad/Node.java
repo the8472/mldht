@@ -51,6 +51,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -93,6 +94,10 @@ public class Node {
 	 * - allow duplicate addresses for unverified entries
 	 *  - scrub later when one becomes verified
 	 * - never hand out unverified entries to other nodes
+	 * 
+	 * other stuff to keep in mind:
+	 * 
+	 * - non-reachable nodes may spam -> floods replacements -> makes it hard to get proper replacements without active lookups
 	 * 
 	 */
 	
@@ -263,6 +268,7 @@ public class Node {
 	private Key baseKey;
 	private final CowSet<Key> usedIDs = new CowSet<>();
 	private volatile Map<InetAddress,RoutingTableEntry> knownNodes = new HashMap<InetAddress, RoutingTableEntry>();
+	private ConcurrentHashMap<InetAddress , Long> unsolicitedThrottle = new ConcurrentHashMap<>();
 	private Map<KBucket, Task> maintenanceTasks = new IdentityHashMap<>();
 	
 	Collection<NetMask> trustedNodes = Collections.emptyList();
@@ -361,6 +367,14 @@ public class Node {
 
 		KBucketEntry newEntry = new KBucketEntry(msg.getOrigin(), id);
 		msg.getVersion().ifPresent(newEntry::setVersion);
+		
+		// throttle the insert-attempts for unsolicited requests, update-only once they exceed the threshold
+		// does not apply to responses
+		if(!associatedCall.isPresent() && updateAndCheckThrottle(newEntry.getAddress().getAddress())) {
+			refreshOnly(newEntry);
+			return;
+		}
+		
 		associatedCall.ifPresent(c -> {
 			newEntry.signalResponse(c.getRTT());
 			newEntry.mergeRequestTime(c.getSentTime());
@@ -390,6 +404,22 @@ public class Node {
 		num_receives++;
 	}
 	
+	public static final long throttleIncrement = 10;
+	public static final long throttleSaturation = 1000;
+	public static final long throttleThreshold = 30;
+	public static final long throttleUpdateIntervalMinutes = 1;
+	
+	/**
+	 * @return true if it should be throttled
+	 */
+	boolean updateAndCheckThrottle(InetAddress addr) {
+		long now = System.currentTimeMillis();
+		long oldVal = unsolicitedThrottle.getOrDefault(addr, 0L);
+		unsolicitedThrottle.put(addr, Math.min(oldVal + throttleIncrement, throttleSaturation));
+		
+		return oldVal > throttleThreshold;
+	}
+	
 	private Optional<Pair<KBucket, KBucketEntry>> bucketForIP(InetAddress addr) {
 		return Optional.ofNullable(knownNodes.get(addr)).map(RoutingTableEntry::getBucket).flatMap(bucket -> bucket.findByIPorID(addr, null).map(Pair.of(bucket)));
 	}
@@ -405,6 +435,12 @@ public class Node {
 		RELAXED_SPLIT,
 		REMOVE_IF_FULL,
 		FORCE_INTO_MAIN_BUCKET
+	}
+	
+	void refreshOnly(KBucketEntry toRefresh) {
+		KBucket bucket = routingTableCOW.entryForId(toRefresh.getID()).getBucket();
+		
+		bucket.refresh(toRefresh);
 	}
 	
 	
@@ -502,6 +538,10 @@ public class Node {
 	public RoutingTable table() {
 		return routingTableCOW;
 	}
+	
+	public Stream<Map.Entry<InetAddress, Long>> throttledEntries() {
+		return unsolicitedThrottle.entrySet().stream();
+	}
 
 	/**
 	 * @return OurID
@@ -546,9 +586,19 @@ public class Node {
 			if(entry != null)
 				entry.bucket.onTimeout(dest);
 		}
-			
 	}
 	
+	
+
+	
+	void decayThrottle() {
+		unsolicitedThrottle.replaceAll((addr, i) -> {
+			return i - 1;
+		});
+		unsolicitedThrottle.values().removeIf(e -> e <= 0);
+		
+	}
+
 	public boolean isInSurvivalMode() {
 		return dht.getServerManager().getActiveServerCount() == 0;
 	}
@@ -666,6 +716,7 @@ public class Node {
 		num_entries = newEntryCount;
 		
 		rebuildAddressCache();
+		decayThrottle();
 	}
 
 	void tryPingMaintenance(KBucket b, String reason, RPCServer srv, Consumer<PingRefreshTask> taskConfig) {

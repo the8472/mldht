@@ -290,12 +290,34 @@ public class KBucketEntry {
 		return Math.abs(failedQueries);
 	}
 	
+	public long lastSendTime() {
+		return lastSendTime;
+	}
+	
+	private boolean withinBackoffWindow(long now) {
+		int backoff = PING_BACKOFF_BASE_INTERVAL << Math.min(MAX_TIMEOUTS, Math.max(0, failedQueries() - 1));
+		
+		return failedQueries != 0 && now - lastSendTime < backoff;
+	}
+	
+	public long backoffWindowEnd() {
+		if(failedQueries == 0 || lastSendTime <= 0)
+			return -1L;
+		
+		int backoff = PING_BACKOFF_BASE_INTERVAL << Math.min(MAX_TIMEOUTS, Math.max(0, failedQueries() - 1));
+		
+		return lastSendTime + backoff;
+	}
+	
+	public boolean withinBackoffWindow() {
+		return withinBackoffWindow(System.currentTimeMillis());
+	}
+	
 	public boolean needsPing() {
 		long now = System.currentTimeMillis();
-		// backoff for pings
-		if(now - lastSendTime < PING_BACKOFF_BASE_INTERVAL << Math.min(MAX_TIMEOUTS, Math.max(0, failedQueries() - 1)))
+
+		if(withinBackoffWindow(now))
 			return false;
-			
 		
 		return failedQueries != 0 || now - lastSeen > OLD_AND_STALE_TIME;
 	}

@@ -91,7 +91,8 @@ public class BEncoder {
 		}
 		
 		if(o instanceof RawData) {
-			buf.put(((RawData) o).rawBuf);
+			ByteBuffer raw = ((RawData) o).rawBuf;
+			buf.put(raw.duplicate());
 			return;
 		}
 		

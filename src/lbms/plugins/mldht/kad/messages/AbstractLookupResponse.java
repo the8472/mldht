@@ -74,8 +74,10 @@ public class AbstractLookupResponse extends MessageBase {
 
 	@Override
 	public String toString() {
-		return super.toString() + (nodes != null ? "contains: "+ (nodes.packedSize()/DHTtype.IPV4_DHT.NODES_ENTRY_LENGTH) + " nodes" : "") + (nodes6 != null ? "contains: "+ (nodes6.packedSize()/DHTtype.IPV6_DHT.NODES_ENTRY_LENGTH) + " nodes6" : "") +
-				(token != null ? "token "+token.length+" | " : "");
+		return super.toString() +
+			(nodes != null ? "contains: "+ (nodes.packedSize()/DHTtype.IPV4_DHT.NODES_ENTRY_LENGTH) + " nodes " : "") +
+			(nodes6 != null ? "contains: "+ (nodes6.packedSize()/DHTtype.IPV6_DHT.NODES_ENTRY_LENGTH) + " nodes6 " : "") +
+			(token != null ? "token "+token.length+" | " : "");
 	}
 	
 

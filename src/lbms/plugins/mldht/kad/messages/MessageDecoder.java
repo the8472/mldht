@@ -354,6 +354,14 @@ public class MessageDecoder {
 					peerReq.setNoSeeds(Long.valueOf(1).equals(args.get("noseed")));
 					peerReq.setScrape(Long.valueOf(1).equals(args.get("scrape")));
 				}
+				
+				if(req instanceof GetRequest) {
+					GetRequest getReq = (GetRequest) req;
+					typedGet(args, "seq", Long.class).ifPresent(seq -> {
+						getReq.setSeq(seq);
+					});
+				}
+				
 				msg = req;
 				
 				break;

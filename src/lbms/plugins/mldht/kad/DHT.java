@@ -289,11 +289,13 @@ public class DHT implements DHTBase {
 		});
 		
 		storage.get(k).ifPresent(item -> {
-			rsp.setRawValue(ByteBuffer.wrap(item.value));
-			rsp.setKey(item.pubkey);
-			rsp.setSignature(item.signature);
-			if(item.sequenceNumber >= 0)
-				rsp.setSequenceNumber(item.sequenceNumber);
+			if(req.getSeq() < 0 || item.sequenceNumber < 0 || req.getSeq() < item.sequenceNumber) {
+				rsp.setRawValue(ByteBuffer.wrap(item.value));
+				rsp.setKey(item.pubkey);
+				rsp.setSignature(item.signature);
+				if(item.sequenceNumber >= 0)
+					rsp.setSequenceNumber(item.sequenceNumber);
+			}
 		});
 		
 		rsp.setDestination(req.getOrigin());

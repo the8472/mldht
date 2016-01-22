@@ -4,6 +4,8 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.Key;
 
 public class GetRequest extends AbstractLookupRequest {
+	
+	long onlySendValueIfSeqGreaterThan = -1;
 
 	public GetRequest(Key target) {
 		super(target, Method.GET);
@@ -13,6 +15,14 @@ public class GetRequest extends AbstractLookupRequest {
 	@Override
 	protected String targetBencodingName() {
 		return "target";
+	}
+	
+	public void setSeq(long l) {
+		onlySendValueIfSeqGreaterThan = l;
+	}
+	
+	public long getSeq() {
+		return onlySendValueIfSeqGreaterThan;
 	}
 	
 	@Override

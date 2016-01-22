@@ -2,4 +2,20 @@
 
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
-java -Xdebug -Xrunjdwp:transport=dt_socket,address=127.0.0.1:10044,server=y,suspend=n -Xloggc:logs/gc.log -XX:+PrintGCTimeStamps -XX:+PrintGCDetails -Xmx3G -XX:+UseG1GC -XX:MaxGCPauseMillis=15 -XX:GCTimeRatio=19 -XX:+AggressiveOpts -XX:+UnlockExperimentalVMOptions -XX:+TrustFinalNonStaticFields -XX:+ParallelRefProcEnabled -cp ./lib/*:$DIR/../target/* the8472.mldht.Launcher
+UNLOCK="-XX:+UnlockExperimentalVMOptions -XX:+UnlockDiagnosticVMOptions"
+
+# PROFILER="-agentpath:$DIR/../lib/libjprofilerti.so=port=10040,address=127.0.0.1,nowait"
+# PROFILER="-agentpath:$DIR/../lib/libyjpagent.so=listen=127.0.0.1:10040,telemetryperiod=100"
+
+GC="-Xms300m -Xmx1500M -XX:+UseConcMarkSweepGC -XX:+UseParNewGC -XX:MaxGCPauseMillis=15 -XX:GCTimeRatio=19 -XX:CMSInitiatingOccupancyFraction=70 -XX:+UseCMSInitiatingOccupancyOnly"
+
+LOG="-Xloggc:logs/gc.log -XX:+PrintGCDateStamps -XX:+PrintGCTimeStamps -XX:+PrintGCDetails -XX:+HeapDumpBeforeFullGC" 
+
+DEBUG="-Xdebug -Xrunjdwp:transport=dt_socket,address=127.0.0.1:10044,server=y,suspend=n"
+
+OPTO="-XX:+AggressiveOpts -XX:MaxInlineLevel=12 -XX:+TrustFinalNonStaticFields -XX:+AggressiveUnboxing"
+
+PERF_EVENTS="-XX:+PreserveFramePointer"
+
+
+( java $UNLOCK $PROFILER $GC $DEBUG $LOG $OPTO $PERF_EVENTS -cp $DIR/../target/* the8472.mldht.Launcher & ) &

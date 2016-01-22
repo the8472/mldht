@@ -31,7 +31,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.channels.FileChannel.MapMode;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -866,7 +865,6 @@ public class Node {
 	 */
 	void saveTable(Path saveTo) throws IOException {
 		
-		// TODO: mmap + truncate instead?
 		ByteBuffer tableBuffer = ByteBuffer.allocateDirect(50*1024*1024);
 		
 		
@@ -968,7 +966,11 @@ public class Node {
 			return;
 		
 		try(FileChannel chan = FileChannel.open(tablePath, StandardOpenOption.READ)) {
-			ByteBuffer buf = chan.map(MapMode.READ_ONLY, 0, chan.size());
+			
+			// don't use mmap, that would keep the file undeletable on windows, which would interfere with write-atomicmove persistence
+			ByteBuffer buf = ByteBuffer.allocateDirect((int)chan.size());
+			chan.read(buf);
+			buf.flip();
 			
 			Map<String, Object> table = ThreadLocalUtils.getDecoder().decode(buf);
 			

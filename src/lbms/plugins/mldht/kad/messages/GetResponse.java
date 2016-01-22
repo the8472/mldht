@@ -20,7 +20,7 @@ public class GetResponse extends AbstractLookupResponse {
 			map.put("sig", signature);
 		if(key != null)
 			map.put("k", key);
-		if(sequenceNumber >= -1)
+		if(sequenceNumber > -1)
 			map.put("seq", sequenceNumber);
 		
 		if(rawValue != null)
@@ -59,6 +59,16 @@ public class GetResponse extends AbstractLookupResponse {
 	}
 	public void setKey(byte[] key) {
 		this.key = key;
+	}
+	
+	@Override
+	public String toString() {
+		return super.toString() +
+			(rawValue != null ? "rawval: " + rawValue.remaining() + "bytes " : "") +
+			(signature != null ? "sig: " + signature.length + "bytes " : "") +
+			(sequenceNumber != -1 ? "seq: " + sequenceNumber + " " : "") +
+			(key != null ? "key: " + key.length + "bytes " : "")
+		;
 	}
 
 }

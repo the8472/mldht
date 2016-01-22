@@ -47,7 +47,8 @@ Additional:
 this will create various files
 - `config.xml`, change settings as needed, core settings will be picked up on file modification
 - `shutdown`, touch to cleanly shutdown running process (SIGHUP works too)
-- `dht.cache`, used to skip bootstrapping after a restart
+- `*-table.cache`, persisted routing table for the ipv4/6 dhts, respectively
+- `baseID.config`, persisted node ID
 - `logs/*`, various diagnostics and log files
 
 **Security note:** the shell script launches the JVM with a debug port bound to localhost for easier maintenance, thus allowing arbitrary code execution with the current user's permissions. In a multi-user environment a custom script with debugging disabled should be used    
@@ -95,7 +96,12 @@ run CLI client with
 bin/mldht-remote-cli help
 ```
 
-**Security note:** The CLI Server component listens on localhost, accepting commands without authentication from any user on the system. It is recommended to not use this component in a multi-user environment. 
+**Security note:** The CLI Server component listens on localhost, accepting commands without authentication from any user on the system. It is recommended to not use this component in a multi-user environment.
+
+## other components
+
+* `the8472.mldht.indexing.ActiveLookupProvider` raw TCP interface for requesting DHT scrapes on port 36578. just send infohashes in hex, newline separated
+* `the8472.mldht.indexing.OpentrackerLiveSync` implements a lan-local multicast sender for opentracker's IPv4 live sync. for passively observed DHT lookups will be inserted as peers in opentracker instance. opentracker instance can then be used as source for DHT statistics as if it were just another tracker
 
 
 ## launching custom components

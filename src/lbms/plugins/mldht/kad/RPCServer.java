@@ -559,7 +559,7 @@ public class RPCServer {
 	public String toString() {
 		Formatter f = new Formatter();
 		f.format("%s\tbind: %s consensus: %s%n", getDerivedID(), getBindAddress(), consensusExternalAddress);
-		f.format("rx: %d tx: %d active: %d baseRTT: %d loss: %f  loss (verified): %f uptime: %d%n",
+		f.format("rx: %d tx: %d active: %d baseRTT: %d loss: %f  loss (verified): %f uptime: %s%n",
 				numReceived, numSent, getNumActiveRPCCalls(), timeoutFilter.getStallTimeout(), unverifiedLossrate.getAverage(), verifiedEntryLossrate.getAverage() , Duration.between(startTime, Instant.now()));
 		f.format("RTT stats (%dsamples) %s", timeoutFilter.getSampleCount(), timeoutFilter.getCurrentStats());
 

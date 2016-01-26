@@ -80,7 +80,7 @@ import lbms.plugins.mldht.utils.NIOConnectionManager;
 public class DHT implements DHTBase {
 	
 	public static enum DHTtype {
-		IPV4_DHT("IPv4",20+4+2, 4+2, Inet4Address.class,20+8, 1400),
+		IPV4_DHT("IPv4",20+4+2, 4+2, Inet4Address.class,20+8, 1450),
 		IPV6_DHT("IPv6",20+16+2, 16+2, Inet6Address.class,40+8, 1200);
 		
 		public final int							HEADER_LENGTH;

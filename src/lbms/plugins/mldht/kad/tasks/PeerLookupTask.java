@@ -250,6 +250,7 @@ public class PeerLookupTask extends Task {
 				gpr.setNoSeeds(noSeeds);
 				if(rpcCall(gpr, e.getID(), call -> {
 					call.addListener(cache.getRPCListener());
+					call.builtFromEntry(e);
 					long rtt = e.getRTT();
 					rtt = rtt + rtt / 2; // *1.5 since this is the average and not the 90th percentile like the timeout filter
 					if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX && rtt < rpc.getTimeoutFilter().getStallTimeout())

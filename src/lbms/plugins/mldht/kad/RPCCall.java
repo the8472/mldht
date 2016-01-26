@@ -35,6 +35,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 public class RPCCall {
 
 	private MessageBase				msg;
+	private boolean					sourceWasKnownReachable;
 	private boolean					stalled;
 	private boolean					awaitingResponse;
 	private List<RPCCallListener>	listeners		= new ArrayList<RPCCallListener>(3);
@@ -53,6 +54,14 @@ public class RPCCall {
 	public RPCCall setExpectedID(Key id) {
 		expectedID = id;
 		return this;
+	}
+	
+	public void builtFromEntry(KBucketEntry e) {
+		sourceWasKnownReachable = e.verifiedReachable();
+	}
+	
+	public boolean knownReachableAtCreationTime() {
+		return sourceWasKnownReachable;
 	}
 	
 	public RPCCall setExpectedRTT(long rtt) {

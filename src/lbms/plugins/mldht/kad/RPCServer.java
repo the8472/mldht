@@ -30,6 +30,7 @@ import java.nio.channels.SelectionKey;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.Formatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -56,6 +57,7 @@ import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.ByteWrapper;
 import lbms.plugins.mldht.kad.utils.ResponseTimeoutFilter;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
+import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
 import lbms.plugins.mldht.utils.Selectable;
 import the8472.bencode.Tokenizer.BDecodingException;
@@ -92,6 +94,8 @@ public class RPCServer {
 	private Key										derivedId;
 	private InetSocketAddress						consensusExternalAddress;
 	private SpamThrottle 							throttle = new SpamThrottle();
+	private ExponentialWeightendMovingAverage		unverifiedLossrate = new ExponentialWeightendMovingAverage().setWeight(0.01).setValue(0.5);
+	private ExponentialWeightendMovingAverage		verifiedEntryLossrate = new ExponentialWeightendMovingAverage().setWeight(0.01).setValue(0.5);
 	
 	private LinkedHashMap<InetAddress, InetSocketAddress> originPairs  = new LinkedHashMap<InetAddress, InetSocketAddress>(64, 0.75f, true) {
 		@Override
@@ -230,13 +234,22 @@ public class RPCServer {
 		public void onTimeout(RPCCall c) {
 			ByteWrapper w = new ByteWrapper(c.getRequest().getMTID());
 			stats.addTimeoutMessageToCount(c.getRequest());
+			if(c.knownReachableAtCreationTime())
+				verifiedEntryLossrate.updateAverage(1.0);
+			else
+				unverifiedLossrate.updateAverage(1.0);
 			calls.remove(w);
 			dh_table.timeout(c);
 			doQueuedCalls();
 		}
 		
 		public void onStall(RPCCall c) {}
-		public void onResponse(RPCCall c, MessageBase rsp) {}
+		public void onResponse(RPCCall c, MessageBase rsp) {
+			if(c.knownReachableAtCreationTime())
+				verifiedEntryLossrate.updateAverage(0.0);
+			else
+				unverifiedLossrate.updateAverage(0.0);
+		}
 	};
 	
 	/* (non-Javadoc)
@@ -544,11 +557,13 @@ public class RPCServer {
 	
 	@Override
 	public String toString() {
-		StringBuilder b = new StringBuilder();
-		b.append(getDerivedID()).append("\t").append("bind: ").append(getBindAddress()).append(" consensus: ").append(consensusExternalAddress).append('\n');
-		b.append("rx: ").append(numReceived).append(" tx:").append(numSent).append(" active:").append(getNumActiveRPCCalls()).append(" baseRTT:").append(timeoutFilter.getStallTimeout()).append(" uptime:").append(Duration.between(startTime, Instant.now())).append('\n');
-		b.append("RTT stats (").append(timeoutFilter.getSampleCount()).append("samples) ").append(timeoutFilter.getCurrentStats());
-		return b.toString();
+		Formatter f = new Formatter();
+		f.format("%s\tbind: %s consensus: %s%n", getDerivedID(), getBindAddress(), consensusExternalAddress);
+		f.format("rx: %d tx: %d active: %d baseRTT: %d loss: %f  loss (verified): %f uptime: %d%n",
+				numReceived, numSent, getNumActiveRPCCalls(), timeoutFilter.getStallTimeout(), unverifiedLossrate.getAverage(), verifiedEntryLossrate.getAverage() , Duration.between(startTime, Instant.now()));
+		f.format("RTT stats (%dsamples) %s", timeoutFilter.getSampleCount(), timeoutFilter.getCurrentStats());
+
+		return f.toString();
 	}
 	
 	static final ThreadLocal<ByteBuffer> writeBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(1500));

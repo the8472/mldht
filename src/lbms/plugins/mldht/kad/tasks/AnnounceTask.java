@@ -69,7 +69,7 @@ public class AnnounceTask extends Task {
 			//System.out.println("sending announce to ID:"+e.getID()+" addr:"+e.getAddress());
 			anr.setDestination(e.getAddress());
 			anr.setSeed(isSeed);
-			if(rpcCall(anr,e.getID(),null)) {
+			if(rpcCall(anr,e.getID(),c -> c.builtFromEntry(e))) {
 				todo.remove(e);
 				visited(e);
 				

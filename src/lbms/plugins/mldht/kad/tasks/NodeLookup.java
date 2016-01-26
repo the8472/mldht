@@ -79,6 +79,7 @@ public class NodeLookup extends Task {
 				rtt = rtt + rtt / 2; // *1.5 since this is the average and not the 90th percentile like the timeout filter
 				if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX && rtt < rpc.getTimeoutFilter().getStallTimeout())
 					call.setExpectedRTT(rtt); // only set a node-specific timeout if it's better than what the server would apply anyway
+				call.builtFromEntry(e);
 			})) {
 				visited(e);
 				todo.remove(e);

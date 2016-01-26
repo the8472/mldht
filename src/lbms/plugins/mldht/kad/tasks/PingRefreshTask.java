@@ -136,6 +136,7 @@ public class PingRefreshTask extends Task {
 			pr.setDestination(e.getAddress());
 			
 			if(rpcCall(pr,e.getID(),c -> {
+				c.builtFromEntry(e);
 				synchronized (lookupMap) {
 					lookupMap.put(pr, e);
 				}

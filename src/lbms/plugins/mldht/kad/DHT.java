@@ -768,6 +768,7 @@ public class DHT implements DHTBase {
 					PingRequest req = new PingRequest();
 					req.setDestination(entry.getAddress());
 					RPCCall call = new RPCCall(req);
+					call.builtFromEntry(entry);
 					call.setExpectedID(entry.getID());
 					srv.doCall(call);
 				});

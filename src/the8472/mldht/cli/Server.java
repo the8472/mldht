@@ -168,6 +168,7 @@ public class Server implements Component {
 					}, dhts);
 					processor.currentWorkDir = Paths.get(new String((byte[])map.get("cwd"), StandardCharsets.UTF_8));
 					processor.active = chan::isOpen;
+					processor.process();
 				}
 				
 				void write() throws IOException {

@@ -53,7 +53,6 @@ public abstract class CommandProcessor {
 		proc.writer = writer;
 		proc.dhts = dhts;
 		proc.arguments = args.size() > 1 ? args.subList(1, args.size()) : Collections.emptyList();
-		proc.process();
 		return proc;
 	}
 	

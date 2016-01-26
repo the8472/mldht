@@ -123,6 +123,7 @@ public class RPCServer {
 		// reserve an ID
 		derivedId = dh_table.getNode().registerId();
 		dh_table.getNode().registerServer(this);
+		sel = new SocketHandler();
 	}
 	
 	public DHT getDHT()
@@ -165,7 +166,6 @@ public class RPCServer {
 			throw new IllegalStateException("already initialized");
 		state = State.RUNNING;
 		DHT.logInfo("Starting RPC Server");
-		sel = new SocketHandler();
 		sel.start();
 		startTime = Instant.now();
 	}
@@ -555,13 +555,14 @@ public class RPCServer {
 	
 	private class SocketHandler implements Selectable {
 		DatagramChannel channel;
-
+		
+		private static final int NOT_INITIALIZED = -1;
 		private static final int WRITE_STATE_IDLE = 0;
 		private static final int WRITE_STATE_WRITING = 2;
 		private static final int WRITE_STATE_AWAITING_NIO_NOTIFICATION = 3;
 		private static final int CLOSED = 4;
 		
-		private final AtomicInteger writeState = new AtomicInteger(WRITE_STATE_IDLE);
+		private final AtomicInteger writeState = new AtomicInteger(NOT_INITIALIZED);
 		NIOConnectionManager connectionManager;
 		
 		public SocketHandler() {
@@ -580,6 +581,7 @@ public class RPCServer {
 				channel.bind(new InetSocketAddress(addr, port));
 				connectionManager = dh_table.getConnectionManager();
 				connectionManager.register(this);
+				writeState.set(WRITE_STATE_IDLE);
 			} catch (IOException e)
 			{
 				e.printStackTrace();

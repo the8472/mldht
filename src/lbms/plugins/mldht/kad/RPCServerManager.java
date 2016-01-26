@@ -130,7 +130,8 @@ public class RPCServerManager {
 	
 	private void newServer(InetAddress addr) {
 		RPCServer srv = new RPCServer(this,addr,dht.config.getListeningPort(), dht.serverStats);
-		srv.start();
+		// doing the socket setup takes time, do it in the background
+		dht.getScheduler().execute(srv::start);
 		interfacesInUse.put(addr, srv);
 	}
 	

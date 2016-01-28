@@ -792,8 +792,35 @@ public class RPCServer {
 				toSend.setPublicIP(toSend.getDestination());
 			}
 			
-			if(toSend.getAssociatedCall() != null && toSend.getAssociatedCall().getExpectedRTT() == -1)
-				toSend.getAssociatedCall().setExpectedRTT(timeoutFilter.getStallTimeout());
+			if(toSend.getAssociatedCall() != null) {
+				long configuredRTT = toSend.getAssociatedCall().getExpectedRTT();
+
+				if(configuredRTT == -1) {
+					configuredRTT = timeoutFilter.getStallTimeout();
+				}
+
+				/*
+				use less aggressive stall timeouts when we observe a high percentage of RPC calls timeouts
+				high loss rates may indicate congested links or saturated NAT
+
+				minimum thresholds based on measurements on a server-class nodes.
+				average observed timeout rate
+				- for non-verified contacts  ~50%
+				- for verified contacts ~15%
+
+				 */
+				double adjustedLossrate = Math.max(0, unverifiedLossrate.getAverage() - 0.5) * 2.;
+				double adjustedVerifiedLossrate = Math.max(0, verifiedEntryLossrate.getAverage() - 1./3.) * 3./2.;
+
+				double correctionFactor = Math.max(adjustedLossrate, adjustedVerifiedLossrate);
+
+
+
+				long diff = DHTConstants.RPC_CALL_TIMEOUT_MAX - configuredRTT;
+
+				toSend.getAssociatedCall().setExpectedRTT((long) (configuredRTT + diff * correctionFactor));
+			}
+				
 		}
 		
 		void encodeTo(ByteBuffer buf) throws IOException {

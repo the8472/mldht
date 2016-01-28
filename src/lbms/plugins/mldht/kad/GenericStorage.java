@@ -84,6 +84,10 @@ public class GenericStorage {
 
 		}
 		
+		public long seq() {
+			return sequenceNumber;
+		}
+		
 		public ByteBuffer getRawValue() {
 			return ByteBuffer.wrap(value).asReadOnlyBuffer();
 		}

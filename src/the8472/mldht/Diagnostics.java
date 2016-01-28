@@ -77,9 +77,10 @@ public class Diagnostics {
 		Formatter f = new Formatter(writer);
 		
 		storage.getItems().forEach((k, v) -> {
-			f.format("%s mutable:%b %n",
+			f.format("%s mutable:%b seq:%d %n",
 				k,
-				v.mutable()
+				v.mutable(),
+				v.seq()
 			);
 			f.format("%s%n%n", Utils.stripToAscii(v.getRawValue()));
 		});

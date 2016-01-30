@@ -614,6 +614,8 @@ public class Node {
 	
 	private void onOutgoingRequest(RPCCall c) {
 		Key expectedId = c.getExpectedID();
+		if(expectedId == null)
+			return;
 		KBucket bucket = routingTableCOW.entryForId(expectedId).getBucket();
 		bucket.findByIPorID(c.getRequest().getDestination().getAddress(), expectedId).ifPresent(entry -> {
 			entry.signalScheduledRequest();

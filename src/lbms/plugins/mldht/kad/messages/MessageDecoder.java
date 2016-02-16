@@ -206,7 +206,7 @@ public class MessageDecoder {
 		case GET_PEERS:
 			byte[] token = Functional.typedGet(args, "token", byte[].class).orElse(null);
 			Optional<NodeList> nodes = extractNodes(args, "nodes", DHTtype.IPV4_DHT);
-			Optional<NodeList> nodes6 = extractNodes(args, "nodes6", DHTtype.IPV4_DHT);
+			Optional<NodeList> nodes6 = extractNodes(args, "nodes6", DHTtype.IPV6_DHT);
 
 			
 			List<DBItem> dbl = null;

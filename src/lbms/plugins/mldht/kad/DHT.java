@@ -178,7 +178,7 @@ public class DHT implements DHTBase {
 
 	public void addSiblings(List<DHT> toAdd) {
 		toAdd.forEach(s -> {
-			if(siblingGroup.contains(s))
+			if(!siblingGroup.contains(s))
 				siblingGroup.add(s);
 		});
 	}

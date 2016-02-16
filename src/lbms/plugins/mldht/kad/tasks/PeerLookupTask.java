@@ -243,8 +243,8 @@ public class PeerLookupTask extends Task {
 
 				// send a findNode to the node
 				GetPeersRequest gpr = new GetPeersRequest(targetKey);
-				gpr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV4_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
-				gpr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV6_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
+				gpr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT);
+				gpr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT);
 				gpr.setDestination(e.getAddress());
 				gpr.setScrape(scrapeHandler != null);
 				gpr.setNoSeeds(noSeeds);

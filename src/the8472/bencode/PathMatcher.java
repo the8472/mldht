@@ -32,10 +32,10 @@ public class PathMatcher implements TokenConsumer {
 	public void pop(Token st) {
 		int depth = t.stackIdx();
 		
-		//System.out.println("pop"+st+" d"+depth);
+		//System.out.println("pop"+st+" d"+depth+" m"+matchDepth);
 		
 		
-		if(matchDepth - 1 == elements.length) {
+		if(depth == matchDepth && matchDepth - 1 == elements.length) {
 			Token dict = t.atStackOffset(-1);
 			if(dict.expect() == DictState.ExpectValue) {
 				//System.out.println("result");
@@ -44,7 +44,7 @@ public class PathMatcher implements TokenConsumer {
 			}
 		}
 		
-		if(st.type() == TokenType.STRING) {
+		if(st.type() == TokenType.STRING && matchDepth - 1 < elements.length) {
 			int dictDepth = depth - 2;
 			
 			if(dictDepth == matchDepth) {
@@ -66,7 +66,9 @@ public class PathMatcher implements TokenConsumer {
 	}
 	
 	@Override
-	public void push(Token st) {}
+	public void push(Token st) {
+		//System.out.println("push"+st+" d"+t.stackIdx());
+	}
 	
 	public ByteBuffer match(ByteBuffer buf) {
 		t.inputBuffer(buf);

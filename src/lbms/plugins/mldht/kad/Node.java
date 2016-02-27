@@ -908,7 +908,7 @@ public class Node {
 	{
 		// TODO: refactor into an external key-supplier?
 		
-		if(config != null) {
+		if(config != null && config.isPersistingID()) {
 			Path keyPath = config.getStoragePath().resolve("baseID.config");
 			File keyFile = keyPath.toFile();
 			

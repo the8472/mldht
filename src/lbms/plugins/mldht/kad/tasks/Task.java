@@ -24,7 +24,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.NavigableMap;
 import java.util.NavigableSet;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -49,8 +51,7 @@ import lbms.plugins.mldht.kad.messages.MessageBase;
 public abstract class Task implements RPCCallListener, Comparable<Task> {
 
 	protected NavigableSet<KBucketEntry>	todo;			// nodes todo
-	protected NavigableSet<Key>			inFlight;
-	protected NavigableSet<Key>			stalled;
+	protected NavigableMap<Key, RPCCall>			inFlight;
 	
 	protected Node						node;
 
@@ -72,6 +73,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	private boolean						taskFinished;
 	private boolean						queued;
 	private List<TaskListener>			listeners;
+	private boolean							lowPriority;
 
 	/**
 	 * Create a task.
@@ -92,8 +94,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		
 		Comparator<Key> distanceOrder = new Key.DistanceOrder(targetKey);
 		
-		inFlight = new ConcurrentSkipListSet<>(distanceOrder);
-		stalled = new ConcurrentSkipListSet<>(distanceOrder);
+		inFlight = new ConcurrentSkipListMap<>(distanceOrder);
 		
 		taskFinished = false;
 	}
@@ -147,8 +148,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		if (!isFinished())
 			callFinished(c, rsp);
 		
-		stalled.remove(c.getExpectedID());
-		inFlight.remove(c.getExpectedID());
+		inFlight.remove(c.getExpectedID(), c);
 		
 		// only decrement counters after we have processed message payloads
 		if(!c.wasStalled())
@@ -164,8 +164,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	
 	public void onStall(RPCCall c)
 	{
-		stalled.add(c.getExpectedID());
-		inFlight.remove(c.getExpectedID());
+		inFlight.remove(c.getExpectedID(), c);
 		outstandingRequestsExcludingStalled.decrementAndGet();
 		
 		runStuff();
@@ -176,8 +175,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 	 */
 	public void onTimeout (RPCCall c) {
 		
-		stalled.remove(c.getExpectedID());
-		inFlight.remove(c.getExpectedID());
+		inFlight.remove(c.getExpectedID(), c);
 		
 		if(!c.wasStalled())
 			outstandingRequestsExcludingStalled.decrementAndGet();
@@ -260,7 +258,7 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		if(modifyCallBeforeSubmit != null)
 			modifyCallBeforeSubmit.accept(call);
 
-		inFlight.add(expectedID);
+		inFlight.put(expectedID, call);
 		outstandingRequestsExcludingStalled.incrementAndGet();
 		outstandingRequests.incrementAndGet();
 		
@@ -271,10 +269,45 @@ public abstract class Task implements RPCCallListener, Comparable<Task> {
 		sentReqs++;
 		return true;
 	}
-
+	
+	
+	public void setLowPriority(boolean lowPriority) {
+		this.lowPriority = lowPriority;
+	}
+	
+	public int requestConcurrency() {
+		return lowPriority ? DHTConstants.MAX_CONCURRENT_REQUESTS_LOWPRIO : DHTConstants.MAX_CONCURRENT_REQUESTS;
+	}
+	
+	enum RequestPermit {
+		NONE_ALLOWED,
+		FREE_SLOT,
+		FREE_STALL_SLOT
+	}
+	
+	RequestPermit checkFreeSlot() {
+		int activeOnly = outstandingRequestsExcludingStalled.get();
+		int activeAndStalled = outstandingRequests.get();
+		int concurrency = requestConcurrency();
+		
+		// based on measurements the expected loss rate is ~50% (see RPCServer)
+		// if we exceed that don't let stalls trigger additional requests, wait for new responses/full timeouts
+		if(activeAndStalled >= concurrency && recvResponses * 2 < sentReqs)
+			return RequestPermit.NONE_ALLOWED;
+		
+		if(activeAndStalled < concurrency)
+			return RequestPermit.FREE_SLOT;
+		
+		if(activeOnly < concurrency)
+			return RequestPermit.FREE_STALL_SLOT;
+		
+		return RequestPermit.NONE_ALLOWED;
+	}
+	
+	
 	/// See if we can do a request
 	boolean canDoRequest () {
-		return outstandingRequestsExcludingStalled.get() < DHTConstants.MAX_CONCURRENT_REQUESTS;
+		return checkFreeSlot() != RequestPermit.NONE_ALLOWED;
 	}
 	
 	boolean hasUnfinishedRequests() {

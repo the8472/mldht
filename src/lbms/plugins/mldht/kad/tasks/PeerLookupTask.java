@@ -19,6 +19,7 @@ package lbms.plugins.mldht.kad.tasks;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.SortedSet;
@@ -56,7 +57,6 @@ import the8472.utils.concurrent.SerializedTaskExecutor;
 public class PeerLookupTask extends Task {
 
 	private boolean							noAnnounce;
-	private boolean							lowPriority;
 	private boolean							noSeeds;
 	private boolean							fastTerminate;
 	
@@ -68,7 +68,8 @@ public class PeerLookupTask extends Task {
 	private Set<PeerAddressDBItem>			returnedItems;
 	
 	private SortedSet<KBucketEntryAndToken>	closestSet;
-	int responsesSinceLastClosestSetModification;
+	int responsesSinceLastClosestSetTailModification;
+	int responsesSinceLastClosestSetHeadModification;
 	
 	AnnounceNodeCache						cache;
 
@@ -112,11 +113,6 @@ public class PeerLookupTask extends Task {
 		this.fastTerminate = fastTerminate;
 		if(fastTerminate)
 			setNoAnnounce(true);
-	}
-	
-	public void setLowPriority(boolean lowPriority)
-	{
-		this.lowPriority = lowPriority;
 	}
 
 	public void setNoAnnounce(boolean noAnnounce) {
@@ -206,9 +202,15 @@ public class PeerLookupTask extends Task {
 					KBucketEntryAndToken last = closestSet.last();
 					closestSet.remove(last);
 					if(last == toAdd)
-						responsesSinceLastClosestSetModification++;
+						responsesSinceLastClosestSetTailModification++;
 					else
-						responsesSinceLastClosestSetModification = 0;
+						responsesSinceLastClosestSetTailModification = 0;
+				}
+				
+				if(closestSet.first() == toAdd) {
+					responsesSinceLastClosestSetHeadModification = 0;
+				} else {
+					responsesSinceLastClosestSetHeadModification++;
 				}
 			}
 		}
@@ -221,24 +223,28 @@ public class PeerLookupTask extends Task {
 	void callTimeout (RPCCall c) {
 	}
 	
-	@Override
-	boolean canDoRequest() {
-		if(lowPriority)
-			return getNumOutstandingRequestsExcludingStalled() < DHTConstants.MAX_CONCURRENT_REQUESTS_LOWPRIO;
-		return super.canDoRequest();
-	}
-	
 	// go over the todo list and send get_peers requests
 	// until we have nothing left
 	final Runnable exclusiveUpdate = SerializedTaskExecutor.onceMore(() -> {
-		while(!todo.isEmpty() && canDoRequest() && !isClosestSetStable()) {
+		for(;;) {
 			synchronized (this) {
+				if(todo.isEmpty())
+					break;
+				
+				RequestPermit p = checkFreeSlot();
+				
+				if(p == RequestPermit.NONE_ALLOWED)
+					break;
+				
 				KBucketEntry e = todo.first();
 
 				if(hasVisited(e)) {
 					todo.remove(e);
 					continue;
 				}
+				
+				if(!checkRequestCandidate(p, e))
+					break;
 
 
 				// send a findNode to the node
@@ -258,6 +264,8 @@ public class PeerLookupTask extends Task {
 				})) {
 					todo.remove(e);
 					visited(e);
+				} else {
+					break;
 				}
 			}
 		}
@@ -267,7 +275,7 @@ public class PeerLookupTask extends Task {
 	@Override
 	void update () {
 		// check if the cache has any closer nodes after the initial query
-		Collection<KBucketEntry> cacheResults = cache.get(targetKey, lowPriority ? DHTConstants.MAX_CONCURRENT_REQUESTS_LOWPRIO : DHTConstants.MAX_CONCURRENT_REQUESTS);
+		Collection<KBucketEntry> cacheResults = cache.get(targetKey, requestConcurrency());
 		
 		cacheResults.forEach(e -> {
 			if(!hasVisited(e))
@@ -277,16 +285,62 @@ public class PeerLookupTask extends Task {
 		exclusiveUpdate.run();
 	}
 	
-	private boolean isClosestSetStable() {
-		synchronized (this) {
-			if(closestSet.size() < DHTConstants.MAX_ENTRIES_PER_BUCKET)
-				return false;
-			if(responsesSinceLastClosestSetModification < DHTConstants.MAX_CONCURRENT_REQUESTS && !fastTerminate)
-				return false;
-			boolean haveBetterTodosForClosestSet = !todo.isEmpty() && targetKey.threeWayDistance(todo.first().getID(), closestSet.last().getID()) < 0;
+	boolean checkRequestCandidate(RequestPermit p, KBucketEntry e) {
+		int closestSetSize = closestSet.size();
+		// startup, don't trip over our own toes while racing towards the first response
+		if(closestSetSize == 0)
+			return p == RequestPermit.FREE_SLOT;
+		
+		
+		Key closest = closestSet.first().getID();
+		Key farthest = closestSet.last().getID();
+		
+		boolean candidateCloserThanHead = targetKey.threeWayDistance(e.getID(), closest) < 0;
+		boolean candidateCloserThanTail = targetKey.threeWayDistance(e.getID(), farthest) < 0;
+		
+		boolean betterCandidateInFlight = inFlight.floorKey(farthest) != null;
+		
+		int conc = requestConcurrency();
+		
 
-			return !haveBetterTodosForClosestSet;
+		
+		
+		
+		int tailMod = responsesSinceLastClosestSetTailModification;
+		int headMod = responsesSinceLastClosestSetHeadModification;
+
+		System.out.format("%d %d %d %14s better: %b todo: %d head: %b %d tail: %b %d %n", getTaskID(), age().toMillis(), getSentReqs(), p.toString(), betterCandidateInFlight, todo.size(), candidateCloserThanHead, headMod, candidateCloserThanTail, tailMod);
+		
+		// termination pre-condition reached
+		// returning from here does not mean the lookup is done, we're still waiting for requests that are in flight
+		if(closestSetSize >= DHTConstants.MAX_ENTRIES_PER_BUCKET && !betterCandidateInFlight && tailMod > 0 && !candidateCloserThanTail) {
+			System.out.println(getTaskID()+ " term");
+			return false;
 		}
+
+		if(p == RequestPermit.FREE_STALL_SLOT) {
+			
+			int activeCloserThanCandidate = 0;
+		
+			
+			for(Map.Entry<Key, RPCCall> inf : inFlight.entrySet()) {
+				if(targetKey.threeWayDistance(inf.getKey(), e.getID()) < 0 && !inf.getValue().wasStalled())
+					activeCloserThanCandidate++;
+			}
+			
+			// allow stall-triggered-requests either if they're closer than the best response we have or if we're stabilizing the closest-set (terminal part of the lookup)
+			boolean reference = tailMod > 0 ? candidateCloserThanTail : candidateCloserThanHead;
+			if(reference && activeCloserThanCandidate  <= 2)
+				return true;
+		}
+		
+		/*
+		// closest set should be fairly stable by now, allow a little perimeter-widening if termination conditions are not reached yet
+		if(p == RequestPermit.FREE_STALL_SLOT && responsesSinceLastClosestSetHeadModification >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
+			return true;
+		*/
+		
+		return p == RequestPermit.FREE_SLOT;
 	}
 	
 	@Override
@@ -297,15 +351,26 @@ public class PeerLookupTask extends Task {
 			return true;
 		}
 		
-		return waitingFor == 0 && isClosestSetStable();
+		KBucketEntry closest = null;
+				
+		try {
+			closest = todo.first();
+			return waitingFor == 0 && !checkRequestCandidate(RequestPermit.FREE_SLOT, closest);
+		} catch (Exception e) {
+			return waitingFor == 0;
+		}
+		
+		
+		
+		
 	}
 
 	private void updatePopulationEstimator() {
 
 		synchronized (this)
 		{
-			// feed the estimator if we have usable results
-			if(!todo.isEmpty() && isClosestSetStable())
+			// feed the estimator if we're sure that we haven't skipped anything in the closest-set
+			if(!todo.isEmpty() && noAnnounce && !fastTerminate && closestSet.size() >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
 			{
 				SortedSet<Key> toEstimate = new TreeSet<Key>();
 				for(KBucketEntryAndToken e : closestSet)

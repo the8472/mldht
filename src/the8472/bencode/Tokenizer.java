@@ -140,7 +140,7 @@ public class Tokenizer {
 	void push(TokenType t, int pos) {
 		Token current = currentToken();
 		if(current.expect() == DictState.ExpectKeyOrEnd && t != TokenType.PREFIXED_STRING)
-			throw new BDecodingException("encountered "+t.toString()+" while expecting a dictionary key");
+			throw new BDecodingException("encountered "+t.toString()+" at offset "+pos+" while expecting a dictionary key");
 		
 		stackIdx++;
 		
@@ -294,7 +294,8 @@ public class Tokenizer {
 		
 		int iter = 0;
 		
-		while (current != terminator) {
+		// do-while since we expect at least one digit
+		do {
 			// do zero-check on 2nd character, since 0 itself is a valid length
 			if(iter > 0 && result == 0)
 				throw new BDecodingException("encountered a leading zero at offset "+(buf.position()-1)+" while decoding a number/string length prefix");
@@ -316,7 +317,7 @@ public class Tokenizer {
 			current = buf.get();
 			
 			iter++;
-		}
+		} while (current != terminator);
 		
 		if(neg)
 			result *= -1;

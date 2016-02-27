@@ -24,6 +24,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 
 import lbms.plugins.mldht.kad.DHT.DHTtype;
@@ -209,8 +210,8 @@ public class KBucketEntry {
 	/**
      * @return the version
      */
-    public ByteBuffer getVersion () {
-	    return ByteBuffer.wrap(version).asReadOnlyBuffer();
+    public Optional<ByteBuffer> getVersion () {
+    	return Optional.ofNullable(version).map(ByteBuffer::wrap).map(ByteBuffer::asReadOnlyBuffer);
     }
 
 	/**
@@ -315,7 +316,7 @@ public class KBucketEntry {
 	
 	public boolean needsPing() {
 		long now = System.currentTimeMillis();
-
+		
 		// don't ping if recently seen to allow NAT entries to time out
 		// and do exponential backoff after failures to reduce traffic
 		if(now - lastSeen < 30*1000 || withinBackoffWindow(now))

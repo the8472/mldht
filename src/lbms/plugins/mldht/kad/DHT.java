@@ -477,7 +477,9 @@ public class DHT implements DHTBase {
 		if (!addr.isUnresolved() && !AddressUtils.isBogon(addr)) {
 			if(!type.PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress()) || node.getNumEntriesInRoutingTable() > DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS)
 				return;
-			serverManager.getRandomActiveServer(true).ping(addr);
+			RPCServer srv = serverManager.getRandomActiveServer(true);
+			if(srv != null)
+				srv.ping(addr);
 		}
 
 	}

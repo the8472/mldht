@@ -42,6 +42,8 @@ public class GetPeers extends CommandProcessor {
 				
 				PeerLookupTask t = new PeerLookupTask(d, dht.getNode(), h);
 				
+				t.setNoAnnounce(true);
+				
 				counter.incrementAndGet();
 				
 				t.addListener(unused -> {

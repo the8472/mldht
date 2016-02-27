@@ -186,6 +186,10 @@ public class KBucket {
 		return entries.size();
 	}
 	
+	public boolean isFull() {
+		return entries.size() >= DHTConstants.MAX_ENTRIES_PER_BUCKET;
+	}
+	
 	public int getNumReplacements() {
 		int c = 0;
 		for(int i=0;i<replacementBucket.length();i++)

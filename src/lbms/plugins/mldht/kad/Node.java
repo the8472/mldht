@@ -455,7 +455,7 @@ public class Node {
 		
 		RoutingTableEntry tableEntry = routingTableCOW.entryForId(nodeID);
 
-		while(!opts.contains(NEVER_SPLIT) && tableEntry.bucket.getNumEntries() >= DHTConstants.MAX_ENTRIES_PER_BUCKET && tableEntry.prefix.getDepth() < Key.KEY_BITS - 1)
+		while(!opts.contains(NEVER_SPLIT) && tableEntry.bucket.isFull() && (opts.contains(FORCE_INTO_MAIN_BUCKET) || toInsert.verifiedReachable()) && tableEntry.prefix.getDepth() < Key.KEY_BITS - 1)
 		{
 			if(!opts.contains(ALWAYS_SPLIT_IF_FULL) && !canSplit(tableEntry, toInsert, opts.contains(RELAXED_SPLIT)))
 				break;

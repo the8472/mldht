@@ -978,11 +978,14 @@ public class Node {
 			
 			AtomicInteger counter = new AtomicInteger();
 			
+			Key oldKey = typedGet(table, "oldKey", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).map(Key::new).orElse(null);
+			
+			boolean reuseKey = getRootID().equals(oldKey);
 			
 			typedGet(table, "mainEntries", List.class).ifPresent(l -> {
 				l.stream().filter(Map.class::isInstance).map(Map.class::cast).forEach(entryMap -> {
 					KBucketEntry be = KBucketEntry.fromBencoded((Map<String, Object>) entryMap, dht.getType());
-					insertEntry(be, EnumSet.of(ALWAYS_SPLIT_IF_FULL, FORCE_INTO_MAIN_BUCKET));
+					insertEntry(be, reuseKey ? EnumSet.of(ALWAYS_SPLIT_IF_FULL, FORCE_INTO_MAIN_BUCKET) : EnumSet.noneOf(InsertOptions.class));
 					counter.incrementAndGet();
 				});
 			});
@@ -1000,13 +1003,13 @@ public class Node {
 				dht.getEstimator().setInitialRawDistanceEstimate(doubleBuf.getDouble());
 			});
 			
-			Key oldKey = typedGet(table, "oldKey", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).map(Key::new).orElse(null);
+
 			long timeStamp = typedGet(table, "timestamp", Long.class).orElse(-1L);
 
 			
 			DHT.logInfo("Loaded " + counter.get() + " entries from cache. Cache was "
 					+ ((System.currentTimeMillis() - timeStamp) / (60 * 1000))
-					+ "min old. Reusing old id = " + getRootID().equals(oldKey));
+					+ "min old. Reusing old id = " + reuseKey);
 
 			
 			rebuildAddressCache();

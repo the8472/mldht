@@ -17,6 +17,7 @@
 package lbms.plugins.mldht.kad;
 
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 
@@ -79,7 +80,7 @@ public class DHTConstants {
 	}
 
 	public static void setVersion (int ver) {
-		version = "Az" + new String(new byte[] { (byte) (ver >> 8 & 0xFF) , (byte) (ver & 0xff) });
+		version = "Az" + new String(new byte[] { (byte) (ver >> 8 & 0xFF) , (byte) (ver & 0xff) }, StandardCharsets.ISO_8859_1);
 	}
 
 }

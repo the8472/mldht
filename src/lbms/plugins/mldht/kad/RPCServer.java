@@ -149,7 +149,11 @@ public class RPCServer {
 	public InetAddress getPublicAddress() {
 		if(sel == null)
 			return null;
-		InetAddress addr = ((DatagramChannel)sel.getChannel()).socket().getLocalAddress();
+		SelectableChannel chan = sel.getChannel();
+		if(chan == null)
+			return null;
+		
+		InetAddress addr = ((DatagramChannel)chan).socket().getLocalAddress();
 		if(dh_table.getType().PREFERRED_ADDRESS_TYPE.isInstance(addr) && AddressUtils.isGlobalUnicast(addr))
 			return addr;
 		return null;

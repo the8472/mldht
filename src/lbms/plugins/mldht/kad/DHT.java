@@ -248,7 +248,7 @@ public class DHT implements DHTBase {
 	
 	void populateResponse(Key target, AbstractLookupResponse rsp, int v4, int v6) {
 		if(v4 > 0) {
-			getSiblingByType(DHTtype.IPV4_DHT).ifPresent(sib -> {
+			getSiblingByType(DHTtype.IPV4_DHT).filter(DHT::isRunning).ifPresent(sib -> {
 				KClosestNodesSearch kns = new KClosestNodesSearch(target, v4, sib);
 				kns.fill(DHTtype.IPV4_DHT != type);
 				rsp.setNodes(kns.asNodeList());
@@ -256,7 +256,7 @@ public class DHT implements DHTBase {
 		}
 		
 		if(v6 > 0) {
-			getSiblingByType(DHTtype.IPV6_DHT).ifPresent(sib -> {
+			getSiblingByType(DHTtype.IPV6_DHT).filter(DHT::isRunning).ifPresent(sib -> {
 				KClosestNodesSearch kns = new KClosestNodesSearch(target, v6, sib);
 				kns.fill(DHTtype.IPV6_DHT != type);
 				rsp.setNodes(kns.asNodeList());

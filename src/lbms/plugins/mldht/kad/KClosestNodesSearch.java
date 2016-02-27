@@ -173,7 +173,7 @@ This requires a non-contiguous search
 		
 		RPCServer srv = owner.getServerManager().getRandomActiveServer(true);
 		
-		if(includeOurself && srv.getPublicAddress() != null && entries.size() < max_entries)
+		if(includeOurself && srv != null && srv.getPublicAddress() != null && entries.size() < max_entries)
 		{
 			InetSocketAddress sockAddr = new InetSocketAddress(srv.getPublicAddress(), srv.getPort());
 			entries.add(new KBucketEntry(sockAddr, srv.getDerivedID()));

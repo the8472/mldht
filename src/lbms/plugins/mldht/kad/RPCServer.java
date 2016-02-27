@@ -90,6 +90,7 @@ public class RPCServer {
 	private int										port;
 	private Instant									startTime;
 	private RPCStats								stats;
+	// keeps track of RTT histogram for nodes not in our routing table
 	private ResponseTimeoutFilter					timeoutFilter;
 	private Key										derivedId;
 	private InetSocketAddress						consensusExternalAddress;
@@ -502,7 +503,13 @@ public class RPCServer {
 		MessageBase msg = call.getRequest();
 		msg.setMTID(mtid);
 		call.addListener(rpcListener);
-		timeoutFilter.registerCall(call);
+		
+		// known nodes - routing table entries - keep track of their own RTTs
+		// they are also biased towards lower RTTs compared to the general population encountered during regular lookups
+		// don't let them skew the measurement of the general node population
+		if(!call.knownReachableAtCreationTime())
+			timeoutFilter.registerCall(call);
+		
 		EnqueuedSend es = new EnqueuedSend(msg);
 		es.associatedCall = call;
 		fillPipe(es);

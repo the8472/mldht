@@ -387,8 +387,8 @@ public class DHT implements DHTBase {
 		if(v6 && peerFilter != null)
 			want6 = Math.min(5, want6);
 		
-		// bloom filters + token + values => we can't include both sets of nodes, even if the node requests it
-		if(heavyWeight) {
+		// only fulfill both wants if we have neither filters nor values to send
+		if(heavyWeight || dbl != null) {
 			if(v6)
 				want4 = 0;
 			else

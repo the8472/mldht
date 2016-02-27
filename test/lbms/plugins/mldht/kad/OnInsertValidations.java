@@ -8,6 +8,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.concurrent.Executors;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -27,6 +28,7 @@ public class OnInsertValidations {
 	public void setup() {
 		DHT dht = new DHT(DHTtype.IPV6_DHT);
 		dht.populate();
+		dht.setScheduler(Executors.newScheduledThreadPool(0));
 		node = dht.getNode();
 		node.initKey(null);
 		nodeId = node.registerId();

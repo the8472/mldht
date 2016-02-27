@@ -142,8 +142,7 @@ public class RPCServerManager {
 	
 	public void destroy() {
 		destroyed = true;
-		for(RPCServer srv : new ArrayList<RPCServer>(interfacesInUse.values()))
-			srv.stop();
+		new ArrayList<RPCServer>(interfacesInUse.values()).parallelStream().forEach(RPCServer::stop);
 	}
 	
 	public int getServerCount() {

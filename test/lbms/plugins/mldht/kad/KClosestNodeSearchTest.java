@@ -8,6 +8,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 import org.junit.Before;
@@ -23,6 +24,7 @@ public class KClosestNodeSearchTest {
 	@Before
 	public void setup() {
 		DHT dht = new DHT(DHTtype.IPV6_DHT);
+		dht.setScheduler(Executors.newScheduledThreadPool(0));
 		dht.populate();
 		dht.config = new DHTConfiguration() {
 			

@@ -71,6 +71,7 @@ import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import the8472.bencode.BEncoder;
 import the8472.utils.CowSet;
 import the8472.utils.Pair;
+import the8472.utils.concurrent.SerializedTaskExecutor;
 import the8472.utils.io.NetMask;
 
 
@@ -605,7 +606,7 @@ public class Node {
 	void removeId(Key k)
 	{
 		usedIDs.remove(k);
-		updateHomeBuckets();
+		dht.getScheduler().execute(singleThreadedUpdateHomeBuckets);
 	}
 	
 	void registerServer(RPCServer srv) {
@@ -636,7 +637,7 @@ public class Node {
 			idx++;
 		}
 		
-		updateHomeBuckets();
+		dht.getScheduler().execute(singleThreadedUpdateHomeBuckets);
 
 		return k;
 	}
@@ -808,15 +809,30 @@ public class Node {
 		}
 	}
 	
+	final Runnable singleThreadedUpdateHomeBuckets = SerializedTaskExecutor.onceMore(this::updateHomeBuckets);
+	
 	void updateHomeBuckets() {
-		synchronized (CoWLock) {
-			for(int i=0;i < routingTableCOW.size();i++) {
+		while(true) {
+			RoutingTable t = table();
+			List<RoutingTableEntry> changed = new ArrayList<>();
+			for(int i=0;i < t.size();i++) {
 				RoutingTableEntry e = routingTableCOW.get(i);
 				// update home bucket status on local ID change
 				if(isLocalBucket(e.prefix) != e.homeBucket)
-					routingTableCOW = routingTableCOW.modify(Arrays.asList(e), Arrays.asList(new RoutingTableEntry(e.prefix, e.bucket, this::isLocalBucket)));
+					changed.add(e);
+					
+			}
+			
+			synchronized (CoWLock) {
+				if(routingTableCOW != t)
+					continue;
+				if(changed.isEmpty())
+					break;
+				routingTableCOW = t.modify(changed, changed.stream().map(e -> new RoutingTableEntry(e.prefix, e.bucket, this::isLocalBucket)).collect(Collectors.toList()));
+				break;
 			}
 		}
+		
 	}
 	
 	void rebuildAddressCache() {
@@ -977,7 +993,7 @@ public class Node {
 			Map<String, Object> table = ThreadLocalUtils.getDecoder().decode(buf);
 			
 			AtomicInteger counter = new AtomicInteger();
-			
+
 			Key oldKey = typedGet(table, "oldKey", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).map(Key::new).orElse(null);
 			
 			boolean reuseKey = getRootID().equals(oldKey);

@@ -316,7 +316,9 @@ public class KBucketEntry {
 	public boolean needsPing() {
 		long now = System.currentTimeMillis();
 
-		if(withinBackoffWindow(now))
+		// don't ping if recently seen to allow NAT entries to time out
+		// and do exponential backoff after failures to reduce traffic
+		if(now - lastSeen < 30*1000 || withinBackoffWindow(now))
 			return false;
 		
 		return failedQueries != 0 || now - lastSeen > OLD_AND_STALE_TIME;

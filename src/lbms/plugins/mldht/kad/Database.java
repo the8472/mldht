@@ -187,8 +187,8 @@ public class Database {
 		}
 		
 		private BloomFilterBEP33 buildFilter() {
-			if(items.length == 0)
-				return null;
+			// also return empty filters. strict interpretation of the spec doesn't allow omission of empty sets
+			// can happen if we have seeds but no peeds for example
 			
 			BloomFilterBEP33 filter = new BloomFilterBEP33();
 

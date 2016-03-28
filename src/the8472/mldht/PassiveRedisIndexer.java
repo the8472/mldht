@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.Collection;
@@ -118,9 +117,13 @@ public class PassiveRedisIndexer implements Component {
 			b.append('$').append(TTL.length()).append("\r\n");
 			b.append(TTL).append("\r\n");
 			
-			writeQueue.add(str2buf(b.toString()));
-			
-			ensureOpen().tryWrite.run();
+			SocketHandler handler = ensureOpen();
+
+			// to avoid OOM we only fill the queue when we have an open connection
+			if(handler.getChannel().isConnected()) {
+				writeQueue.add(str2buf(b.toString()));
+				handler.tryWrite.run();
+			}
 			
 						
 		}
@@ -152,6 +155,7 @@ public class PassiveRedisIndexer implements Component {
 		}
 		
 		void close() {
+			writeQueue.clear();
 			ref.compareAndSet(this, null);
 			try {
 				chan.close();
@@ -163,7 +167,7 @@ public class PassiveRedisIndexer implements Component {
 		}
 	
 		@Override
-		public SelectableChannel getChannel() {
+		public SocketChannel getChannel() {
 			return chan;
 		}
 	

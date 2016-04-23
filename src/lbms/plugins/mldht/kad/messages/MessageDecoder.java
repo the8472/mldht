@@ -283,7 +283,7 @@ public class MessageDecoder {
 	 */
 	private MessageBase parseRequest (Map<String, Object> map,  Function<byte[], Optional<Method>> transactionIdMapper, DHTtype type) throws MessageException {
 		Object rawRequestMethod = map.get(Type.REQ_MSG.getRPCTypeName());
-		Map<String, Object> args = (Map<String, Object>) map.get(Type.REQ_MSG.innerKey());
+		Map<String, Object> args = typedGet(map, Type.REQ_MSG.innerKey(), Map.class).orElseThrow(() -> new MessageException("expected a bencoded dictionary under key " + Type.REQ_MSG.innerKey(), ErrorCode.ProtocolError));
 		
 		if (rawRequestMethod == null || args == null)
 			return null;

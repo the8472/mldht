@@ -17,6 +17,7 @@
 package lbms.plugins.mldht.kad;
 
 import static the8472.bencode.Utils.prettyPrint;
+import static the8472.utils.Functional.typedGet;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -369,9 +370,7 @@ public class RPCServer {
 			msg = dec.parseMessage();
 		} catch(MessageException e)
 		{
-			byte[] mtid = {0,0,0,0};
-			if(bedata.containsKey(MessageBase.TRANSACTION_KEY) && bedata.get(MessageBase.TRANSACTION_KEY) instanceof byte[])
-				mtid = (byte[]) bedata.get("t");
+			byte[] mtid = typedGet(bedata, MessageBase.TRANSACTION_KEY, byte[].class).orElse(new byte[MTID_LENGTH]);
 			DHT.log(e.getMessage(), LogLevel.Debug);
 			MessageBase err = new ErrorMessage(mtid, e.errorCode.code,e.getMessage());
 			err.setDestination(source);
@@ -435,7 +434,7 @@ public class RPCServer {
 			
 			// either a bug or an attack -> drop message
 			
-			DHT.logError("mtid matched, socket address did not, ignoring message, request: " + c.getRequest().getDestination() + " -> response: " + msg.getOrigin());
+			DHT.logError("mtid matched, socket address did not, ignoring message, request: " + c.getRequest().getDestination() + " -> response: " + msg.getOrigin() + " v:"+ msg.getVersion().map(Utils::prettyPrint).orElse(""));
 			
 			return;
 		}

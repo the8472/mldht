@@ -61,16 +61,11 @@ public class SerializedTaskExecutor {
 			if(current > 1)
 				return;
 			
-			
-			while(current > 0) {
+			do {
 				loopBody.run();
 				
-				if(lock.compareAndSet(current, 0)) {
-					break;
-				}
-				
-				current = lock.get();
-			}
+				current = lock.addAndGet(Math.negateExact(current));
+			} while(current > 0);
 		};
 	}
 

@@ -120,7 +120,7 @@ public class PassiveRedisIndexer implements Component {
 			SocketHandler handler = ensureOpen();
 
 			// to avoid OOM we only fill the queue when we have an open connection
-			if(handler.getChannel().isConnected()) {
+			if(handler.getChannel() != null && handler.getChannel().isConnected()) {
 				writeQueue.add(str2buf(b.toString()));
 				handler.tryWrite.run();
 			}

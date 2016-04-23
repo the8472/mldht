@@ -91,7 +91,7 @@ public class AddressUtils {
 	}
 	
 	public static InetSocketAddress unpackAddress(byte[] raw) {
-		if((raw.length != 6 && raw.length != 18) || raw == null)
+		if(raw.length != 6 && raw.length != 18)
 			return null;
 		ByteBuffer buf = ByteBuffer.wrap(raw);
 		byte[] rawIP = new byte[raw.length - 2];

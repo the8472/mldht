@@ -67,8 +67,8 @@ public class NIOConnectionManager {
 				selector.select(100);
 				wakeupCalled = false;
 				
-				processSelected();
 				connectionChecks();
+				processSelected();
 				handleRegistrations();
 				updateInterestOps();
 

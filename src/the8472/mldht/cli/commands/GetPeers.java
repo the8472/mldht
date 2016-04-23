@@ -5,6 +5,7 @@ import static the8472.bencode.Utils.buf2str;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Formatter;
 import java.util.List;
 import java.util.Objects;
@@ -31,7 +32,10 @@ public class GetPeers extends CommandProcessor {
 				.map(bytes -> buf2str(ByteBuffer.wrap(bytes)))
 				.filter(Key.STRING_PATTERN.asPredicate())
 				.map(st -> new Key(st))
-				.collect(Collectors.toList());
+				.collect(Collectors.toCollection(ArrayList::new));
+		
+		if(hashes.isEmpty())
+			hashes.add(Key.createRandomKey());
 		
 		AtomicInteger counter = new AtomicInteger();
 		Instant start = Instant.now();

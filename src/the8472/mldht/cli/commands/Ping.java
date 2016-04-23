@@ -4,7 +4,6 @@ import static the8472.bencode.Utils.buf2str;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -34,14 +33,15 @@ public class Ping extends CommandProcessor {
 	
 	@Override
 	protected void process() {
-		String ip = buf2str(ByteBuffer.wrap(arguments.get(0)));
-		int port = Integer.valueOf(buf2str(ByteBuffer.wrap(arguments.get(1))));
-		
 		InetAddress addr;
+		int port;
 		
 		try {
+			String ip = buf2str(ByteBuffer.wrap(arguments.get(0)));
+			port = Integer.valueOf(buf2str(ByteBuffer.wrap(arguments.get(1))));
+			
 			addr = InetAddress.getByName(ip);
-		} catch (UnknownHostException e) {
+		} catch (Exception e) {
 			handleException(e);
 			return;
 		}

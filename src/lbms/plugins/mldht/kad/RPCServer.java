@@ -600,7 +600,7 @@ public class RPCServer {
 			{
 				timeoutFilter.reset();
 	
-				channel = DatagramChannel.open();
+				channel = DatagramChannel.open(dh_table.getType().PROTO_FAMILY);
 				channel.configureBlocking(false);
 				channel.setOption(StandardSocketOptions.SO_RCVBUF, 2*1024*1024);
 				channel.setOption(StandardSocketOptions.SO_REUSEADDR, true);

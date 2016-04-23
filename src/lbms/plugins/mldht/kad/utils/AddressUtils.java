@@ -9,7 +9,9 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
+import java.net.ProtocolFamily;
 import java.net.SocketException;
+import java.net.StandardProtocolFamily;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
@@ -186,16 +188,14 @@ public class AddressUtils {
 	public static InetAddress getDefaultRoute(Class<? extends InetAddress> type) {
 		InetAddress target = null;
 		
-		try(DatagramChannel chan=DatagramChannel.open()) {
+		ProtocolFamily family = type == Inet6Address.class ? StandardProtocolFamily.INET6 : StandardProtocolFamily.INET;
+		
+		try(DatagramChannel chan=DatagramChannel.open(family)) {
 			if(type == Inet4Address.class)
 				target = InetAddress.getByAddress(new byte[] {8,8,8,8});
 			if(type == Inet6Address.class)
 				target = InetAddress.getByName("2001:4860:4860::8888");
 			
-			//chan.setOption(StandardSocketOptions.SO_REUSEADDR, true);
-			//chan.configureBlocking(true);
-			//chan.bind(new InetSocketAddress(getAnyLocalAddress(type),0) );
-
 			chan.connect(new InetSocketAddress(target,63));
 			
 			InetSocketAddress soa = (InetSocketAddress) chan.getLocalAddress();

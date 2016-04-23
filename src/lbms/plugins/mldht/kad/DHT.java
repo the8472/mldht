@@ -24,7 +24,9 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ProtocolFamily;
 import java.net.SocketException;
+import java.net.StandardProtocolFamily;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -80,8 +82,8 @@ import lbms.plugins.mldht.utils.NIOConnectionManager;
 public class DHT implements DHTBase {
 	
 	public static enum DHTtype {
-		IPV4_DHT("IPv4",20+4+2, 4+2, Inet4Address.class,20+8, 1450),
-		IPV6_DHT("IPv6",20+16+2, 16+2, Inet6Address.class,40+8, 1200);
+		IPV4_DHT("IPv4",20+4+2, 4+2, Inet4Address.class,20+8, 1450, StandardProtocolFamily.INET),
+		IPV6_DHT("IPv6",20+16+2, 16+2, Inet6Address.class,40+8, 1200, StandardProtocolFamily.INET6);
 		
 		public final int							HEADER_LENGTH;
 		public final int 							NODES_ENTRY_LENGTH;
@@ -89,13 +91,16 @@ public class DHT implements DHTBase {
 		public final Class<? extends InetAddress>	PREFERRED_ADDRESS_TYPE;
 		public final int							MAX_PACKET_SIZE;
 		public final String 						shortName;
-		private DHTtype(String shortName, int nodeslength, int addresslength, Class<? extends InetAddress> addresstype, int header, int maxSize) {
+		public final ProtocolFamily					PROTO_FAMILY;
+		private DHTtype(String shortName, int nodeslength, int addresslength, Class<? extends InetAddress> addresstype, int header, int maxSize, ProtocolFamily family) {
+			
 			this.shortName = shortName;
 			this.NODES_ENTRY_LENGTH = nodeslength;
 			this.PREFERRED_ADDRESS_TYPE = addresstype;
 			this.ADDRESS_ENTRY_LENGTH = addresslength;
 			this.HEADER_LENGTH = header;
 			this.MAX_PACKET_SIZE = maxSize;
+			this.PROTO_FAMILY = family;
 		}
 
 	}

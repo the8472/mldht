@@ -265,7 +265,6 @@ public class Key implements Radixable<Key> {
 	}
 	
 	public int leadingOneBit() {
-		int bit_on = 0xFF;
 		byte[] data_hash = hash;
 		for (int i = 0; i < 20; i++) {
 			// get the byte
@@ -274,16 +273,10 @@ public class Key implements Radixable<Key> {
 			if (b == 0) {
 				continue;
 			}
-
-			for (int j = 0; j < 8; j++) {
-				if ((b & (0x80 >> j)) != 0) {
-					// we have found the bit
-					bit_on = i * 8 + j;
-					return 159 - bit_on;
-				}
-			}
+			
+			return i * 8 + Integer.numberOfLeadingZeros(b) - 24;
 		}
-		return 0;
+		return -1;
 	}
 
 	/**

@@ -39,6 +39,12 @@ public class KeyTest {
 	}
 	
 	@Test
+	public void testLeadingBit() {
+		assertEquals(-1, Key.MIN_KEY.leadingOneBit());
+		assertEquals(13, Key.setBit(13).leadingOneBit());
+	}
+	
+	@Test
 	public void testHashCode() {
 		
 		int hammingWeights[] = IntStream.range(0, 512).map(i -> Integer.bitCount(Key.createRandomKey().hashCode())).sorted().toArray();

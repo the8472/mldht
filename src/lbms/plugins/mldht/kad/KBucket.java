@@ -342,7 +342,7 @@ public class KBucket {
 			if(e == null || !e.matchIPorID(toRemove))
 				continue;
 			replacementBucket.compareAndSet(i, e, null);
-			if(e.equals(e))
+			if(e.equals(toRemove))
 				return Optional.of(e);
 				
 		}

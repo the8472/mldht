@@ -947,7 +947,7 @@ public class Node {
 	void persistKey() {
 		DHTConfiguration config = dht.getConfig();
 		
-		if(config == null || !config.isPersistingID())
+		if(config == null)
 			return;
 		
 		Path keyPath = config.getStoragePath().resolve("baseID.config");

@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.RPCServer;
 
 /**
  * Manages all dht tasks.
@@ -48,8 +49,8 @@ public class TaskManager {
 
 	public TaskManager (DHT dht) {
 		this.dht = dht;
-		tasks = new ConcurrentSkipListSet<Task>();
-		queued = new ConcurrentHashMap<Key, Deque<Task>>();
+		tasks = new ConcurrentSkipListSet<>();
+		queued = new ConcurrentHashMap<>();
 		next_id.set(1);
 	}
 	
@@ -126,7 +127,7 @@ public class TaskManager {
 	}
 
 	public Task[] getQueuedTasks () {
-		List<Task> temp = new ArrayList<Task>();
+		List<Task> temp = new ArrayList<>();
 		for(Deque<Task> q : queued.values())
 			synchronized (q)
 			{
@@ -138,7 +139,9 @@ public class TaskManager {
 	public boolean canStartTask (Task toCheck) {
 		// we can start a task if we have less then  7 runnning per server and
 		// there are at least 16 RPC slots available
-		return getNumTasks() < DHTConstants.MAX_ACTIVE_TASKS * Math.max(1, dht.getServerManager().getActiveServerCount()) && toCheck.getRPC().getNumActiveRPCCalls() + 16 < DHTConstants.MAX_ACTIVE_CALLS;
+		RPCServer srv = toCheck.getRPC();
+		int perServer = (int) tasks.stream().filter(t -> t.getRPC().equals(srv)).count();
+		return perServer < DHTConstants.MAX_ACTIVE_TASKS && srv.getNumActiveRPCCalls() + 16 < DHTConstants.MAX_ACTIVE_CALLS;
 	}
 	
 	@Override

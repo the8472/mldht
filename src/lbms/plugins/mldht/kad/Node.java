@@ -267,7 +267,7 @@ public class Node {
 	private int num_entries;
 	private Key baseKey;
 	private final CowSet<Key> usedIDs = new CowSet<>();
-	private volatile Map<InetAddress,RoutingTableEntry> knownNodes = new HashMap<InetAddress, RoutingTableEntry>();
+	private volatile Map<InetAddress,RoutingTableEntry> knownNodes = new HashMap<>();
 	private ConcurrentHashMap<InetAddress , Long> unsolicitedThrottle = new ConcurrentHashMap<>();
 	private Map<KBucket, Task> maintenanceTasks = new IdentityHashMap<>();
 	
@@ -836,7 +836,7 @@ public class Node {
 	}
 	
 	void rebuildAddressCache() {
-		Map<InetAddress, RoutingTableEntry> newKnownMap = new HashMap<InetAddress, RoutingTableEntry>(num_entries);
+		Map<InetAddress, RoutingTableEntry> newKnownMap = new HashMap<>(num_entries);
 		RoutingTable table = routingTableCOW;
 		for(int i=0,n=table.size();i<n;i++)
 		{
@@ -886,7 +886,7 @@ public class Node {
 		ByteBuffer tableBuffer = ByteBuffer.allocateDirect(50*1024*1024);
 		
 		
-		Map<String,Object> tableMap = new TreeMap<String, Object>();
+		Map<String,Object> tableMap = new TreeMap<>();
 
 		RoutingTable table = routingTableCOW;
 		

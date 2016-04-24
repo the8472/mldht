@@ -116,7 +116,7 @@ public class Launcher {
 		
 
 		final Path log = logDir.resolve("dht.log");
-		Path exLog = logDir.resolve("execptions.log");
+		Path exLog = logDir.resolve("exceptions.log");
 
 		//final PrintWriter logWriter = ;
 		final PrintWriter exWriter = new PrintWriter(Files.newBufferedWriter(exLog, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE), true);

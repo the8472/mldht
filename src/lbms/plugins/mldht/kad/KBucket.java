@@ -56,9 +56,9 @@ public class KBucket {
 	private long						lastRefresh;
 	
 	public KBucket () {
-		entries = new ArrayList<KBucketEntry>(); // using arraylist here since reading/iterating is far more common than writing.
+		entries = new ArrayList<>(); // using arraylist here since reading/iterating is far more common than writing.
 		currentReplacementPointer = new AtomicInteger(0);
-		replacementBucket = new AtomicReferenceArray<KBucketEntry>(DHTConstants.MAX_ENTRIES_PER_BUCKET);
+		replacementBucket = new AtomicReferenceArray<>(DHTConstants.MAX_ENTRIES_PER_BUCKET);
 		// needed for bitmasking
 		assert(Integer.bitCount(replacementBucket.length()) == 1);
 	}
@@ -137,7 +137,7 @@ public class KBucket {
 			if(toInsert != null && entries.stream().anyMatch(toInsert::matchIPorID))
 				return;
 			
-			List<KBucketEntry> newEntries = new ArrayList<KBucketEntry>(entries);
+			List<KBucketEntry> newEntries = new ArrayList<>(entries);
 			boolean removed = false;
 			boolean added = false;
 			
@@ -202,7 +202,7 @@ public class KBucket {
 	 * @return the entries
 	 */
 	public List<KBucketEntry> getEntries () {
-		return new ArrayList<KBucketEntry>(entries);
+		return new ArrayList<>(entries);
 	}
 	
 	public Stream<KBucketEntry> entriesStream() {
@@ -214,7 +214,7 @@ public class KBucket {
 	}
 	
 	public List<KBucketEntry> getReplacementEntries() {
-		List<KBucketEntry> repEntries = new ArrayList<KBucketEntry>(replacementBucket.length());
+		List<KBucketEntry> repEntries = new ArrayList<>(replacementBucket.length());
 		int current = currentReplacementPointer.get();
 		for(int i=1;i<=replacementBucket.length();i++)
 		{

@@ -110,7 +110,7 @@ public class AddressUtils {
 
 	public static List<InetAddress> getAvailableGloballyRoutableAddrs(Class<? extends InetAddress> type) {
 		
-		LinkedList<InetAddress> addrs = new LinkedList<InetAddress>();
+		LinkedList<InetAddress> addrs = new LinkedList<>();
 		
 		try
 		{

@@ -29,8 +29,6 @@ public class Bep33 {
 			bf.insert(InetAddress.getByAddress(new byte[] {(byte) 192,0,2,(byte) i}));
 		}
 		
-		System.out.println(bf.serialize());
-		
 		String[] testVector = new String[] {
 		"F6C3F5EA A07FFD91 BDE89F77 7F26FB2B FF37BDB8 FB2BBAA2 FD3DDDE7 BACFFF75 EE7CCBAE",
 		"FE5EEDB1 FBFAFF67 F6ABFF5E 43DDBCA3 FD9B9FFD F4FFD3E9 DFF12D1B DF59DB53 DBE9FA5B",

@@ -156,7 +156,7 @@ public class DHT implements DHTBase {
 	RPCStats								serverStats;
 
 	private final DHTtype					type;
-	private List<ScheduledFuture<?>>		scheduledActions = new ArrayList<ScheduledFuture<?>>();
+	private List<ScheduledFuture<?>>		scheduledActions = new ArrayList<>();
 	private List<DHT>						siblingGroup = new ArrayList<>();
 	private ScheduledExecutorService		scheduler;
 	
@@ -167,9 +167,9 @@ public class DHT implements DHTBase {
 		siblingGroup.add(this);
 		stats = new DHTStats();
 		status = DHTStatus.Stopped;
-		statsListeners = new ArrayList<DHTStatsListener>(2);
-		statusListeners = new ArrayList<DHTStatusListener>(2);
-		indexingListeners = new ArrayList<DHTIndexingListener>();
+		statsListeners = new ArrayList<>(2);
+		statusListeners = new ArrayList<>(2);
+		indexingListeners = new ArrayList<>();
 		estimator = new PopulationEstimator();
 	}
 	
@@ -376,7 +376,7 @@ public class DHT implements DHTBase {
 		{
 			List<PeerAddressDBItem> toAdd = listener.incomingPeersRequest(r.getInfoHash(), r.getOrigin().getAddress(), r.getID());
 			if(dbl == null && !toAdd.isEmpty())
-				dbl = new ArrayList<DBItem>();
+				dbl = new ArrayList<>();
 			if(dbl != null && !toAdd.isEmpty())
 				dbl.addAll(toAdd);
 		}
@@ -905,7 +905,7 @@ public class DHT implements DHTBase {
 	
 	
 	private void resolveBootstrapAddresses() {
-		List<InetSocketAddress> nodeAddresses =  new ArrayList<InetSocketAddress>();
+		List<InetSocketAddress> nodeAddresses =  new ArrayList<>();
 		for(int i = 0;i<DHTConstants.BOOTSTRAP_NODES.length;i++)
 		{
 			try {
@@ -1191,7 +1191,6 @@ public class DHT implements DHTBase {
 					return t;
 				});
 				defaultScheduler.setCorePoolSize(threads);
-				defaultScheduler.setMaximumPoolSize(threads*2);
 				defaultScheduler.setKeepAliveTime(20, TimeUnit.SECONDS);
 				defaultScheduler.allowCoreThreadTimeOut(true);
 			}

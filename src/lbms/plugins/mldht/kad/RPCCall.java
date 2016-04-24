@@ -38,7 +38,7 @@ public class RPCCall {
 	private boolean					sourceWasKnownReachable;
 	private boolean					stalled;
 	private boolean					awaitingResponse;
-	private List<RPCCallListener>	listeners		= new ArrayList<RPCCallListener>(3);
+	private List<RPCCallListener>	listeners		= new ArrayList<>(3);
 	private ScheduledFuture<?>		timeoutTimer;
 	long					sentTime		= -1;
 	long					responseTime	= -1;

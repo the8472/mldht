@@ -120,9 +120,9 @@ public class RPCServer {
 		this.port = port;
 		this.dh_table = manager.dht;
 		timeoutFilter = new ResponseTimeoutFilter();
-		pipeline = new ConcurrentLinkedQueue<EnqueuedSend>();
-		calls = new ConcurrentHashMap<ByteWrapper, RPCCall>(80,0.75f,3);
-		call_queue = new ConcurrentLinkedQueue<RPCCall>();
+		pipeline = new ConcurrentLinkedQueue<>();
+		calls = new ConcurrentHashMap<>(80,0.75f,3);
+		call_queue = new ConcurrentLinkedQueue<>();
 		this.stats = stats;
 		this.addr = addr;
 		this.manager = manager;
@@ -244,7 +244,7 @@ public class RPCServer {
 				verifiedEntryLossrate.updateAverage(1.0);
 			else
 				unverifiedLossrate.updateAverage(1.0);
-			calls.remove(w);
+			calls.remove(w, c);
 			dh_table.timeout(c);
 			doQueuedCalls();
 		}

@@ -509,8 +509,7 @@ public class RPCServer {
 		if(!call.knownReachableAtCreationTime())
 			timeoutFilter.registerCall(call);
 		
-		EnqueuedSend es = new EnqueuedSend(msg);
-		es.associatedCall = call;
+		EnqueuedSend es = new EnqueuedSend(msg, call);
 		fillPipe(es);
 	}
 
@@ -518,7 +517,7 @@ public class RPCServer {
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#sendMessage(lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
 	public void sendMessage (MessageBase msg) {
-		fillPipe(new EnqueuedSend(msg));
+		fillPipe(new EnqueuedSend(msg, null));
 	}
 	
 	public ResponseTimeoutFilter getTimeoutFilter() {
@@ -787,8 +786,9 @@ public class RPCServer {
 		MessageBase toSend;
 		RPCCall associatedCall;
 		
-		public EnqueuedSend(MessageBase msg) {
+		public EnqueuedSend(MessageBase msg, RPCCall call) {
 			toSend = msg;
+			associatedCall = call;
 			assert(toSend.getDestination() != null);
 			decorateMessage();
 		}
@@ -802,33 +802,38 @@ public class RPCServer {
 				toSend.setPublicIP(toSend.getDestination());
 			}
 			
-			if(toSend.getAssociatedCall() != null) {
-				long configuredRTT = toSend.getAssociatedCall().getExpectedRTT();
+			if(associatedCall != null) {
+				long configuredRTT = associatedCall.getExpectedRTT();
 
 				if(configuredRTT == -1) {
 					configuredRTT = timeoutFilter.getStallTimeout();
 				}
 
-				/*
-				use less aggressive stall timeouts when we observe a high percentage of RPC calls timeouts
-				high loss rates may indicate congested links or saturated NAT
+// TODO: re-evaluate necessity
+//				/*
+//				use less aggressive stall timeouts when we observe a high percentage of RPC calls timeouts
+//				high loss rates may indicate congested links or saturated NAT
+//
+//				minimum thresholds based on measurements on a server-class nodes.
+//				average observed timeout rate
+//				- for non-verified contacts  ~50%
+//				- for verified contacts ~15%
+//
+//				 */
+//
+//				double adjustedLossrate = Math.max(0, unverifiedLossrate.getAverage() - 0.5) * 2.;
+//				double adjustedVerifiedLossrate = Math.max(0, verifiedEntryLossrate.getAverage() - 1./3.) * 3./2.;
+//
+//				double correctionFactor = Math.max(adjustedLossrate, adjustedVerifiedLossrate);
+//
+//
+//
+//				long diff = DHTConstants.RPC_CALL_TIMEOUT_MAX - configuredRTT;
+//
+//
+//				associatedCall.setExpectedRTT((long) (configuredRTT + diff * correctionFactor));
 
-				minimum thresholds based on measurements on a server-class nodes.
-				average observed timeout rate
-				- for non-verified contacts  ~50%
-				- for verified contacts ~15%
-
-				 */
-				double adjustedLossrate = Math.max(0, unverifiedLossrate.getAverage() - 0.5) * 2.;
-				double adjustedVerifiedLossrate = Math.max(0, verifiedEntryLossrate.getAverage() - 1./3.) * 3./2.;
-
-				double correctionFactor = Math.max(adjustedLossrate, adjustedVerifiedLossrate);
-
-
-
-				long diff = DHTConstants.RPC_CALL_TIMEOUT_MAX - configuredRTT;
-
-				toSend.getAssociatedCall().setExpectedRTT((long) (configuredRTT + diff * correctionFactor));
+				associatedCall.setExpectedRTT(configuredRTT);
 			}
 				
 		}

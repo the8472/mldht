@@ -184,6 +184,11 @@ public abstract class MessageBase {
 		this.associatedCall = associatedCall;
 	}
 	
+	/**
+	 * only incoming replies have an associated call. the relation of outgoing request to call is tracked inside the call
+	 * 
+	 * TODO: determine if that can be changed
+	 */
 	public RPCCall getAssociatedCall() {
 		return associatedCall;
 	}

@@ -128,6 +128,8 @@ public class RPCCall {
 	ScheduledExecutorService scheduler;
 
 	void sent(RPCServer srv) {
+		assert(expectedRTT > 0);
+		assert(expectedRTT <= DHTConstants.RPC_CALL_TIMEOUT_MAX);
 		awaitingResponse = true;
 		sentTime = System.currentTimeMillis();
 		

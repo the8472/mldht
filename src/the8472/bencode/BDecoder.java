@@ -144,13 +144,16 @@ public class BDecoder {
 	}
 	
 	private Object decodeInternal(ByteBuffer buf) {
-		
-		t.reset();
-		c.reset();
-	
-		t.inputBuffer(buf);
-		t.tokenize();
-		return c.stack[0];
+		try {
+			t.inputBuffer(buf);
+			t.tokenize();
+			
+			return c.stack[0];
+		} finally {
+			// promptly release references and clean up any possibly illegal states to allow safe reuse
+			t.reset();
+			c.reset();
+		}
 	}
 
 

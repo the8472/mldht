@@ -953,6 +953,8 @@ public class Node {
 		Path keyPath = config.getStoragePath().resolve("baseID.config");
 		
 		try {
+			if(!Files.isDirectory(config.getStoragePath()))
+				return;
 			Path tmpFile = Files.createTempFile(config.getStoragePath(), "baseID", ".tmp");
 			
 			Files.write(tmpFile, Collections.singleton(baseKey.toString(false)), StandardCharsets.ISO_8859_1);

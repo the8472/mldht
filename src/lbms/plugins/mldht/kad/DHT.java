@@ -103,6 +103,14 @@ public class DHT implements DHTBase {
 			this.PROTO_FAMILY = family;
 		}
 
+		public boolean canUseSocketAddress(InetSocketAddress addr) {
+			return PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress());
+		}
+		
+		public boolean canUseAddress(InetAddress addr) {
+			return PREFERRED_ADDRESS_TYPE.isInstance(addr);
+		}
+
 	}
 
 

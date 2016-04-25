@@ -448,7 +448,7 @@ public class Node {
 		if(usedIDs.contains(toInsert.getID()) || AddressUtils.isBogon(toInsert.getAddress()))
 			return;
 
-		if(!dht.getType().PREFERRED_ADDRESS_TYPE.isInstance(toInsert.getAddress().getAddress()))
+		if(!dht.getType().canUseSocketAddress(toInsert.getAddress()))
 			throw new IllegalArgumentException("attempting to insert "+toInsert+" expected address type: "+dht.getType().PREFERRED_ADDRESS_TYPE.getSimpleName());
 		
 		
@@ -999,18 +999,21 @@ public class Node {
 			Key oldKey = typedGet(table, "oldKey", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).map(Key::new).orElse(null);
 			
 			boolean reuseKey = getRootID().equals(oldKey);
+			Comparator<KBucketEntry> comp = new KBucketEntry.DistanceOrder(getRootID());
 			
 			typedGet(table, "mainEntries", List.class).ifPresent(l -> {
-				l.stream().filter(Map.class::isInstance).map(Map.class::cast).forEach(entryMap -> {
-					KBucketEntry be = KBucketEntry.fromBencoded((Map<String, Object>) entryMap, dht.getType());
+				Stream<KBucketEntry> st = l.stream().filter(Map.class::isInstance).map(m -> KBucketEntry.fromBencoded((Map<String, Object>) m));
+				if(!reuseKey) // sort so we insert in new home bucket first to minimize reshuffling
+					st = st.sorted(comp);
+				st.forEachOrdered(be -> {
 					insertEntry(be, reuseKey ? EnumSet.of(ALWAYS_SPLIT_IF_FULL, FORCE_INTO_MAIN_BUCKET) : EnumSet.noneOf(InsertOptions.class));
 					counter.incrementAndGet();
 				});
 			});
 			
 			typedGet(table, "replacements", List.class).ifPresent(l -> {
-				l.stream().filter(Map.class::isInstance).map(Map.class::cast).forEach(replacementMap -> {
-					KBucketEntry be = KBucketEntry.fromBencoded((Map<String, Object>) replacementMap, dht.getType());
+				Stream<KBucketEntry> st = l.stream().filter(Map.class::isInstance).map(m -> KBucketEntry.fromBencoded((Map<String, Object>) m));
+				st.filter(e -> dht.getType().canUseSocketAddress(e.getAddress())).forEach(be -> {
 					routingTableCOW.entryForId(be.getID()).bucket.insertInReplacementBucket(be);
 					counter.incrementAndGet();
 				});

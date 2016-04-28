@@ -16,6 +16,8 @@
  */
 package lbms.plugins.mldht.kad;
 
+import static the8472.utils.Arrays.mismatch;
+
 import java.util.Collection;
 import java.util.Collections;
 
@@ -113,16 +115,13 @@ public class Prefix extends Key {
 		
 		int lastToCheck = n >>> 3;
 		
-		// check all complete bytes preceding the bit we want to check
-		for(int i=0;i<lastToCheck ;i++)
-		{
-			if(h1[i] != h2[i])
-				return false;
-		}
+		int mmi = mismatch(h1, h2);
 		
 		int diff = (h1[lastToCheck] ^ h2[lastToCheck]) & 0xff;
 		
-		return (diff & (0xff80 >>> (n & 0x07))) == 0;
+		boolean lastByteDiff = (diff & (0xff80 >>> (n & 0x07))) == 0;
+		
+		return mmi == lastToCheck ? lastByteDiff : Integer.compareUnsigned(mmi, lastToCheck) > 0;
 	}
 	
 	private static void copyBits(Key source, Key destination, int depth)

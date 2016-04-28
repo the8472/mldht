@@ -16,7 +16,11 @@
  */
 package lbms.plugins.mldht.kad;
 
-import static java.lang.Math.min;
+import static the8472.utils.Arrays.compareUnsigned;
+import static the8472.utils.Arrays.mismatch;
+
+import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
+import lbms.plugins.mldht.utils.Radixable;
 
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
@@ -25,9 +29,6 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
-
-import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
-import lbms.plugins.mldht.utils.Radixable;
 
 /**
  * @author Damokles
@@ -119,17 +120,7 @@ public class Key implements Radixable<Key> {
 	 * compares Keys according to their natural distance
 	 */
 	public int compareTo (Key o) {
-		byte[] h1 = hash;
-		byte[] h2 = o.hash;
-		
-		for (int i = 0,n=min(h1.length,h2.length); i < n; i+=4) {
-			int a = Byte.toUnsignedInt(h1[i]) << 24 | Byte.toUnsignedInt(h1[i+1]) << 16 | Byte.toUnsignedInt(h1[i+2]) << 8 | Byte.toUnsignedInt(h1[i+3]);
-			int b = Byte.toUnsignedInt(h2[i]) << 24 | Byte.toUnsignedInt(h2[i+1]) << 16 | Byte.toUnsignedInt(h2[i+2]) << 8 | Byte.toUnsignedInt(h2[i+3]);
-			int t = Integer.compareUnsigned(a, b);
-			if(t != 0)
-				return t;
-		}
-		return 0;
+		return compareUnsigned(hash, o.hash);
 	}
 	
 	/**
@@ -143,23 +134,16 @@ public class Key implements Radixable<Key> {
 		byte[] h1 = k1.hash;
 		byte[] h2 = k2.hash;
 		
-		for (int i = 0,n=min(min(h0.length,h1.length), h2.length) - 3; i < n; i+=4) {
-			int a = Byte.toUnsignedInt(h1[i]) << 24 | Byte.toUnsignedInt(h1[i+1]) << 16 | Byte.toUnsignedInt(h1[i+2]) << 8 | Byte.toUnsignedInt(h1[i+3]);
-			int b = Byte.toUnsignedInt(h2[i]) << 24 | Byte.toUnsignedInt(h2[i+1]) << 16 | Byte.toUnsignedInt(h2[i+2]) << 8 | Byte.toUnsignedInt(h2[i+3]);
-			
-			if(a == b)
-				continue;
+		int mmi = mismatch(h1, h2);
 
-			int h = Byte.toUnsignedInt(h0[i]) << 24 | Byte.toUnsignedInt(h0[i+1]) << 16 | Byte.toUnsignedInt(h0[i+2]) << 8 | Byte.toUnsignedInt(h0[i+3]);
+		if(mmi == -1)
+			return 0;
 
-			//needs & 0xFF since bytes are signed in Java
-			//so we must convert to int to compare it unsigned
-			int byte1 = (a ^ h);
-			int byte2 = (b ^ h);
+		int h = Byte.toUnsignedInt(h0[mmi]);
+		int a = Byte.toUnsignedInt(h1[mmi]);
+		int b = Byte.toUnsignedInt(h2[mmi]);
 			
-			return Integer.compareUnsigned(byte1, byte2);
-		}
-		return 0;
+		return Integer.compareUnsigned(a ^ h, b ^ h);
 	}
 
 
@@ -167,12 +151,9 @@ public class Key implements Radixable<Key> {
 	public boolean equals (Object o) {
 		if(o instanceof Key)
 		{
+			// potential alternative would be a descending comparison since prefix bytes might be shared in sorted data structures
 			Key otherKey = (Key) o;
-			// descending comparison since prefix bytes might be shared in sorted data structures
-			for(int i=hash.length-1;i>=0;i--)
-				if(hash[i] != otherKey.hash[i])
-					return false;
-			return true;
+			return Arrays.equals(hash, otherKey.hash);
 		}
 		return false;
 	}

@@ -1,8 +1,66 @@
 package the8472.utils;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+
 public class Arrays {
 	
+	private static final java.lang.invoke.MethodHandle compareImpl;
+	private static final java.lang.invoke.MethodHandle mismatchImpl;
+	
+	static {
+		
+		MethodHandle compU = null;
+		MethodHandle mism = null;
+		
+		try {
+			compU = MethodHandles.lookup().findStatic(java.util.Arrays.class, "compareUnsigned", MethodType.methodType(int.class, byte[].class, byte[].class));
+			mism = MethodHandles.lookup().findStatic(java.util.Arrays.class, "mismatch", MethodType.methodType(int.class, byte[].class, byte[].class));
+		} catch (NoSuchMethodException | IllegalAccessException e) {
+			// no java9
+		}
+		
+		if(compU == null) {
+			try {
+				compU = MethodHandles.lookup().findStatic(Arrays.class, "compareUnsignedFallback", MethodType.methodType(int.class, byte[].class, byte[].class));
+				mism  = MethodHandles.lookup().findStatic(Arrays.class, "mismatchFallback", MethodType.methodType(int.class, byte[].class, byte[].class));
+				
+			}  catch (NoSuchMethodException | IllegalAccessException e) {
+				throw new Error("should not happen");
+			}
+		}
+		
+		
+		compareImpl = compU;
+		mismatchImpl = mism;
+	}
+	
 	public static int compareUnsigned(byte[] a, byte[] b) {
+		try {
+			return (int) compareImpl.invokeExact(a, b);
+		} catch(RuntimeException e) {
+			throw e;
+		} catch(Throwable e) {
+			throw new Error("should not happen", e);
+		}
+		
+	}
+	
+	public static int mismatch(byte[] a, byte[] b) {
+		try {
+			return (int) mismatchImpl.invokeExact(a, b);
+		} catch(RuntimeException e) {
+			throw e;
+		} catch(Throwable e) {
+			throw new Error("should not happen", e);
+		}
+		
+	}
+	
+	
+	
+	private static int compareUnsignedFallback(byte[] a, byte[] b) {
 		int minLength = Math.min(a.length, b.length);
 		for(int i=0;i+7<minLength;i+=8)
 		{
@@ -38,6 +96,16 @@ public class Arrays {
 		}
 		
 		return a.length - b.length;
+	}
+	
+	private static int mismatchFallback(byte[] a, byte[] b) {
+		int min = Math.min(a.length, b.length);
+		for(int i=0;i<min;i++) {
+			if(a[i] != b[i])
+				return i;
+		}
+		
+		return a.length == b.length ? -1 : min;
 	}
 
 }

@@ -10,7 +10,7 @@ public class Arrays {
 					Byte.toUnsignedLong(a[i+1]) << 48 |
 					Byte.toUnsignedLong(a[i+2]) << 40 |
 					Byte.toUnsignedLong(a[i+3]) << 32 |
-					Byte.toUnsignedLong(a[i+4]) << 42 |
+					Byte.toUnsignedLong(a[i+4]) << 24 |
 					Byte.toUnsignedLong(a[i+5]) << 16 |
 					Byte.toUnsignedLong(a[i+6]) << 8 |
 					Byte.toUnsignedLong(a[i+7]) << 0;
@@ -18,7 +18,7 @@ public class Arrays {
 					Byte.toUnsignedLong(b[i+1]) << 48 |
 					Byte.toUnsignedLong(b[i+2]) << 40 |
 					Byte.toUnsignedLong(b[i+3]) << 32 |
-					Byte.toUnsignedLong(b[i+4]) << 42 |
+					Byte.toUnsignedLong(b[i+4]) << 24 |
 					Byte.toUnsignedLong(b[i+5]) << 16 |
 					Byte.toUnsignedLong(b[i+6]) << 8 |
 					Byte.toUnsignedLong(b[i+7]) << 0;

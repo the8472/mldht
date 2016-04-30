@@ -139,6 +139,8 @@ public class MessageDecoder {
 		
 		ErrorMessage msg = new ErrorMessage(mtid, errorCode,errorMsg);
 		
+		typedGet(map, "id", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).ifPresent(h -> msg.setID(new Key(h)));
+		
 		transactionIdMapper.apply(mtid).ifPresent(m -> msg.method = m);
 
 		return msg;

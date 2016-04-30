@@ -112,6 +112,6 @@ public class ErrorMessage extends MessageBase {
 	
 	@Override
 	public String toString() {
-		return super.toString() + " code:"+ code + " errormsg: '"+msg+"'";
+		return super.toString() + " code:"+ code + " errormsg: '"+msg+"'" + " id:" + getID();
 	}
 }

@@ -16,9 +16,13 @@
  */
 package lbms.plugins.mldht.kad.messages;
 
-import java.util.*;
-
 import lbms.plugins.mldht.kad.Key;
+
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * @author Damokles
@@ -74,7 +78,7 @@ public abstract class AbstractLookupRequest extends MessageBase {
 		
 		List<String> wants = new ArrayList<String>(2);
 		for(byte[] bytes : want)
-			wants.add(new String(bytes));
+			wants.add(new String(bytes, StandardCharsets.ISO_8859_1));
 		
 		want4 |= wants.contains("n4");
 		want6 |= wants.contains("n6");

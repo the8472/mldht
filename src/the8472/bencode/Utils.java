@@ -167,11 +167,12 @@ public class Utils {
 		return new String(out);
 	}
 	
-	static void toHex(byte[] toHex, StringBuilder builder, int maxLength)
+	static void toHex(byte[] toHex, StringBuilder builder, int maxBytes)
 	{
-		if(toHex.length < maxLength)
-			maxLength = toHex.length;
-		for (int i = 0; i < maxLength; i++) {
+		if(toHex.length < maxBytes)
+			maxBytes = toHex.length;
+		builder.ensureCapacity(maxBytes * 2);
+		for (int i = 0; i < maxBytes; i++) {
 			int nibble = (toHex[i] & 0xF0) >> 4;
 			builder.append((char)(nibble < 0x0A ? '0'+nibble : 'A'+nibble-10 ));
 			nibble = toHex[i] & 0x0F;

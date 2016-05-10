@@ -16,6 +16,7 @@ public class Tokenizer {
 	/* handled edge-cases:
 	 * 
 	 * - negative length strings
+	 * - deep dictionary/list nesting
 	 * - zero-prefixed numbers (illegal)
 	 * - dictionary-exit while expecting a value
 	 * - non-string while expecting dict key
@@ -144,6 +145,9 @@ public class Tokenizer {
 		
 		stackIdx++;
 		
+		if(stackIdx >= stack.length)
+			throw new BDecodingException("nesting too deep");
+		
 		Token newState = stack[stackIdx];
 		newState.start = pos;
 		newState.type(t);
@@ -269,11 +273,11 @@ public class Tokenizer {
 					throw new BDecodingException("unexpected character 0x" + b + " at offset "+(buf.position()-1));
 			}
 
-			if(stackIdx == 0)
+			if(stackIdx <= 0)
 				break;
 		}
 		
-		if(stackIdx > 0)
+		if(stackIdx != 0)
 			throw new BDecodingException("reached end of data with unterminated lists/dictionaries on the stack");
 	}
 	

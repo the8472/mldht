@@ -1,6 +1,6 @@
 # mldht
 
-A java library implementing the Kademlia-based bittorrent mainline DHT, with long-running server-class nodes in mind.
+A java library and standalone node implementing the Kademlia-based bittorrent mainline DHT, with long-running server-class nodes in mind.
 
 Originally developed as [DHT plugin](http://azsmrc.sourceforge.net/index.php?action=plugin-mldht) for Azureus/[Vuze](http://dev.vuze.com/)
 
@@ -25,6 +25,7 @@ Additional:
  - can process 20k packets per second on a single Xeon core
 - low latency lookups by using adaptive timeouts and a secondary routing table/cache tuned for RTT instead of stability
 - export of passively observed \<infohash, ip\> tuples to redis to survey torrent activity
+- remote CLI for common DHT operations
 
 ## Dependencies
 
@@ -43,13 +44,16 @@ Additional:
     mkdir -p work
     cd work
     ../bin/mldht-daemon
+    # or manually
+    # java -cp ../target/* the8472.mldht.Launcher &
     
-this will create various files
+this will create various files in the current working directory
 - `config.xml`, change settings as needed, core settings will be picked up on file modification
 - `shutdown`, touch to cleanly shutdown running process (SIGHUP works too)
 - `*-table.cache`, persisted routing table for the ipv4/6 dhts, respectively
 - `baseID.config`, persisted node ID
 - `logs/*`, various diagnostics and log files
+- `.keys/`, default storage directory for BEP44 private keys. used by the CLI
 
 **Security note:** the shell script launches the JVM with a debug port bound to localhost for easier maintenance, thus allowing arbitrary code execution with the current user's permissions. In a multi-user environment a custom script with debugging disabled should be used    
 
@@ -94,7 +98,23 @@ run CLI client with
 
 ```
 bin/mldht-remote-cli help
+# or manually:
+# java -cp target/* the8472.mldht.cli.Client help
 ```
+
+available commands (subject to change):
+
+```
+HELP                                                 - prints this help
+PING ip port                                         - continuously pings a DHT node with a 1 second interval
+GET hash [salt]                                      - perform a BEP44 get
+PUT -f <input-path> [-keyfile <path>] [-salt <salt>]
+PUT <input> [-keyfile <path>] [-salt <salt>]         - perform a BEP44 put, specifying a salt or keyfile implies a mutable put, immutable otherwise. data will be read from file or as single argument
+GETTORRENT [infohash...]                             - peer lookup for <infohash(es)>, then attempt metadata exchange, then write .torrent file(s) to the current working directory
+GETPEERS [infohash...] [-fast]                       - peer lookup for <infohash(es)>, print ip address/port tuples
+BURST [count]                                        - run a batch of find_node lookups to random target IDs. intended test the attainable throughput for active lookups, subject to internal throttling
+```
+
 
 **Security note:** The CLI Server component listens on localhost, accepting commands without authentication from any user on the system. It is recommended to not use this component in a multi-user environment.
 

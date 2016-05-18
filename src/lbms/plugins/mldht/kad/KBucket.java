@@ -115,11 +115,11 @@ public class KBucket {
 	
 	
 	public void refresh(KBucketEntry toRefresh) {
-		entries.stream().findAny().ifPresent(e -> {
+		entries.stream().filter(toRefresh::equals).findAny().ifPresent(e -> {
 			e.mergeInTimestamps(toRefresh);
 		});
 		
-		replacementsStream().findAny().ifPresent(e -> {
+		replacementsStream().filter(toRefresh::equals).findAny().ifPresent(e -> {
 			e.mergeInTimestamps(toRefresh);
 		});
 		

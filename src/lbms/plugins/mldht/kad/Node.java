@@ -413,9 +413,7 @@ public class Node {
 	 * @return true if it should be throttled
 	 */
 	boolean updateAndCheckThrottle(InetAddress addr) {
-		long now = System.currentTimeMillis();
-		long oldVal = unsolicitedThrottle.getOrDefault(addr, 0L);
-		unsolicitedThrottle.put(addr, Math.min(oldVal + throttleIncrement, throttleSaturation));
+		long oldVal = unsolicitedThrottle.merge(addr, throttleIncrement, (k, v) -> Math.min(v + throttleIncrement, throttleSaturation)) - throttleIncrement;
 		
 		return oldVal > throttleThreshold;
 	}

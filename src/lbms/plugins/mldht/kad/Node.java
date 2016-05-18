@@ -816,7 +816,7 @@ public class Node {
 			RoutingTable t = table();
 			List<RoutingTableEntry> changed = new ArrayList<>();
 			for(int i=0;i < t.size();i++) {
-				RoutingTableEntry e = routingTableCOW.get(i);
+				RoutingTableEntry e = t.get(i);
 				// update home bucket status on local ID change
 				if(isLocalBucket(e.prefix) != e.homeBucket)
 					changed.add(e);

@@ -18,28 +18,35 @@ package lbms.plugins.mldht.kad.tasks;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
-import lbms.plugins.mldht.kad.KBucketEntryAndToken;
+import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.Node;
 import lbms.plugins.mldht.kad.RPCCall;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.AnnounceRequest;
 import lbms.plugins.mldht.kad.messages.MessageBase;
-import the8472.utils.concurrent.SerializedTaskExecutor;
+
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeMap;
 
 /**
  * @author Damokles
  *
  */
-public class AnnounceTask extends Task {
+public class AnnounceTask extends TargetedTask {
 
 	private int								port;
 	private boolean							isSeed;
 	
+	NavigableMap<KBucketEntry, byte[]> todo;
+	
 	public AnnounceTask (RPCServer rpc, Node node,
-			Key info_hash, int port) {
+			Key info_hash, int port, Map<KBucketEntry, byte[]> candidatesAndTokens) {
 		super(info_hash, rpc, node);
 		this.port = port;
+		this.todo = new TreeMap<>(new KBucketEntry.DistanceOrder(info_hash));
+		todo.putAll(candidatesAndTokens);
 
 		DHT.logDebug("AnnounceTask started: " + getTaskID());
 	}
@@ -53,38 +60,40 @@ public class AnnounceTask extends Task {
 	@Override
 	void callTimeout (RPCCall c) {}
 	
-	final Runnable exclusiveUpdate = SerializedTaskExecutor.onceMore(() -> {
-		while(!todo.isEmpty() && canDoRequest()) {
-			KBucketEntryAndToken e = (KBucketEntryAndToken) todo.first();
-
-			if(e == null)
-				continue;
+	@Override
+	void update () {
+		for(;;) {
+			if(getRecvResponses() >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
+				return;
 			
-			if(hasVisited(e)) {
-				todo.remove(e);
-				continue;
-			}
+			RequestPermit p = checkFreeSlot();
+			// we don't care about stalls here;
+			if(p != RequestPermit.FREE_SLOT)
+				return;
+			
+			Map.Entry<KBucketEntry, byte[]> me = todo.firstEntry();
 
-			AnnounceRequest anr = new AnnounceRequest(targetKey, port, e.getToken());
+			if(me == null)
+				return;
+			
+			KBucketEntry e = me.getKey();
+
+			AnnounceRequest anr = new AnnounceRequest(targetKey, port, me.getValue());
 			//System.out.println("sending announce to ID:"+e.getID()+" addr:"+e.getAddress());
 			anr.setDestination(e.getAddress());
 			anr.setSeed(isSeed);
-			if(rpcCall(anr,e.getID(),c -> c.builtFromEntry(e))) {
-				todo.remove(e);
-				visited(e);
-				
+			if(!rpcCall(anr,e.getID(),c -> {
+				c.builtFromEntry(e);
+				todo.entrySet().remove(me);
+			})) {
+				break;
 			}
 		}
-	});
+	}
 	
-	
-	/* (non-Javadoc)
-	 * @see lbms.plugins.mldht.kad.Task#update()
-	 */
 	@Override
-	void update () {
-		exclusiveUpdate.run();
-
+	public int getTodoCount() {
+		return todo.size();
 	}
 	
 	@Override
@@ -95,12 +104,10 @@ public class AnnounceTask extends Task {
 	
 	@Override
 	protected boolean isDone() {
-		if (todo.isEmpty() && getNumOutstandingRequests() == 0 && !isFinished()) {
+		if(getRecvResponses() >= DHTConstants.MAX_ENTRIES_PER_BUCKET)
 			return true;
-		} else if(getRecvResponses() == DHTConstants.MAX_ENTRIES_PER_BUCKET)
-		{
+		if(todo.isEmpty() && getNumOutstandingRequests() == 0)
 			return true;
-		}
 			
 		return false;
 	}

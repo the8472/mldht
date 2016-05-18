@@ -26,7 +26,6 @@ import lbms.plugins.mldht.kad.messages.GetPeersRequest;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.PingRequest;
 import lbms.plugins.mldht.kad.tasks.AnnounceTask;
-import lbms.plugins.mldht.kad.tasks.NodeLookup;
 import lbms.plugins.mldht.kad.tasks.PeerLookupTask;
 import lbms.plugins.mldht.kad.tasks.TaskManager;
 
@@ -103,10 +102,6 @@ public interface DHTBase {
 	public Node getNode ();
 
 	public TaskManager getTaskManager ();
-
-	NodeLookup findNode (Key id);
-
-	NodeLookup fillBucket (Key id, KBucket bucket);
 
 	Key getOurID ();
 }

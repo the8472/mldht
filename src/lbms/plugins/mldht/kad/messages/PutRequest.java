@@ -2,13 +2,19 @@ package lbms.plugins.mldht.kad.messages;
 
 import static the8472.bencode.Utils.buf2ary;
 
-import java.nio.ByteBuffer;
-import java.security.MessageDigest;
+import the8472.bencode.BEncoder;
+import the8472.bencode.Utils;
 
 import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.GenericStorage;
+import lbms.plugins.mldht.kad.GenericStorage.StorageItem;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
-import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
+
+import java.nio.ByteBuffer;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
 
 public class PutRequest extends MessageBase {
 	
@@ -48,6 +54,45 @@ public class PutRequest extends MessageBase {
 	
 	
 	@Override
+	public Map<String, Object> getInnerMap() {
+		Objects.requireNonNull(token);
+		Objects.requireNonNull(value);
+		Objects.requireNonNull(id);
+
+		Map<String, Object> m = new TreeMap<>();
+		
+		if(expectedSequenceNumber != -1)
+			m.put("cas", expectedSequenceNumber);
+		if(sequenceNumber != -1)
+			m.put("seq", sequenceNumber);
+		if(salt != null)
+			m.put("salt", salt);
+		if(pubkey != null)
+			m.put("k", pubkey);
+		if(signature != null)
+			m.put("sig", signature);
+		
+		m.put("token", token);
+		m.put("v", new BEncoder.RawData(ByteBuffer.wrap(value)));
+		m.put("id", id.getHash());
+		
+		
+		
+		return m;
+	}
+	
+	public void populateFromStorage(StorageItem toPut) {
+		this.setValue(toPut.getRawValue());
+		if(toPut.mutable()) {
+			toPut.pubKey().map(Utils::buf2ary).ifPresent(this::setPubkey);
+			toPut.salt().map(Utils::buf2ary).ifPresent(this::setSalt);
+			toPut.sig().map(Utils::buf2ary).ifPresent(this::setSignature);
+			setSequenceNumber(toPut.seq());
+		}
+	}
+	
+	
+	@Override
 	public void apply(DHT dh_table) {
 		
 		dh_table.put(this);
@@ -56,6 +101,7 @@ public class PutRequest extends MessageBase {
 	public boolean mutable() {
 		return pubkey != null;
 	}
+
 	
 	public void validate() throws MessageException {
 		if(salt != null && salt.length > 64)
@@ -89,16 +135,7 @@ public class PutRequest extends MessageBase {
 	}
 	
 	public Key deriveTargetKey() {
-		MessageDigest dig = ThreadLocalUtils.getThreadLocalSHA1();
-		
-		if(mutable()) {
-			dig.reset();
-			dig.update(pubkey);
-			if(salt != null)
-				dig.update(salt);
-			return new Key(dig.digest());
-		}
-		return new Key(dig.digest(value));
+		return GenericStorage.fingerprint(pubkey, salt, getValue());
 	}
 
 

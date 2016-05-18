@@ -18,8 +18,6 @@ package lbms.plugins.mldht.kad;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
-import java.util.List;
 
 /**
  * @author Damokles
@@ -70,9 +68,12 @@ public class DHTConstants {
 	public static final int		ANNOUNCE_CACHE_FAST_LOOKUP_AGE			= 8 * 60 * 1000;
 
 
-	public static final String[]			BOOTSTRAP_NODES							= new String[]	{ "dht.transmissionbt.com", 	"router.bittorrent.com", "router.utorrent.com" };
-	public static final int[]				BOOTSTRAP_PORTS							= new int[]		{ 6881, 						6881,					 6881 };
-	public static List<InetSocketAddress>	BOOTSTRAP_NODE_ADDRESSES				= Collections.EMPTY_LIST;
+	public static final InetSocketAddress[] UNRESOLVED_BOOTSTRAP_NODES = new InetSocketAddress[] {
+			InetSocketAddress.createUnresolved("dht.transmissionbt.com", 6881),
+			InetSocketAddress.createUnresolved("router.bittorrent.com", 6881),
+			InetSocketAddress.createUnresolved("router.utorrent.com", 6881),
+			InetSocketAddress.createUnresolved("router.silotis.us", 6881),
+	};
 	private static String version = "AZ00";
 
 	public static String getVersion() {

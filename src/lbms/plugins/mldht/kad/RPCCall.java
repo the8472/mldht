@@ -16,17 +16,19 @@
  */
 package lbms.plugins.mldht.kad;
 
+import static the8472.bencode.Utils.prettyPrint;
+
+import lbms.plugins.mldht.kad.messages.MessageBase;
+import lbms.plugins.mldht.kad.messages.MessageBase.Method;
+
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-
-import lbms.plugins.mldht.kad.DHT.LogLevel;
-import lbms.plugins.mldht.kad.messages.MessageBase;
-import lbms.plugins.mldht.kad.messages.MessageBase.Method;
-import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 
 /**
  * @author Damokles
@@ -34,21 +36,22 @@ import lbms.plugins.mldht.kad.messages.MessageBase.Type;
  */
 public class RPCCall {
 
-	private MessageBase				msg;
+	private MessageBase				reqMsg;
+	private MessageBase				rspMsg;
 	private boolean					sourceWasKnownReachable;
-	private boolean					stalled;
-	private boolean					awaitingResponse;
 	private List<RPCCallListener>	listeners		= new ArrayList<>(3);
 	private ScheduledFuture<?>		timeoutTimer;
 	long					sentTime		= -1;
 	long					responseTime	= -1;
 	private Key						expectedID;
 	long					expectedRTT = -1;
+	RPCState state = RPCState.UNSENT;
 	
+	ScheduledExecutorService scheduler;
 
 	public RPCCall (MessageBase msg) {
 		assert(msg != null);
-		this.msg = msg;
+		this.reqMsg = msg;
 	}
 	
 	public RPCCall setExpectedID(Key id) {
@@ -73,40 +76,53 @@ public class RPCCall {
 		return expectedRTT;
 	}
 	
-	public boolean matchesExpectedID(Key id) {
-		return expectedID == null || id.equals(expectedID);
+	/**
+	 * @throws NullPointerException if no expected id has been specified in advance
+	 */
+	public boolean matchesExpectedID() {
+		return expectedID.equals(rspMsg.getID());
 	}
 	
 	public Key getExpectedID() {
 		return expectedID;
 	}
 	
-	/* (non-Javadoc)
-	 * @see lbms.plugins.mldht.kad.RPCCallBase#response(lbms.plugins.mldht.kad.messages.MessageBase)
+	/**
+	 * when external circumstances indicate that this request is probably stalled and will time out
 	 */
+	void injectStall() {
+		stateTransition(EnumSet.of(RPCState.SENT), RPCState.STALLED);
+	}
+	
 	public void response (MessageBase rsp) {
 		if (timeoutTimer != null) {
 			timeoutTimer.cancel(false);
 		}
 		
-		if(rsp.getType() == Type.RSP_MSG)
-		{
-			onCallResponse(rsp);
-			return;
-		}
+		rspMsg = rsp;
 		
-		onCallTimeout();
-		DHT.logError("received non-response ["+ rsp +"] in response to request: "+ msg.toString());
+		switch(rsp.getType()) {
+			case RSP_MSG:
+				stateTransition(EnumSet.of(RPCState.SENT, RPCState.STALLED) , RPCState.RESPONDED);
+				break;
+			case ERR_MSG:
+				DHT.logError("received non-response ["+ rsp +"] in response to request: "+ reqMsg.toString());
+				stateTransition(EnumSet.of(RPCState.SENT, RPCState.STALLED) , RPCState.ERROR);
+				break;
+			default:
+				throw new IllegalStateException("should not happen");
+		}
+
 	}
 
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCCallBase#addListener(lbms.plugins.mldht.kad.RPCCallListener)
 	 */
 	public RPCCall addListener (RPCCallListener cl) {
-		if(awaitingResponse)
+		Objects.requireNonNull(cl);
+		if(state != RPCState.UNSENT)
 			throw new IllegalStateException("can only attach listeners while call is not started yet");
-		if(cl != null)
-			listeners.add(cl);
+		listeners.add(cl);
 		return this;
 	}
 
@@ -114,7 +130,7 @@ public class RPCCall {
 	 * @see lbms.plugins.mldht.kad.RPCCallBase#getMessageMethod()
 	 */
 	public Method getMessageMethod () {
-		return msg.getMethod();
+		return reqMsg.getMethod();
 	}
 
 	/// Get the request sent
@@ -122,16 +138,20 @@ public class RPCCall {
 	 * @see lbms.plugins.mldht.kad.RPCCallBase#getRequest()
 	 */
 	public MessageBase getRequest () {
-		return msg;
+		return reqMsg;
 	}
 	
-	ScheduledExecutorService scheduler;
-
+	public MessageBase getResponse() {
+		return rspMsg;
+	}
+	
 	void sent(RPCServer srv) {
 		assert(expectedRTT > 0);
 		assert(expectedRTT <= DHTConstants.RPC_CALL_TIMEOUT_MAX);
-		awaitingResponse = true;
 		sentTime = System.currentTimeMillis();
+		
+		
+		stateTransition(EnumSet.of(RPCState.UNSENT), RPCState.SENT);
 		
 		scheduler = srv.getDHT().getScheduler();
 		
@@ -140,81 +160,81 @@ public class RPCCall {
 		timeoutTimer = scheduler.schedule(this::checkStallOrTimeout, expectedRTT*1000+smear, TimeUnit.MICROSECONDS);
 	}
 	
+	
 	void checkStallOrTimeout() {
 		synchronized (this)
 		{
-			if(!awaitingResponse)
+			if(state != RPCState.SENT && state != RPCState.STALLED)
 				return;
-			// we stalled. for accurate measurement we still need to wait out the max timeout.
-			// Start a new timer for the remaining time
+			
 			long elapsed = System.currentTimeMillis() - sentTime;
 			long remaining = DHTConstants.RPC_CALL_TIMEOUT_MAX - elapsed;
-			if(remaining > 0 && !stalled)
+			if(remaining > 0)
 			{
-				onStall();
-				// re-schedule timer, we'll directly detect the timeout based on the stalled flag
+				stateTransition(EnumSet.of(RPCState.SENT), RPCState.STALLED);
+				// re-schedule for failed
 				timeoutTimer = scheduler.schedule(this::checkStallOrTimeout, remaining, TimeUnit.MILLISECONDS);
 			} else {
-				onCallTimeout();
+				stateTransition(EnumSet.of(RPCState.SENT, RPCState.STALLED), RPCState.TIMEOUT);
 			}
 		}
 	}
 
 	void sendFailed() {
-		// fudge it, never sent it in the first place
-		awaitingResponse = true;
-		onCallTimeout();
+		stateTransition(EnumSet.of(RPCState.UNSENT), RPCState.TIMEOUT);
 	}
 
-	private synchronized void onCallResponse (MessageBase rsp) {
-		if(!awaitingResponse)
-			return;
-		awaitingResponse = false;
-		responseTime = System.currentTimeMillis();
-		
-		if (listeners != null) {
-			for (int i = 0; i < listeners.size(); i++) {
-				try	{
-					listeners.get(i).onResponse(this, rsp);
-				} catch (Exception e) {
-					DHT.log(e, LogLevel.Error);
+
+	private void stateTransition(EnumSet<RPCState> expected, RPCState newState) {
+		synchronized (this) {
+			RPCState oldState = state;
+			
+			if(!expected.contains(oldState)) {
+				return;
+			}
+			
+			state = newState;
+
+			
+			switch(newState) {
+				case TIMEOUT:
+					DHT.logDebug("RPCCall timed out ID: " + prettyPrint(reqMsg.getMTID()));
+					break;
+				case ERROR:
+				case RESPONDED:
+					responseTime = System.currentTimeMillis();
+					break;
+				case SENT:
+					break;
+				case STALLED:
+					break;
+				case UNSENT:
+					break;
+				default:
+					break;
+			}
+			
+			
+			for(int i=0;i<listeners.size();i++) {
+				RPCCallListener l = listeners.get(i);
+				l.stateTransition(this, oldState, newState);
+				
+				switch(newState) {
+					case TIMEOUT:
+						l.onTimeout(this);
+						break;
+					case STALLED:
+						l.onStall(this);
+						break;
+					case RESPONDED:
+						l.onResponse(this, rspMsg);
+
 				}
-			}
-		}
-	}
 
-	private synchronized void onCallTimeout () {
-		if(!awaitingResponse)
-			return;
-		awaitingResponse = false;
-		
-		DHT.logDebug("RPCCall timed out ID: " + new String(msg.getMTID()));
+			}
 
-		for (int i = 0; i < listeners.size(); i++) {
-			try {
-				listeners.get(i).onTimeout(this);
-			} catch (Exception e) {
-				DHT.log(e, LogLevel.Error);
-			}
-		}
-	}
-	
-	private synchronized void onStall() {
-		if(!awaitingResponse)
-			return;
-		if(stalled)
-			return;
-		stalled = true;
-		
-		DHT.logDebug("RPCCall stalled ID: " + new String(msg.getMTID()));
-		if (listeners != null) {
-			for (int i = 0; i < listeners.size(); i++) {
-				try {
-					listeners.get(i).onStall(this);
-				} catch (Exception e) {
-					DHT.log(e, LogLevel.Error);
-				}
-			}
+
+			
 		}
 	}
 	
@@ -232,8 +252,12 @@ public class RPCCall {
 		return sentTime;
 	}
 	
-	public boolean wasStalled() {
-		return stalled;
+	public RPCState state() {
+		return state;
+	}
+	
+	public boolean inFlight() {
+		return state != RPCState.TIMEOUT && state != RPCState.RESPONDED;
 	}
 
 }

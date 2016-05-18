@@ -16,8 +16,12 @@
  */
 package lbms.plugins.mldht.kad.tasks;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.KBucket;
@@ -27,7 +31,6 @@ import lbms.plugins.mldht.kad.RPCCall;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.PingRequest;
-import the8472.utils.concurrent.SerializedTaskExecutor;
 
 /**
  * @author Damokles
@@ -38,6 +41,8 @@ public class PingRefreshTask extends Task {
 	private boolean							cleanOnTimeout;
 	boolean									alsoCheckGood	= false;
 	boolean 								probeReplacement = false;
+	Deque<KBucketEntry>				todo;
+	Set<KBucketEntry> visited;
 	private Map<MessageBase, KBucketEntry>	lookupMap;
 	KBucket									bucket;
 
@@ -48,11 +53,11 @@ public class PingRefreshTask extends Task {
 	 * @param cleanOnTimeout if true Nodes that fail to respond are removed. should be false for normal use.
 	 */
 	public PingRefreshTask (RPCServer rpc, Node node, KBucket bucket, boolean cleanOnTimeout) {
-		
-		// TODO: remove target ID/make it optional?
-		super(rpc.getDerivedID(),rpc, node);
+		super(rpc, node);
 		this.cleanOnTimeout = cleanOnTimeout;
-		lookupMap = new HashMap<MessageBase, KBucketEntry>();
+		todo = new ArrayDeque<>();
+		visited = new HashSet<>();
+		lookupMap = new HashMap<>();
 		
 		addBucket(bucket);
 	}
@@ -68,7 +73,7 @@ public class PingRefreshTask extends Task {
 	public void addBucket(KBucket bucket) {
 		if (bucket != null) {
 			if(this.bucket !=null)
-				new IllegalStateException("a bucket already present");
+				throw new IllegalStateException("a bucket already present");
 			this.bucket = bucket;
 			bucket.updateRefreshTimer();
 			for (KBucketEntry e : bucket.getEntries()) {
@@ -118,16 +123,21 @@ public class PingRefreshTask extends Task {
 
 	}
 	
+	@Override
+	public int getTodoCount() {
+		return todo.size();
+	}
 	
-	final Runnable exclusiveUpdate = SerializedTaskExecutor.onceMore(() -> {
+	@Override
+	void update () {
 		if(todo.isEmpty()) {
-			bucket.entriesStream().filter(KBucketEntry::needsPing).filter(e -> !hasVisited(e)).forEach(todo::add);
+			bucket.entriesStream().filter(KBucketEntry::needsPing).filter(e -> !lookupMap.values().contains(e)).forEach(todo::add);
 		}
 		
 		while(!todo.isEmpty() && canDoRequest()) {
-			KBucketEntry e = todo.first();
+			KBucketEntry e = todo.peekFirst();
 
-			if (hasVisited(e) || (!alsoCheckGood && !e.needsPing())) {
+			if (visited.contains(e) || (!alsoCheckGood && !e.needsPing())) {
 				todo.remove(e);
 				continue;
 			}
@@ -135,26 +145,18 @@ public class PingRefreshTask extends Task {
 			PingRequest pr = new PingRequest();
 			pr.setDestination(e.getAddress());
 			
-			if(rpcCall(pr,e.getID(),c -> {
+			if(!rpcCall(pr,e.getID(),c -> {
 				c.builtFromEntry(e);
 				synchronized (lookupMap) {
 					lookupMap.put(pr, e);
 				}
-			})) {
-				visited(e);
+				visited.add(e);
 				todo.remove(e);
+			})) {
+				break;
 			}
 				
 		}
-	});
-	
-
-	/* (non-Javadoc)
-	 * @see lbms.plugins.mldht.kad.Task#update()
-	 */
-	@Override
-	void update () {
-		exclusiveUpdate.run();
 	}
 	
 	@Override

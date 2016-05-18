@@ -22,17 +22,9 @@ import static the8472.utils.Functional.tap;
 import static the8472.utils.Functional.tapThrow;
 import static the8472.utils.Functional.typedGet;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.Function;
-import java.util.stream.Stream;
+import the8472.bencode.PathMatcher;
+import the8472.bencode.Tokenizer;
+import the8472.utils.Functional;
 
 import lbms.plugins.mldht.kad.BloomFilterBEP33;
 import lbms.plugins.mldht.kad.DBItem;
@@ -47,9 +39,18 @@ import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
-import the8472.bencode.PathMatcher;
-import the8472.bencode.Tokenizer;
-import the8472.utils.Functional;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
 /**
  * @author Damokles
@@ -192,6 +193,9 @@ public class MessageDecoder {
 		case PING:
 			msg = new PingResponse(mtid);
 			break;
+		case PUT:
+			msg  = new PutResponse(mtid);
+			break;
 		case ANNOUNCE_PEER:
 			msg = new AnnounceResponse(mtid);
 			break;
@@ -204,6 +208,29 @@ public class MessageDecoder {
 				extractNodes(args, "nodes", DHTtype.IPV4_DHT).ifPresent(n -> m.setNodes(n));
 				extractNodes(args, "nodes6", DHTtype.IPV6_DHT).ifPresent(n -> m.setNodes(n));
 			});
+			break;
+		case GET:
+			
+			GetResponse get = new GetResponse(mtid);
+			
+			extractNodes(args, "nodes", DHTtype.IPV4_DHT).ifPresent(get::setNodes);
+			extractNodes(args, "nodes6", DHTtype.IPV6_DHT).ifPresent(get::setNodes);
+			
+			PathMatcher m = new PathMatcher(Type.RSP_MSG.innerKey(),"v");
+			Tokenizer t = new Tokenizer();
+			m.tokenizer(t);
+			ByteBuffer rawVal = m.match(raw);
+			
+			get.setRawValue(rawVal);
+			
+			typedGet(args, "token", byte[].class).ifPresent(get::setToken);;
+			typedGet(args, "k", byte[].class).ifPresent(get::setKey);
+			typedGet(args, "sig", byte[].class).ifPresent(get::setSignature);
+			typedGet(args, "seq", Long.class).ifPresent(get::setSequenceNumber);
+			
+			
+			msg = get;
+			
 			break;
 		case GET_PEERS:
 			byte[] token = Functional.typedGet(args, "token", byte[].class).orElse(null);
@@ -220,7 +247,7 @@ public class MessageDecoder {
 
 			if(vals.size() > 0)
 			{
-				dbl = new ArrayList<DBItem>(vals.size());
+				dbl = new ArrayList<>(vals.size());
 				for (int i = 0; i < vals.size(); i++)
 				{
 					// only accept ipv4 or ipv6 for now

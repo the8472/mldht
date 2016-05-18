@@ -19,6 +19,27 @@ package lbms.plugins.mldht.kad;
 import static the8472.bencode.Utils.prettyPrint;
 import static the8472.utils.Functional.typedGet;
 
+import the8472.bencode.Tokenizer.BDecodingException;
+import the8472.bencode.Utils;
+
+import lbms.plugins.mldht.kad.DHT.LogLevel;
+import lbms.plugins.mldht.kad.messages.ErrorMessage;
+import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
+import lbms.plugins.mldht.kad.messages.FindNodeResponse;
+import lbms.plugins.mldht.kad.messages.MessageBase;
+import lbms.plugins.mldht.kad.messages.MessageBase.Type;
+import lbms.plugins.mldht.kad.messages.MessageDecoder;
+import lbms.plugins.mldht.kad.messages.MessageException;
+import lbms.plugins.mldht.kad.messages.PingRequest;
+import lbms.plugins.mldht.kad.messages.PingResponse;
+import lbms.plugins.mldht.kad.utils.AddressUtils;
+import lbms.plugins.mldht.kad.utils.ByteWrapper;
+import lbms.plugins.mldht.kad.utils.ResponseTimeoutFilter;
+import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
+import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
+import lbms.plugins.mldht.utils.NIOConnectionManager;
+import lbms.plugins.mldht.utils.Selectable;
+
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -43,26 +64,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-
-import lbms.plugins.mldht.kad.DHT.LogLevel;
-import lbms.plugins.mldht.kad.messages.ErrorMessage;
-import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
-import lbms.plugins.mldht.kad.messages.FindNodeResponse;
-import lbms.plugins.mldht.kad.messages.MessageBase;
-import lbms.plugins.mldht.kad.messages.MessageBase.Type;
-import lbms.plugins.mldht.kad.messages.MessageDecoder;
-import lbms.plugins.mldht.kad.messages.MessageException;
-import lbms.plugins.mldht.kad.messages.PingRequest;
-import lbms.plugins.mldht.kad.messages.PingResponse;
-import lbms.plugins.mldht.kad.utils.AddressUtils;
-import lbms.plugins.mldht.kad.utils.ByteWrapper;
-import lbms.plugins.mldht.kad.utils.ResponseTimeoutFilter;
-import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
-import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
-import lbms.plugins.mldht.utils.NIOConnectionManager;
-import lbms.plugins.mldht.utils.Selectable;
-import the8472.bencode.Tokenizer.BDecodingException;
-import the8472.bencode.Utils;
 
 /**
  * @author The_8472, Damokles
@@ -415,13 +416,14 @@ public class RPCServer {
 										
 			if(c.getRequest().getDestination().equals(msg.getOrigin())) {
 				// remove call first in case of exception
-				calls.remove(new ByteWrapper(msg.getMTID()),c);
-				msg.setAssociatedCall(c);
-				c.response(msg);
+				if(calls.remove(new ByteWrapper(msg.getMTID()),c)) {
+					msg.setAssociatedCall(c);
+					c.response(msg);
 
-				doQueuedCalls();
-				// apply after checking for a proper response
-				handleMessage(msg);
+					doQueuedCalls();
+					// apply after checking for a proper response
+					handleMessage(msg);
+				}
 				
 				return;
 			}
@@ -432,9 +434,13 @@ public class RPCServer {
 			// 4. we're using random 48 bit MTIDs
 			// this happening by chance is exceedingly unlikely
 			
-			// either a bug or an attack -> drop message
+			// indicates either port-mangling NAT, a multhomed host listening on any-local address or some kind of attack
+			// -> ignore response
 			
 			DHT.logError("mtid matched, socket address did not, ignoring message, request: " + c.getRequest().getDestination() + " -> response: " + msg.getOrigin() + " v:"+ msg.getVersion().map(Utils::prettyPrint).orElse(""));
+			
+			// but expect an upcoming timeout if it's really just a misbehaving node
+			c.injectStall();
 			
 			return;
 		}
@@ -483,6 +489,13 @@ public class RPCServer {
 	
 	public InetSocketAddress getConsensusExternalAddress() {
 		return consensusExternalAddress;
+	}
+	
+	public Optional<InetAddress> getCombinedPublicAddress() {
+		InetAddress fromSocket = getPublicAddress();
+		if(fromSocket != null)
+			return Optional.of(fromSocket);
+		return Optional.ofNullable(getConsensusExternalAddress()).map(InetSocketAddress::getAddress);
 	}
 	
 	Queue<Runnable> awaitingDeclog = new ConcurrentLinkedQueue<>();
@@ -832,7 +845,7 @@ public class RPCServer {
 //
 //
 //				associatedCall.setExpectedRTT((long) (configuredRTT + diff * correctionFactor));
-
+				
 				associatedCall.setExpectedRTT(configuredRTT);
 			}
 				

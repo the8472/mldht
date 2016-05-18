@@ -135,14 +135,14 @@ public class Key implements Radixable<Key> {
 		byte[] h2 = k2.hash;
 		
 		int mmi = mismatch(h1, h2);
-
+		
 		if(mmi == -1)
 			return 0;
-
+		
 		int h = Byte.toUnsignedInt(h0[mmi]);
 		int a = Byte.toUnsignedInt(h1[mmi]);
 		int b = Byte.toUnsignedInt(h2[mmi]);
-			
+		
 		return Integer.compareUnsigned(a ^ h, b ^ h);
 	}
 
@@ -502,7 +502,7 @@ public class Key implements Radixable<Key> {
 		
 		for(int i=0;i<10;i++)
 		{
-			Set<Key> s = new HashSet<Key>();
+			Set<Key> s = new HashSet<>();
 			for(int j=0;j<100000;j++)
 				s.add(p.createRandomKeyFromPrefix());
 			long nanoTime = System.nanoTime();

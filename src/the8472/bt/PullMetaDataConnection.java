@@ -16,29 +16,9 @@
  */
 package the8472.bt;
 
-import java.io.BufferedWriter;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
-import java.io.UnsupportedEncodingException;
-import java.net.Inet4Address;
-import java.net.Inet6Address;
-import java.net.InetSocketAddress;
-import java.net.StandardSocketOptions;
-import java.nio.ByteBuffer;
-import java.nio.channels.SelectableChannel;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.SocketChannel;
-import java.util.Arrays;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Consumer;
-import java.util.function.IntFunction;
+import the8472.bencode.BDecoder;
+import the8472.bencode.BEncoder;
+import the8472.bt.MetadataPool.Completion;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -47,9 +27,30 @@ import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
 import lbms.plugins.mldht.utils.Selectable;
-import the8472.bencode.BDecoder;
-import the8472.bencode.BEncoder;
-import the8472.bt.MetadataPool.Completion;
+
+import java.io.BufferedWriter;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetSocketAddress;
+import java.net.StandardSocketOptions;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.IntFunction;
 
 public class PullMetaDataConnection implements Selectable {
 	
@@ -63,18 +64,7 @@ public class PullMetaDataConnection implements Selectable {
 		void onConnect();
 	}
 	
-	public static byte[] preamble;
-	
-	static {
-		 try
-		{
-			preamble = "\u0013BitTorrent protocol".getBytes("ISO-8859-1");
-		} catch (UnsupportedEncodingException e)
-		{
-			// should not happen
-			e.printStackTrace();
-		}
-	}
+	public final static byte[] preamble = "\u0013BitTorrent protocol".getBytes(StandardCharsets.ISO_8859_1);
 
 	
 	public static final byte[] bitfield = new byte[8];
@@ -111,7 +101,7 @@ public class PullMetaDataConnection implements Selectable {
 	NIOConnectionManager		connManager;
 	boolean						incoming;
 	
-	Deque<ByteBuffer>			outputBuffers			= new LinkedList<ByteBuffer>();
+	Deque<ByteBuffer>			outputBuffers			= new LinkedList<>();
 	ByteBuffer					inputBuffer;
 
 	boolean						remoteSupportsFastExtension;
@@ -348,8 +338,8 @@ public class PullMetaDataConnection implements Selectable {
 			if(incoming)
 				sendBTHandshake();
 
-			Map<String,Object> ltepHandshake = new HashMap<String, Object>();
-			Map<String,Object> messages = new HashMap<String, Object>();
+			Map<String,Object> ltepHandshake = new HashMap<>();
+			Map<String,Object> messages = new HashMap<>();
 			ltepHandshake.put("m", messages);
 			ltepHandshake.put("v","mlDHT metadata fetcher");
 			ltepHandshake.put("metadata_size", 0);
@@ -459,7 +449,7 @@ public class PullMetaDataConnection implements Selectable {
 				//if(maxR != null)
 					//maxRequests = maxR.intValue();
 				if(ver != null)
-					remoteClient = new String(ver,"UTF-8");
+					remoteClient = new String(ver,StandardCharsets.UTF_8);
 				if(pexMsgID != null)
 					ltepRemotePexId = pexMsgID.intValue();
 				if(metaMsgID != null && metaLength != null)
@@ -597,7 +587,7 @@ public class PullMetaDataConnection implements Selectable {
 			if(idx < 0)
 				break;
 			
-			Map<String,Object> req = new HashMap<String, Object>();
+			Map<String,Object> req = new HashMap<>();
 			req.put("msg_type", 0);
 			req.put("piece", idx);
 			

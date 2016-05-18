@@ -2,6 +2,9 @@ package the8472.mldht.cli;
 
 import static the8472.utils.Functional.tap;
 
+import the8472.bencode.BDecoder;
+import the8472.bencode.BEncoder;
+
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
@@ -13,9 +16,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import the8472.bencode.BDecoder;
-import the8472.bencode.BEncoder;
+import java.util.stream.Collectors;
 
 public class Client {
 	
@@ -28,7 +29,7 @@ public class Client {
 		
 		String workDir = Paths.get("").toAbsolutePath().normalize().toString();
 		
-		List<String> argsList = Arrays.asList(args);
+		List<byte[]> argsList = Arrays.asList(args).stream().map(s -> s.getBytes(StandardCharsets.UTF_8)).collect(Collectors.toList());
 		Map<String, Object> command = new HashMap<>();
 		command.put("arguments", argsList);
 		command.put("cwd", workDir.getBytes(StandardCharsets.UTF_8));

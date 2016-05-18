@@ -34,14 +34,14 @@ public class PopulationEstimator {
 	
 	
 	static final int					MAX_RAW_HISTORY					= 40;
-	LinkedList<Double> 					rawDistances					= new LinkedList<Double>();
+	LinkedList<Double> 					rawDistances					= new LinkedList<>();
 
 	
 	private ExponentialWeightendMovingAverage						errorEstimate = new ExponentialWeightendMovingAverage().setWeight(0.03).setValue(0.5);
 	private ExponentialWeightendMovingAverage						averageNodeDistanceExp2 = new ExponentialWeightendMovingAverage().setValue(1);
-	private List<PopulationListener>	listeners						= new ArrayList<PopulationListener>(1);
+	private List<PopulationListener>	listeners						= new ArrayList<>(1);
 	private static final int			MAX_RECENT_LOOKUP_CACHE_SIZE	= 40;
-	private Deque<Prefix>				recentlySeenPrefixes			= new LinkedList<Prefix>();
+	private Deque<Prefix>				recentlySeenPrefixes			= new LinkedList<>();
 
 	public long getEstimate () {
 		return (long) (Math.pow(2, averageNodeDistanceExp2.getAverage()));
@@ -62,7 +62,7 @@ public class PopulationEstimator {
 			averageNodeDistanceExp2.setValue(initialValue);
 	}
 	
-	private double distanceToDouble(Key a, Key b) {
+	public static double distanceToDouble(Key a, Key b) {
 		byte[] rawDistance = a.distance(b).getHash();
 		double distance = 0;
 		
@@ -152,7 +152,7 @@ public class PopulationEstimator {
 		}
 		
 		
-		ArrayList<Key> found = new ArrayList<Key>(neighbors);
+		ArrayList<Key> found = new ArrayList<>(neighbors);
 		//found.add(target);
 		Collections.sort(found,new Key.DistanceOrder(target));
 
@@ -261,7 +261,7 @@ public class PopulationEstimator {
 
 			int sizeGoal = 8;
 
-			TreeSet<Key> closestSet = new TreeSet<Key>();
+			TreeSet<Key> closestSet = new TreeSet<>();
 
 			for(int j=0;j<sizeGoal;j++)
 				closestSet.add(keyspace[j]);

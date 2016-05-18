@@ -1,19 +1,17 @@
 package the8472.mldht.cli.commands;
 
-import static the8472.bencode.Utils.buf2str;
-
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ThreadLocalRandom;
+import the8472.mldht.cli.CommandProcessor;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.tasks.NodeLookup;
 import lbms.plugins.mldht.kad.tasks.Task;
-import the8472.mldht.cli.CommandProcessor;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class Burst extends CommandProcessor {
 	
@@ -23,7 +21,7 @@ public class Burst extends CommandProcessor {
 			int count = 50;
 			
 			if(arguments.size() > 0)
-				count = Integer.parseInt(buf2str(ByteBuffer.wrap(arguments.get(0))));
+				count = Integer.parseInt(arguments.get(0));
 			
 			List<DHT> dhts = new ArrayList<>(this.dhts);
 			
@@ -31,7 +29,7 @@ public class Burst extends CommandProcessor {
 			List<NodeLookup> tasks = new ArrayList<>(count);
 			
 			for(int i=0;i<count;i++) {
-				CompletableFuture<Void> future = new CompletableFuture<Void>();
+				CompletableFuture<Void> future = new CompletableFuture<>();
 				futures.add(future);
 				DHT dht = dhts.get(ThreadLocalRandom.current().nextInt(dhts.size()));
 				Optional.ofNullable(dht.getServerManager().getRandomActiveServer(false)).ifPresent(rpc -> {

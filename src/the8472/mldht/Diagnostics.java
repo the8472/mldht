@@ -43,7 +43,7 @@ public class Diagnostics {
 	Collection<DHT> dhts;
 	Path logDir;
 	
-	void init(Collection<DHT> dhts, Path logDir) {
+	public void init(Collection<DHT> dhts, Path logDir) {
 		
 		this.dhts = dhts;
 		this.logDir = logDir;
@@ -94,6 +94,46 @@ public class Diagnostics {
 			formatDatabase(writer, d.getDatabase());
 		}));
 	}
+	
+	/* TODO: fix this
+
+java.lang.IllegalArgumentException: Comparison method violates its general contract!
+	at java.util.TimSort.mergeLo(TimSort.java:777)
+	at java.util.TimSort.mergeAt(TimSort.java:514)
+	at java.util.TimSort.mergeCollapse(TimSort.java:441)
+	at java.util.TimSort.sort(TimSort.java:245)
+	at java.util.Arrays.sort(Arrays.java:1512)
+	at java.util.stream.SortedOps$SizedRefSortingSink.end(SortedOps.java:348)
+	at java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:482)
+	at java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:471)
+	at java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:151)
+	at java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:174)
+	at java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:418)
+	at the8472.mldht.Diagnostics.formatDatabase(Diagnostics.java:102)
+	at the8472.mldht.Diagnostics.lambda$14(Diagnostics.java:91)
+	at java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:184)
+	at java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:175)
+	at java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1374)
+	at java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:481)
+	at java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:471)
+	at java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:151)
+	at java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:174)
+	at java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:418)
+	at the8472.mldht.Diagnostics.lambda$3(Diagnostics.java:89)
+	at the8472.mldht.Diagnostics.writeAndAtomicMove(Diagnostics.java:221)
+	at the8472.mldht.Diagnostics.printDatabases(Diagnostics.java:89)
+	at the8472.mldht.Diagnostics.writeAll(Diagnostics.java:56)
+	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:511)
+	at java.util.concurrent.FutureTask.runAndReset(FutureTask.java:308)
+	at the8472.utils.concurrent.NonblockingScheduledExecutor$SchedF.run(NonblockingScheduledExecutor.java:266)
+	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+	at java.lang.Thread.run(Thread.java:745)
+
+	 
+	 */
 	
 	public void formatDatabase(Appendable writer, Database db) {
 		Map<Key, PeersSeeds> items = db.getData();

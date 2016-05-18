@@ -1,8 +1,18 @@
 package the8472.mldht.cli;
 
-import static the8472.bencode.Utils.buf2str;
 import static the8472.utils.Functional.tap;
 import static the8472.utils.Functional.unchecked;
+
+import the8472.bencode.BEncoder;
+import the8472.mldht.cli.commands.Burst;
+import the8472.mldht.cli.commands.Get;
+import the8472.mldht.cli.commands.GetPeers;
+import the8472.mldht.cli.commands.GetTorrent;
+import the8472.mldht.cli.commands.Help;
+import the8472.mldht.cli.commands.Ping;
+import the8472.mldht.cli.commands.Put;
+
+import lbms.plugins.mldht.kad.DHT;
 
 import java.io.CharArrayWriter;
 import java.io.PrintWriter;
@@ -11,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -19,20 +30,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-
-import lbms.plugins.mldht.kad.DHT;
-import the8472.bencode.BEncoder;
-import the8472.mldht.cli.commands.Burst;
-import the8472.mldht.cli.commands.GetPeers;
-import the8472.mldht.cli.commands.GetTorrent;
-import the8472.mldht.cli.commands.Help;
-import the8472.mldht.cli.commands.Ping;
+import java.util.stream.Collectors;
 
 public abstract class CommandProcessor {
 	
 	protected Consumer<ByteBuffer> writer;
 	protected Collection<DHT> dhts;
-	protected List<byte[]> arguments;
+	protected List<String> arguments;
 	protected Path currentWorkDir = Paths.get("");
 	
 	BooleanSupplier active = () -> true;
@@ -43,10 +47,14 @@ public abstract class CommandProcessor {
 		m.put("HELP", Help.class);
 		m.put("GETTORRENT", GetTorrent.class);
 		m.put("GETPEERS", GetPeers.class);
+		m.put("GET", Get.class);
+		m.put("PUT", Put.class);
 	});
 	
-	public static CommandProcessor from(List<byte[]> args, Consumer<ByteBuffer> writer, Collection<DHT> dhts) {
-		String commandName = args.size() > 0 ? buf2str(ByteBuffer.wrap(args.get(0))).toUpperCase() : "HELP";
+	public static CommandProcessor from(List<byte[]> rawArgs, Consumer<ByteBuffer> writer, Collection<DHT> dhts) {
+		List<String> args = rawArgs.stream().map(b -> new String(b, StandardCharsets.UTF_8)).collect(Collectors.toCollection(ArrayList::new));
+		
+		String commandName = args.size() > 0 ? args.get(0).toUpperCase() : "HELP";
 		Class<? extends CommandProcessor> clazz = Optional.<Class<? extends CommandProcessor>>ofNullable(SUPPORTED_COMMANDS.get(commandName)).orElse(Help.class);
 		
 		CommandProcessor proc = unchecked(() -> clazz.newInstance());

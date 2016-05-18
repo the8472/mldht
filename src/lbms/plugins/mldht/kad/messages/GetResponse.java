@@ -54,7 +54,7 @@ public class GetResponse extends AbstractLookupResponse {
 	public void setSequenceNumber(long sequenceNumber) {
 		this.sequenceNumber = sequenceNumber;
 	}
-	public byte[] getKey() {
+	public byte[] getPubkey() {
 		return key;
 	}
 	public void setKey(byte[] key) {

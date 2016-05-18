@@ -18,29 +18,6 @@ package lbms.plugins.mldht.kad;
 
 import static the8472.bencode.Utils.prettyPrint;
 
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.net.Inet4Address;
-import java.net.Inet6Address;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.ProtocolFamily;
-import java.net.SocketException;
-import java.net.StandardProtocolFamily;
-import java.nio.ByteBuffer;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.kad.GenericStorage.StorageItem;
 import lbms.plugins.mldht.kad.GenericStorage.UpdateResult;
@@ -75,6 +52,33 @@ import lbms.plugins.mldht.kad.utils.ByteWrapper;
 import lbms.plugins.mldht.kad.utils.PopulationEstimator;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
 
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ProtocolFamily;
+import java.net.SocketException;
+import java.net.StandardProtocolFamily;
+import java.nio.ByteBuffer;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
 /**
  * @author Damokles
  * 
@@ -102,7 +106,7 @@ public class DHT implements DHTBase {
 			this.MAX_PACKET_SIZE = maxSize;
 			this.PROTO_FAMILY = family;
 		}
-
+		
 		public boolean canUseSocketAddress(InetSocketAddress addr) {
 			return PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress());
 		}
@@ -139,8 +143,14 @@ public class DHT implements DHTBase {
 	}
 
 	private boolean							running;
+	
+	enum BootstrapState {
+		NONE,
+		BOOTSTRAP,
+		FILL
+	}
 
-	private boolean							bootstrapping;
+	private AtomicReference<BootstrapState>	bootstrapping = new AtomicReference<>(BootstrapState.NONE);
 	private long							lastBootstrap;
 
 	DHTConfiguration						config;
@@ -522,12 +532,8 @@ public class DHT implements DHTBase {
 		}
 		
 		// reuse the same server to make sure our tokens are still valid
-		AnnounceTask announce = new AnnounceTask(lookup.getRPC(), node, lookup.getInfoHash(), btPort);
+		AnnounceTask announce = new AnnounceTask(lookup.getRPC(), node, lookup.getInfoHash(), btPort, lookup.getAnnounceCanidates());
 		announce.setSeed(isSeed);
-		for (KBucketEntryAndToken kbe : lookup.getAnnounceCanidates())
-		{
-			announce.addToTodo(kbe);
-		}
 
 		tman.addTask(announce);
 
@@ -630,7 +636,7 @@ public class DHT implements DHTBase {
 		
 		table_file = config.getStoragePath().resolve(type.shortName+"-table.cache");
 
-		setStatus(DHTStatus.Initializing);
+		setStatus(DHTStatus.Stopped, DHTStatus.Initializing);
 		stats.resetStartedTimestamp();
 
 		logInfo("Starting DHT on port " + getPort());
@@ -660,62 +666,7 @@ public class DHT implements DHTBase {
 		serverManager.refresh(System.currentTimeMillis());
 		
 		
-		bootstrapping = true;
-		
-		
 		started();
-
-
-		
-//		// does 10k random lookups and prints them to a file for analysis
-//		scheduler.schedule(new Runnable() {
-//			//PrintWriter		pw;
-//			TaskListener	li	= new TaskListener() {
-//									public synchronized void finished(Task t) {
-//										NodeLookup nl = ((NodeLookup) t);
-//										if (nl.closestSet.size() < DHTConstants.MAX_ENTRIES_PER_BUCKET)
-//											return;
-//										/*
-//										StringBuilder b = new StringBuilder();
-//										b.append(nl.targetKey.toString(false));
-//										b.append(",");
-//										for (Key i : nl.closestSet)
-//											b.append(i.toString(false).substring(0, 12) + ",");
-//										b.deleteCharAt(b.length() - 1);
-//										pw.println(b);
-//										pw.flush();
-//										*/
-//									}
-//								};
-//
-//			public void run() {
-//				if(type == DHTtype.IPV6_DHT)
-//					return;
-//				/*
-//				try
-//				{
-//					pw = new PrintWriter("H:\\mldht.log");
-//				} catch (FileNotFoundException e)
-//				{
-//					e.printStackTrace();
-//				}*/
-//				for (int i = 0; i < 10000; i++)
-//				{
-//					NodeLookup l = new NodeLookup(Key.createRandomKey(), srv, node, false);
-//					if (canStartTask())
-//						l.start();
-//					tman.addTask(l);
-//					l.addListener(li);
-//					if (i == (10000 - 1))
-//						l.addListener(new TaskListener() {
-//							public void finished(Task t) {
-//								System.out.println("10k lookups done");
-//							}
-//						});
-//				}
-//			}
-//		}, 1, TimeUnit.MINUTES);
-		
 
 	}
 	
@@ -737,7 +688,6 @@ public class DHT implements DHTBase {
 			
 		
 		
-		bootstrapping = false;
 		bootstrap();
 		
 		/*
@@ -796,7 +746,7 @@ public class DHT implements DHTBase {
 		scheduledActions.add(scheduler.scheduleWithFixedDelay(() -> {
 			try {
 				for(RPCServer srv : serverManager.getAllServers())
-					findNode(Key.createRandomKey(), false, false, srv).setInfo("Random Refresh Lookup");
+					findNode(Key.createRandomKey(), false, false, srv, t -> t.setInfo("Random Refresh Lookup"));
 			} catch (RuntimeException e1) {
 				log(e1, LogLevel.Fatal);
 			}
@@ -847,7 +797,8 @@ public class DHT implements DHTBase {
 		node = null;
 		cache = null;
 		serverManager = null;
-		setStatus(DHTStatus.Stopped);
+		setStatus(DHTStatus.Initializing, DHTStatus.Stopped);
+		setStatus(DHTStatus.Running, DHTStatus.Stopped);
 	}
 
 	/*
@@ -899,39 +850,41 @@ public class DHT implements DHTBase {
 
 		node.doBucketChecks(now);
 
-		if (!bootstrapping) {
-			if (node.getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS || now - lastBootstrap > DHTConstants.SELF_LOOKUP_INTERVAL) {
-				//regualary search for our id to update routing table
-				bootstrap();
-			} else {
-				setStatus(DHTStatus.Running);
-			}
+		if (node.getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS || now - lastBootstrap > DHTConstants.SELF_LOOKUP_INTERVAL) {
+			//regualary search for our id to update routing table
+			bootstrap();
+		} else {
+			setStatus(DHTStatus.Initializing, DHTStatus.Running);
 		}
 
 		
 	}
 	
+	private Collection<InetSocketAddress> bootstrapAddresses = Collections.emptyList();
+	
 	
 	private void resolveBootstrapAddresses() {
 		List<InetSocketAddress> nodeAddresses =  new ArrayList<>();
-		for(int i = 0;i<DHTConstants.BOOTSTRAP_NODES.length;i++)
-		{
-			try {
-				String hostname = DHTConstants.BOOTSTRAP_NODES[i];
-				int port = DHTConstants.BOOTSTRAP_PORTS[i];
-			
-
-				 for(InetAddress addr : InetAddress.getAllByName(hostname))
-				 {
-					 nodeAddresses.add(new InetSocketAddress(addr, port));
-				 }
-			} catch (Exception e) {
-				// do nothing
+		
+		try {
+			for(InetSocketAddress unres : DHTConstants.UNRESOLVED_BOOTSTRAP_NODES) {
+				for(InetAddress addr : InetAddress.getAllByName(unres.getHostString())) {
+					if(type.canUseAddress(addr))
+						nodeAddresses.add(new InetSocketAddress(addr, unres.getPort()));
+				}
+				
 			}
+			
+		} catch(Exception e) {
+			DHT.log(e, LogLevel.Error);
+			return;
 		}
 		
-		if(nodeAddresses.size() > 0)
-			DHTConstants.BOOTSTRAP_NODE_ADDRESSES = nodeAddresses;
+		bootstrapAddresses = nodeAddresses;
+	}
+	
+	Collection<InetSocketAddress> getBootStrapNodes() {
+		return bootstrapAddresses;
 	}
 
 	/**
@@ -943,92 +896,96 @@ public class DHT implements DHTBase {
 	 * to fill the Buckets.
 	 */
 	public synchronized void bootstrap () {
-		if (!isRunning() || bootstrapping || System.currentTimeMillis() - lastBootstrap < DHTConstants.BOOTSTRAP_MIN_INTERVAL) {
+		if (!isRunning() || System.currentTimeMillis() - lastBootstrap < DHTConstants.BOOTSTRAP_MIN_INTERVAL) {
 			return;
 		}
 		
-		if (useRouterBootstrapping || node.getNumEntriesInRoutingTable() > 1) {
+		if(!bootstrapping.compareAndSet(BootstrapState.NONE, BootstrapState.FILL))
+			return;
+		
+		if (useRouterBootstrapping && node.getNumEntriesInRoutingTable() < DHTConstants.USE_BT_ROUTER_IF_LESS_THAN_X_PEERS) {
+			resolveBootstrapAddresses();
+			Collection<InetSocketAddress> addrs = bootstrapAddresses;
 			
-			final AtomicInteger finishCount = new AtomicInteger();
-			bootstrapping = true;
-			
-			TaskListener bootstrapListener = t -> {
-				int count = finishCount.decrementAndGet();
-				if(count == 0)
-					bootstrapping = false;
-				// fill the remaining buckets once all bootstrap operations finished
-				if (count == 0 && running && node.getNumEntriesInRoutingTable() > DHTConstants.USE_BT_ROUTER_IF_LESS_THAN_X_PEERS) {
-					node.fillBuckets(DHT.this);
-				}
-			};
-
-			logInfo("Bootstrapping...");
-			lastBootstrap = System.currentTimeMillis();
-
-			for(RPCServer srv : serverManager.getAllServers())
-			{
-				finishCount.incrementAndGet();
-				NodeLookup nl = findNode(srv.getDerivedID(), true, true, srv);
-				if (nl == null) {
-					bootstrapping = false;
-					break;
-				} else if (node.getNumEntriesInRoutingTable() < DHTConstants.USE_BT_ROUTER_IF_LESS_THAN_X_PEERS) {
-					if (useRouterBootstrapping) {
-						resolveBootstrapAddresses();
-						List<InetSocketAddress> addrs = new ArrayList<InetSocketAddress>(DHTConstants.BOOTSTRAP_NODE_ADDRESSES);
-						Collections.shuffle(addrs);
-						
-						for (InetSocketAddress addr : addrs)
-						{
-							if (!type.PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress()))
-								continue;
-							nl.addDHTNode(addr.getAddress(),addr.getPort());
-							break;
+			for(InetSocketAddress addr : addrs) {
+				if (!type.PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress()))
+					continue;
+				RPCCall c = new RPCCall(new FindNodeRequest(Key.createRandomKey()));
+				RPCServer srv = serverManager.getRandomActiveServer(true);
+				c.addListener(new RPCCallListener() {
+					@Override
+					public void stateTransition(RPCCall c, RPCState previous, RPCState current) {
+						if(current == RPCState.RESPONDED) {
+							MessageBase b =  c.getResponse();
+							if(b instanceof FindNodeResponse) {
+								fillHomeBuckets(((FindNodeResponse) b).getNodes(getType()).entries().collect(Collectors.toList()));
+							}
 						}
+						
+						if(current == RPCState.TIMEOUT || current == RPCState.RESPONDED)
+							bootstrapping.compareAndSet(BootstrapState.BOOTSTRAP.FILL, BootstrapState.NONE);
 					}
-					nl.addListener(bootstrapListener);
-					nl.setInfo("Bootstrap: Find Peers.");
-
-					tman.dequeue();
-
-				} else {
-					nl.setInfo("Bootstrap: search for ourself.");
-					nl.addListener(bootstrapListener);
-					tman.dequeue();
-				}
-				
+				});
+				srv.doCall(c);
 			}
+		} else if(node.getNumEntriesInRoutingTable() > 0) {
+			fillHomeBuckets(Collections.emptyList());
 		}
+
+	}
+	
+	void fillHomeBuckets(Collection<KBucketEntry> entries) {
+		bootstrapping.set(BootstrapState.BOOTSTRAP);
+		
+		final AtomicInteger taskCount = new AtomicInteger();
+		
+		TaskListener bootstrapListener = t -> {
+			int count = taskCount.decrementAndGet();
+			if(count == 0) {
+				bootstrapping.set(BootstrapState.NONE); ;
+				lastBootstrap = System.currentTimeMillis();
+			}
+				
+			// fill the remaining buckets once all bootstrap operations finished
+			if (count == 0 && running && node.getNumEntriesInRoutingTable() > DHTConstants.USE_BT_ROUTER_IF_LESS_THAN_X_PEERS) {
+				node.fillBuckets();
+			}
+		};
+		
+		for(RPCServer srv : serverManager.getAllServers()) {
+			findNode(srv.getDerivedID(), true, true, srv, t -> {
+				taskCount.incrementAndGet();
+				t.setInfo("Bootstrap: lookup for self");
+				t.addListener(bootstrapListener);
+			});
+		}
+		
+		if(taskCount.get() == 0)
+			bootstrapping.set(BootstrapState.NONE);
+		
 	}
 
-	private NodeLookup findNode (Key id, boolean isBootstrap,
-			boolean isPriority, RPCServer server) {
+	private void findNode (Key id, boolean isBootstrap,
+			boolean isPriority, RPCServer server, Consumer<NodeLookup> configureTask) {
 		if (!running || server == null) {
-			return null;
+			return;
 		}
 
 		NodeLookup at = new NodeLookup(id, server, node, isBootstrap);
+		if(configureTask != null)
+			configureTask.accept(at);
 		tman.addTask(at, isPriority);
-		return at;
 	}
 
-	/**
-	 * Do a NodeLookup.
-	 * 
-	 * @param id The id of the key to search
-	 */
-	public NodeLookup findNode (Key id) {
-		return findNode(id, false, false,serverManager.getRandomActiveServer(true));
-	}
 
 	/*
 	 * (non-Javadoc)
 	 * 
 	 * @see lbms.plugins.mldht.kad.DHTBase#fillBucket(lbms.plugins.mldht.kad.KBucket)
 	 */
-	public NodeLookup fillBucket (Key id, KBucket bucket) {
+	public void fillBucket (Key id, KBucket bucket, Consumer<NodeLookup> configure) {
 		bucket.updateRefreshTimer();
-		return findNode(id, false, true, serverManager.getRandomActiveServer(true));
+		findNode(id, false, true, serverManager.getRandomActiveServer(true), configure);
 	}
 
 	public void sendError (MessageBase origMsg, int code, String msg) {
@@ -1065,15 +1022,15 @@ public class DHT implements DHTBase {
 		}
 	}
 
-	private void setStatus (DHTStatus status) {
-		if (!this.status.equals(status)) {
+	private void setStatus (DHTStatus expected, DHTStatus newStatus) {
+		if (this.status.equals(expected)) {
 			DHTStatus old = this.status;
-			this.status = status;
+			this.status = newStatus;
 			if (!statusListeners.isEmpty())
 			{
 				for (int i = 0; i < statusListeners.size(); i++)
 				{
-					statusListeners.get(i).statusChanged(status, old);
+					statusListeners.get(i).statusChanged(newStatus, old);
 				}
 			}
 		}

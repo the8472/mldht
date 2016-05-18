@@ -210,4 +210,11 @@ public class AddressUtils {
 		}
 	}
 	
+	public static String toString(InetSocketAddress sockAddr) {
+		InetAddress addr = sockAddr.getAddress();
+		if(addr instanceof Inet6Address)
+			return String.format("%40s:%-5d", "[" + addr.getHostAddress() + "]", sockAddr.getPort());
+		return String.format("%15s:%-5d", addr.getHostAddress(), sockAddr.getPort());
+	}
+	
 }

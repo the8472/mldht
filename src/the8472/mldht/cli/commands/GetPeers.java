@@ -1,8 +1,13 @@
 package the8472.mldht.cli.commands;
 
-import static the8472.bencode.Utils.buf2str;
+import the8472.mldht.cli.CommandProcessor;
+import the8472.mldht.cli.ParseArgs;
 
-import java.nio.ByteBuffer;
+import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.tasks.PeerLookupTask;
+import lbms.plugins.mldht.utils.NIOConnectionManager;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -13,12 +18,6 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import lbms.plugins.mldht.kad.DHT;
-import lbms.plugins.mldht.kad.Key;
-import lbms.plugins.mldht.kad.tasks.PeerLookupTask;
-import lbms.plugins.mldht.utils.NIOConnectionManager;
-import the8472.mldht.cli.CommandProcessor;
-
 public class GetPeers extends CommandProcessor {
 	
 	NIOConnectionManager conMan;
@@ -28,8 +27,9 @@ public class GetPeers extends CommandProcessor {
 	@Override
 	protected void process() {
 		
+		boolean fast = ParseArgs.extractBool(arguments, "-fast");
+		
 		List<Key> hashes = arguments.stream()
-				.map(bytes -> buf2str(ByteBuffer.wrap(bytes)))
 				.filter(Key.STRING_PATTERN.asPredicate())
 				.map(st -> new Key(st))
 				.collect(Collectors.toCollection(ArrayList::new));
@@ -47,6 +47,7 @@ public class GetPeers extends CommandProcessor {
 				PeerLookupTask t = new PeerLookupTask(d, dht.getNode(), h);
 				
 				t.setNoAnnounce(true);
+				t.setFastTerminate(fast);
 				
 				counter.incrementAndGet();
 				
@@ -54,6 +55,8 @@ public class GetPeers extends CommandProcessor {
 					if(counter.decrementAndGet() == 0)
 						exit(0);
 				});
+				
+				//t.useCache(false);
 				
 				t.setResultHandler(item -> {
 					Formatter f = new Formatter();

@@ -19,17 +19,17 @@ package lbms.plugins.mldht.kad;
 import static the8472.bencode.Utils.prettyPrint;
 import static the8472.utils.Functional.typedGet;
 
+import lbms.plugins.mldht.kad.utils.AddressUtils;
+import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
+
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
-
-import lbms.plugins.mldht.kad.DHT.DHTtype;
-import lbms.plugins.mldht.kad.utils.AddressUtils;
-import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
 
 /**
  * Entry in a KBucket, it basically contains an ip_address of a node,
@@ -87,7 +87,7 @@ public class KBucketEntry {
 	private long lastSendTime = -1;
 
 	
-	public static KBucketEntry fromBencoded(Map<String, Object> serialized, DHTtype expectedType) {
+	public static KBucketEntry fromBencoded(Map<String, Object> serialized) {
 		
 		InetSocketAddress addr = typedGet(serialized, "addr", byte[].class).map(AddressUtils::unpackAddress).orElseThrow(() -> new IllegalArgumentException("address missing"));
 		Key id = typedGet(serialized, "id", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).map(Key::new).orElseThrow(() -> new IllegalArgumentException("key missing"));
@@ -129,6 +129,8 @@ public class KBucketEntry {
 	 * @param id ID of node
 	 */
 	public KBucketEntry (InetSocketAddress addr, Key id) {
+		Objects.requireNonNull(addr);
+		Objects.requireNonNull(id);
 		lastSeen = System.currentTimeMillis();
 		timeCreated = lastSeen;
 		this.addr = addr;
@@ -142,6 +144,8 @@ public class KBucketEntry {
 	 * @param timestamp the timestamp when this node last responded
 	 */
 	public KBucketEntry (InetSocketAddress addr, Key id, long timestamp) {
+		Objects.requireNonNull(addr);
+		Objects.requireNonNull(id);
 		lastSeen = timestamp;
 		timeCreated = System.currentTimeMillis();
 		this.addr = addr;
@@ -199,7 +203,7 @@ public class KBucketEntry {
 	public Key getID () {
 		return nodeID;
 	}
-
+	
 	/**
      * @param version the version to set
      */

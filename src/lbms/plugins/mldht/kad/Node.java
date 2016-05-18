@@ -25,6 +25,21 @@ import static lbms.plugins.mldht.kad.Node.InsertOptions.RELAXED_SPLIT;
 import static lbms.plugins.mldht.kad.Node.InsertOptions.REMOVE_IF_FULL;
 import static the8472.utils.Functional.typedGet;
 
+import the8472.bencode.BEncoder;
+import the8472.utils.CowSet;
+import the8472.utils.Pair;
+import the8472.utils.concurrent.SerializedTaskExecutor;
+import the8472.utils.io.NetMask;
+
+import lbms.plugins.mldht.DHTConfiguration;
+import lbms.plugins.mldht.kad.DHT.LogLevel;
+import lbms.plugins.mldht.kad.messages.MessageBase;
+import lbms.plugins.mldht.kad.messages.MessageBase.Type;
+import lbms.plugins.mldht.kad.tasks.PingRefreshTask;
+import lbms.plugins.mldht.kad.tasks.Task;
+import lbms.plugins.mldht.kad.utils.AddressUtils;
+import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -58,21 +73,6 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-
-import lbms.plugins.mldht.DHTConfiguration;
-import lbms.plugins.mldht.kad.DHT.LogLevel;
-import lbms.plugins.mldht.kad.messages.MessageBase;
-import lbms.plugins.mldht.kad.messages.MessageBase.Type;
-import lbms.plugins.mldht.kad.tasks.NodeLookup;
-import lbms.plugins.mldht.kad.tasks.PingRefreshTask;
-import lbms.plugins.mldht.kad.tasks.Task;
-import lbms.plugins.mldht.kad.utils.AddressUtils;
-import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
-import the8472.bencode.BEncoder;
-import the8472.utils.CowSet;
-import the8472.utils.Pair;
-import the8472.utils.concurrent.SerializedTaskExecutor;
-import the8472.utils.io.NetMask;
 
 
 /**
@@ -404,8 +404,10 @@ public class Node {
 		num_receives++;
 	}
 	
+	// -1 token per minute, 60 saturation, 30 threshold
+	// if we see more than 1 per minute then it'll take 30 minutes until an unsolicited request can go into a replacement bucket again
 	public static final long throttleIncrement = 10;
-	public static final long throttleSaturation = 1000;
+	public static final long throttleSaturation = 60;
 	public static final long throttleThreshold = 30;
 	public static final long throttleUpdateIntervalMinutes = 1;
 	
@@ -673,7 +675,7 @@ public class Node {
 			for (KBucketEntry entry : entries)
 			{
 				// remove really old entries, ourselves and bootstrap nodes if the bucket is full
-				if (localIds.contains(entry.getID()) || (wasFull && DHTConstants.BOOTSTRAP_NODE_ADDRESSES.contains(entry.getAddress()))) {
+				if (localIds.contains(entry.getID()) || (wasFull && dht.getBootStrapNodes().contains(entry.getAddress()))) {
 					b.removeEntryIfBad(entry, true);
 					continue;
 				}
@@ -853,7 +855,7 @@ public class Node {
 	 *
 	 * @param dh_table
 	 */
-	public void fillBuckets (DHTBase dh_table) {
+	public void fillBuckets () {
 		RoutingTable table = routingTableCOW;
 
 		for (int i = 0;i<table.size();i++) {
@@ -865,10 +867,9 @@ public class Node {
 			// not empty ones, they may arise as artifacts from deep splitting
 			if (num > 0 && num < DHTConstants.MAX_ENTRIES_PER_BUCKET) {
 
-				NodeLookup nl = dh_table.fillBucket(entry.prefix.createRandomKeyFromPrefix(), entry.bucket);
-				if (nl != null) {
-					nl.setInfo("Filling Bucket #" + entry.prefix);
-				}
+				dht.fillBucket(entry.prefix.createRandomKeyFromPrefix(), entry.bucket, t -> {
+					t.setInfo("Filling Bucket #" + entry.prefix);
+				});
 			}
 		}
 	}
@@ -920,8 +921,6 @@ public class Node {
 	
 	void initKey(DHTConfiguration config)
 	{
-		// TODO: refactor into an external key-supplier?
-		
 		if(config != null && config.isPersistingID()) {
 			Path keyPath = config.getStoragePath().resolve("baseID.config");
 			File keyFile = keyPath.toFile();

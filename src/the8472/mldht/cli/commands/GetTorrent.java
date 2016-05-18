@@ -1,7 +1,15 @@
 package the8472.mldht.cli.commands;
 
-import static the8472.bencode.Utils.buf2str;
 import static the8472.utils.Functional.awaitAll;
+
+import the8472.bt.TorrentUtils;
+import the8472.mldht.TorrentFetcher;
+import the8472.mldht.TorrentFetcher.FetchState;
+import the8472.mldht.TorrentFetcher.FetchTask;
+import the8472.mldht.cli.CommandProcessor;
+
+import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.utils.NIOConnectionManager;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -15,14 +23,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.stream.Collectors;
 
-import lbms.plugins.mldht.kad.Key;
-import lbms.plugins.mldht.utils.NIOConnectionManager;
-import the8472.bt.TorrentUtils;
-import the8472.mldht.TorrentFetcher;
-import the8472.mldht.TorrentFetcher.FetchState;
-import the8472.mldht.TorrentFetcher.FetchTask;
-import the8472.mldht.cli.CommandProcessor;
-
 public class GetTorrent extends CommandProcessor {
 	
 	NIOConnectionManager conMan;
@@ -33,7 +33,7 @@ public class GetTorrent extends CommandProcessor {
 	protected void process() {
 		TorrentFetcher fetcher = new TorrentFetcher(dhts);
 		
-		List<CompletionStage<FetchTask>> tasks = arguments.stream().map(bytes -> buf2str(ByteBuffer.wrap(bytes))).filter(Key.STRING_PATTERN.asPredicate()).map(hash -> {
+		List<CompletionStage<FetchTask>> tasks = arguments.stream().filter(Key.STRING_PATTERN.asPredicate()).map(hash -> {
 			Key targetKey = new Key(hash);
 			
 			FetchTask task = fetcher.fetch(targetKey);

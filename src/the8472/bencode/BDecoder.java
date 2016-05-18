@@ -134,6 +134,10 @@ public class BDecoder {
 		throw new RuntimeException("expected dictionary as root object");
 	}
 	
+	public Object decodeAny(ByteBuffer buf) {
+		return decodeInternal(buf);
+	}
+	
 	final Tokenizer t;
 	final Consumer c;
 	

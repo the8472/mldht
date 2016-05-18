@@ -21,7 +21,6 @@ import java.util.HashSet;
 import java.util.Set;
 
 import lbms.plugins.mldht.kad.DHT.DHTtype;
-import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.Node;
@@ -41,52 +40,48 @@ import lbms.plugins.mldht.kad.messages.MessageBase.Type;
  */
 public class KeyspaceCrawler extends Task {
 	
-	Set<InetSocketAddress> responded = new HashSet<InetSocketAddress>();
+	Set<InetSocketAddress> responded = new HashSet<>();
+	Set<KBucketEntry> todo = new HashSet<>();
+	Set<InetSocketAddress> visited = new HashSet<>();
 	
 	KeyspaceCrawler (RPCServer rpc, Node node) {
-		super(Key.createRandomKey(),rpc, node);
+		super(rpc, node);
 		setInfo("Exhaustive Keyspace Crawl");
 		addListener(t -> done());
 	}
+	
+	@Override
+	public int getTodoCount() {
+		// TODO Auto-generated method stub
+		return 0;
+	}
 
 	@Override
-	synchronized void update () {
+	void update () {
 		// go over the todo list and send find node calls
 		// until we have nothing left
-		synchronized (todo) {
 
 			while (canDoRequest()) {
-				KBucketEntry e;
-				synchronized (todo)
-				{
-					e = todo.pollFirst();
-				}
+				synchronized (todo) {
+
+				KBucketEntry e = todo.stream().findAny().orElse(null);
+				if(e == null)
+					break;
 				
-				// only send a findNode if we haven't allready visited the node
-				if (hasVisited(e))
+				if (visited.contains(e.getAddress()))
 					continue;
 				
 				// send a findNode to the node
 				FindNodeRequest fnr;
 
 				fnr = new FindNodeRequest(Key.createRandomKey());
-				fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV4_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
-				fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV6_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
+				fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT);
+				fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT);
 				fnr.setDestination(e.getAddress());
-				rpcCall(fnr,e.getID(),null);
-
-
-				if(canDoRequest())
-				{
-					fnr = new FindNodeRequest(e.getID());
-					fnr.setWant4(rpc.getDHT().getType() == DHTtype.IPV4_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV4_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
-					fnr.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT || rpc.getDHT().getSiblings().stream().anyMatch(sib -> sib.getType() == DHTtype.IPV6_DHT && sib.getNode().getNumEntriesInRoutingTable() < DHTConstants.BOOTSTRAP_IF_LESS_THAN_X_PEERS));
-					fnr.setDestination(e.getAddress());
-					rpcCall(fnr,e.getID(),null);
-				}
-
-				visited(e);
-				
+				rpcCall(fnr,e.getID(), c -> {
+					todo.remove(e);
+					visited.add(e.getAddress());
+				});
 			}
 		}
 	}
@@ -98,51 +93,29 @@ public class KeyspaceCrawler extends Task {
 		}
 
 		// check the response and see if it is a good one
-		if (rsp.getMethod() == Method.FIND_NODE
-				&& rsp.getType() == Type.RSP_MSG) {
+		if (rsp.getMethod() != Method.FIND_NODE || rsp.getType() != Type.RSP_MSG)
+			return;
 
-			FindNodeResponse fnr = (FindNodeResponse) rsp;
-			
-			responded.add(fnr.getOrigin());
-			
-			for (DHTtype type : DHTtype.values())
-			{
-				NodeList nodes = fnr.getNodes(type);
-				if (nodes == null)
-					continue;
+		FindNodeResponse fnr = (FindNodeResponse) rsp;
 
-				if (type == rpc.getDHT().getType())
-				{
-					synchronized (todo)
-					{
-						nodes.entries().forEach(e -> {
-							if (!node.isLocalId(e.getID()) && !todo.contains(e) && !hasVisited(e))
-								todo.add(e);
-						});
-					}
-				} else
-				{
-					rpc.getDHT().getSiblings().stream().filter(sib -> sib.getType() == type).forEach(sib -> {
-						nodes.entries().forEach(e -> {
-							sib.addDHTNode(e.getAddress().getAddress().getHostAddress(), e.getAddress().getPort());
-						});
-					});
-				}
-			}
+		responded.add(fnr.getOrigin());
 
-
+		NodeList nodes = fnr.getNodes(rpc.getDHT().getType());
+		if (nodes == null)
+			return;
+		
+		synchronized (todo)
+		{
+			nodes.entries().filter(e -> !node.isLocalId(e.getID()) && !todo.contains(e) && visited.contains(e.getAddress())).forEach(todo::add);
 		}
+
+
 	}
 	
 	@Override
-	boolean canDoRequest() {
-		return getNumOutstandingRequestsExcludingStalled() < DHTConstants.MAX_CONCURRENT_REQUESTS * 5;
-	}
-	
-	@Override
-	public
-	void kill() {
-		// do nothing to evade safeties
+	public int requestConcurrency() {
+		// TODO Auto-generated method stub
+		return super.requestConcurrency() * 5;
 	}
 	
 	@Override

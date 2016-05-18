@@ -1,13 +1,6 @@
 package the8472.mldht.cli.commands;
 
-import static the8472.bencode.Utils.buf2str;
-
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import the8472.mldht.cli.CommandProcessor;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.RPCCall;
@@ -15,7 +8,13 @@ import lbms.plugins.mldht.kad.RPCCallListener;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.PingRequest;
-import the8472.mldht.cli.CommandProcessor;
+
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.util.Optional;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Ping extends CommandProcessor {
 	
@@ -37,8 +36,8 @@ public class Ping extends CommandProcessor {
 		int port;
 		
 		try {
-			String ip = buf2str(ByteBuffer.wrap(arguments.get(0)));
-			port = Integer.valueOf(buf2str(ByteBuffer.wrap(arguments.get(1))));
+			String ip = arguments.get(0);
+			port = Integer.valueOf(arguments.get(1));
 			
 			addr = InetAddress.getByName(ip);
 		} catch (Exception e) {
@@ -57,9 +56,17 @@ public class Ping extends CommandProcessor {
 		if(!isRunning())
 			return;
 		
-		DHT dht = dhts.stream().filter(d -> d.getType().PREFERRED_ADDRESS_TYPE == target.getAddress().getClass()).findAny().get();
+		Optional<DHT> dht = dhts.stream().filter(d -> d.getType().PREFERRED_ADDRESS_TYPE == target.getAddress().getClass()).findAny();
 		
-		RPCServer srv = dht.getServerManager().getRandomActiveServer(true);
+		
+		if(!dht.isPresent()) {
+			printErr("no dht with an address type matching " + target.getAddress() + " found");
+			exit(1);
+		}
+		
+		
+		
+		RPCServer srv = dht.get().getServerManager().getRandomActiveServer(true);
 		PingRequest req = new PingRequest();
 		req.setDestination(target);
 		RPCCall call = new RPCCall(req);

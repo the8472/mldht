@@ -16,6 +16,8 @@
  */
 package lbms.plugins.mldht.kad;
 
+import lbms.plugins.mldht.kad.messages.MessageBase;
+
 import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.util.ArrayList;
@@ -27,8 +29,6 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
-
-import lbms.plugins.mldht.kad.messages.MessageBase;
 
 public class AnnounceNodeCache {
 	
@@ -44,15 +44,15 @@ public class AnnounceNodeCache {
 	private static class CacheBucket {
 	
 		Prefix prefix;
-		ConcurrentLinkedQueue<KBucketEntry> entries = new ConcurrentLinkedQueue<KBucketEntry>();
+		ConcurrentLinkedQueue<KBucketEntry> entries = new ConcurrentLinkedQueue<>();
 		
 		public CacheBucket(Prefix p) {
 			prefix = p;
 		}
 	}
 	
-	ConcurrentSkipListMap<Key, CacheAnchorPoint> anchors = new ConcurrentSkipListMap<Key,CacheAnchorPoint>();
-	ConcurrentSkipListMap<Key, CacheBucket> cache = new ConcurrentSkipListMap<Key, AnnounceNodeCache.CacheBucket>();
+	ConcurrentSkipListMap<Key, CacheAnchorPoint> anchors = new ConcurrentSkipListMap<>();
+	ConcurrentSkipListMap<Key, CacheBucket> cache = new ConcurrentSkipListMap<>();
 	
 	
 	public AnnounceNodeCache() {
@@ -95,6 +95,8 @@ public class AnnounceNodeCache {
 		}
 		
 		public void onResponse(RPCCall c, MessageBase rsp) {
+			if(!c.matchesExpectedID())
+				return;
 			KBucketEntry kbe = new KBucketEntry(rsp.getOrigin(), rsp.getID());
 			kbe.signalResponse(c.getRTT());
 			add(kbe);
@@ -193,7 +195,7 @@ public class AnnounceNodeCache {
 	
 	public List<KBucketEntry> get(Key target, int targetSize)
 	{
-		ArrayList<KBucketEntry> closestSet = new ArrayList<KBucketEntry>(2 * targetSize);
+		ArrayList<KBucketEntry> closestSet = new ArrayList<>(2 * targetSize);
 		
 		Map.Entry<Key, CacheBucket> ceil = cache.ceilingEntry(target);
 		Map.Entry<Key, CacheBucket> floor = cache.floorEntry(target);
@@ -223,8 +225,8 @@ public class AnnounceNodeCache {
 			if(now - it.next().expirationTime > 0)
 				it.remove();
 		
-		Set<Key> seenIDs = new HashSet<Key>();
-		Set<InetAddress> seenIPs = new HashSet<InetAddress>();
+		Set<Key> seenIDs = new HashSet<>();
+		Set<InetAddress> seenIPs = new HashSet<>();
 		
 		// 2nd pass, eject old and/or duplicate entries
 		for(Iterator<CacheBucket> it = cache.values().iterator();it.hasNext();)

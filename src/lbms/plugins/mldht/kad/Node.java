@@ -881,6 +881,9 @@ public class Node {
 	 * @throws IOException
 	 */
 	void saveTable(Path saveTo) throws IOException {
+		// don't persist in test mode
+		if(!Files.isDirectory(saveTo.getParent()))
+			return;
 		
 		ByteBuffer tableBuffer = ByteBuffer.allocateDirect(50*1024*1024);
 		

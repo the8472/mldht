@@ -62,6 +62,7 @@ import java.net.ProtocolFamily;
 import java.net.SocketException;
 import java.net.StandardProtocolFamily;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -640,6 +641,9 @@ public class DHT implements DHTBase {
 		this.config = config;
 		useRouterBootstrapping = !config.noRouterBootstrap();
 		
+		if(!Files.isDirectory(config.getStoragePath()))
+			DHT.log("Warning: storage path " + config.getStoragePath() +" is not a directory. DHT will not be able to persist state" , LogLevel.Info);
+		
 		table_file = config.getStoragePath().resolve(type.shortName+"-table.cache");
 
 		setStatus(DHTStatus.Stopped, DHTStatus.Initializing);
@@ -782,8 +786,21 @@ public class DHT implements DHTBase {
 			t.kill();
 		}
 		
-		for(ScheduledFuture<?> future : scheduledActions)
+		for(ScheduledFuture<?> future : scheduledActions) {
+			// periodic tasks can only be completed by exceptions
+			if(future.isDone()) {
+				// none of the scheduled tasks should experience exceptions, log them if they did
+				try {
+					future.get();
+				} catch (ExecutionException e) {
+					DHT.log(e.getCause(), LogLevel.Fatal);
+				} catch (InterruptedException e) {
+					DHT.log(e, LogLevel.Fatal);
+				}
+			}
 			future.cancel(false);
+		}
+			
 		// scheduler.getQueue().removeAll(scheduledActions);
 		scheduledActions.clear();
 

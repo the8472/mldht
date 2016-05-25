@@ -219,7 +219,13 @@ public class DHT implements DHTBase {
 	}
 	
 	private List<IncomingMessageListener> incomingMessageListeners = new ArrayList<>();
-	
+
+	/**
+	 * Listeners must be threadsafe, non-blocking and exception-free and avoid modifying the passed messages or their contents.
+	 * They are invoked from the message-processing threads, so any incorrect behavior may prevent the messages from being processed properly.
+	 * 
+	 * registration itself is not thread-safe, thus listeners should be registered between creation of the DHT instance and invocation of its start() method.
+	 */
 	public void addIncomingMessageListener(IncomingMessageListener l) {
 		incomingMessageListeners.add(l);
 	}

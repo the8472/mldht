@@ -421,13 +421,16 @@ public class MessageDecoder {
 				boolean isSeed = Long.valueOf(1).equals(args.get("seed"));
 				
 				if(hash == null || token == null || port == 0)
-					throw new MessageException("missing or invalid arguments for announce", ErrorCode.ProtocolError);
+					throw new MessageException("missing or invalid mandatory arguments (info_hash, port, token) for announce", ErrorCode.ProtocolError);
 				if(token.length == 0)
 					throw new MessageException("zero-length token in announce_peer request. see BEP33 for reasons why tokens might not have been issued by get_peers response", ErrorCode.ProtocolError);
 
 				Key infoHash = new Key(hash);
 
-				msg = tap(new AnnounceRequest(infoHash, port, token), ar -> ar.setSeed(isSeed));
+				msg = tap(new AnnounceRequest(infoHash, port, token), ar -> {
+					ar.setSeed(isSeed);
+					typedGet(args, "name", byte[].class).ifPresent(b -> ar.setName(ByteBuffer.wrap(b)));
+				});
 
 				break;
 		}

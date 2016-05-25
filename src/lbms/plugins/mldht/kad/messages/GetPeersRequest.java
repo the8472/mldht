@@ -1,27 +1,24 @@
 /*
- *    This file is part of mlDHT. 
+ *    This file is part of mlDHT.
  * 
- *    mlDHT is free software: you can redistribute it and/or modify 
- *    it under the terms of the GNU General Public License as published by 
- *    the Free Software Foundation, either version 2 of the License, or 
- *    (at your option) any later version. 
+ *    mlDHT is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 2 of the License, or
+ *    (at your option) any later version.
  * 
- *    mlDHT is distributed in the hope that it will be useful, 
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *    GNU General Public License for more details. 
+ *    mlDHT is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
  * 
- *    You should have received a copy of the GNU General Public License 
- *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>. 
+ *    You should have received a copy of the GNU General Public License
+ *    along with mlDHT.  If not, see <http://www.gnu.org/licenses/>.
  */
 package lbms.plugins.mldht.kad.messages;
 
-import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
 
 import lbms.plugins.mldht.kad.DHT;
-import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
 
 /**
@@ -81,12 +78,5 @@ public class GetPeersRequest extends AbstractLookupRequest {
 	@Override
 	protected String targetBencodingName() {
 		return "info_hash";
-	}
-	
-	/**
-	 * @return the info_hash
-	 */
-	public Key getInfoHash () {
-		return target;
 	}
 }

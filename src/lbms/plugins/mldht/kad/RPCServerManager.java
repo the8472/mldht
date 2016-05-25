@@ -24,7 +24,7 @@ public class RPCServerManager {
 	}
 	
 	DHT dht;
-	private ConcurrentHashMap<InetAddress,RPCServer> interfacesInUse = new ConcurrentHashMap<InetAddress, RPCServer>();
+	private ConcurrentHashMap<InetAddress,RPCServer> interfacesInUse = new ConcurrentHashMap<>();
 	private List<InetAddress> validBindAddresses = Collections.emptyList();
 	private volatile RPCServer[] activeServers = new RPCServer[0];
 	
@@ -34,7 +34,7 @@ public class RPCServerManager {
 		
 		startNewServers();
 		
-		List<RPCServer> reachableServers = new ArrayList<RPCServer>(interfacesInUse.values().size());
+		List<RPCServer> reachableServers = new ArrayList<>(interfacesInUse.values().size());
 		for(Iterator<RPCServer> it = interfacesInUse.values().iterator();it.hasNext();)
 		{
 			RPCServer srv = it.next();
@@ -142,7 +142,7 @@ public class RPCServerManager {
 	
 	public void destroy() {
 		destroyed = true;
-		new ArrayList<RPCServer>(interfacesInUse.values()).parallelStream().forEach(RPCServer::stop);
+		new ArrayList<>(interfacesInUse.values()).parallelStream().forEach(RPCServer::stop);
 	}
 	
 	public int getServerCount() {
@@ -154,6 +154,10 @@ public class RPCServerManager {
 		return activeServers.length;
 	}
 	
+	/**
+	 * @param fallback tries to return an inactive server if no active one can be found
+	 * @return a random active server, or <code>null</code> if none can be found
+	 */
 	public RPCServer getRandomActiveServer(boolean fallback)
 	{
 		RPCServer[] srvs = activeServers;
@@ -173,7 +177,7 @@ public class RPCServerManager {
 	}
 	
 	public List<RPCServer> getAllServers() {
-		return new ArrayList<RPCServer>(interfacesInUse.values());
+		return new ArrayList<>(interfacesInUse.values());
 	}
 	
 }

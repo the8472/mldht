@@ -63,6 +63,14 @@ It is not necessary to use the standalone [<tt>Launcher</tt>](src/the8472/mldht/
 
 Consider the Launcher as an example-case how to instantiate DHT nodes.
 
+### Hooking into stream of incoming messages
+
+After creating `DHT` instances, register a callback via `addIncomingMessageListener(DHT.IncomingMessageListener l)`. It will be called for most incoming messages. Some but not all bogus/invalid ones will be prefiltered.
+
+The callback is called from the message processing threads, so it should be non-blocking and thread-safe.
+
+Message objects and their contents should not be modified.   
+
 
 ## network configuration
 

@@ -15,13 +15,6 @@ import the8472.bencode.Tokenizer.TokenConsumer;
 
 public class BDecoder {
 	
-	enum ParserState {
-		DICT_KEY,
-		DICT_VALUE,
-		LIST_VALUE,
-		TREE_ROOT
-	}
-	
 	private class Consumer implements TokenConsumer {
 		
 		Object[] stack = new Object[256];

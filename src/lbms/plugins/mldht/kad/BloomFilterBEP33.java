@@ -121,28 +121,4 @@ public class BloomFilterBEP33 implements Comparable<BloomFilterBEP33>, Cloneable
 		return log1p(-1.0/m);
 	}
 
-	
-	public static void main(String[] args) throws Exception {
-		
-		BloomFilterBEP33 bf = new BloomFilterBEP33();
-		//2001:DB8::
-		for(int i=0;i<1000;i++)
-		{
-			bf.insert(InetAddress.getByAddress(new byte[] {0x20,0x01,0x0D,(byte) 0xB8,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,(byte) (i>>8 & 0xFF),(byte) (i & 0xFF)}));
-		}
-		
-		for(int i=0;i<256;i++)
-		{
-			bf.insert(InetAddress.getByAddress(new byte[] {(byte) 192,0,2,(byte) i}));
-		}
-		
-		System.out.println(bf.filter.toString());
-		System.out.println(bf.filter.bitcount());
-		System.out.println(bf.size());
-	
-	}
-
-	
-	
-	
 }

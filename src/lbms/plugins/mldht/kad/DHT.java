@@ -910,7 +910,9 @@ public class DHT implements DHTBase {
 			for(InetSocketAddress addr : addrs) {
 				if (!type.PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress()))
 					continue;
-				RPCCall c = new RPCCall(new FindNodeRequest(Key.createRandomKey()));
+				FindNodeRequest fnr = new FindNodeRequest(Key.createRandomKey());
+				fnr.setDestination(addr);
+				RPCCall c = new RPCCall(fnr);
 				RPCServer srv = serverManager.getRandomActiveServer(true);
 				c.addListener(new RPCCallListener() {
 					@Override

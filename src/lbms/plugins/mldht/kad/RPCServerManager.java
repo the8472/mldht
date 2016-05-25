@@ -167,7 +167,7 @@ public class RPCServerManager {
 	}
 	
 	/**
-	 * this method is relatively expensive... don't call it frequently
+	 * may return null
 	 */
 	public RPCServer getRandomServer() {
 		List<RPCServer> servers = getAllServers();

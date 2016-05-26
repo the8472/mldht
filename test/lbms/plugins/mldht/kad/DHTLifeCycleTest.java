@@ -108,6 +108,9 @@ public class DHTLifeCycleTest {
 		
 		assertEquals(DHTStatus.Initializing, dhtInstance.getStatus());
 		
+		// bootstrap is called synchronously during startup and should fall straight through, thus reset the state
+		assertEquals(DHT.BootstrapState.NONE, dhtInstance.bootstrapping.get());
+		
 		assertEquals(1, dhtInstance.getServerManager().getServerCount());
 		
 		CompletableFuture<Boolean> awaitShutdown = new CompletableFuture<>();

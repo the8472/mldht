@@ -64,7 +64,7 @@ public class Functional {
 	}
 	
 	
-	public static <T> CompletionStage<List<T>> awaitAll(Collection<CompletionStage<T>> stages) {
+	public static <T> CompletionStage<List<T>> awaitAll(Collection<? extends CompletionStage<T>> stages) {
 		return stages.stream().map(st -> st.thenApply(Collections::singletonList)).reduce(completedFuture(emptyList()), (f1, f2) -> f1.thenCombine(f2, (a, b) -> tap(new ArrayList<>(a), l -> l.addAll(b))));
 	}
 	

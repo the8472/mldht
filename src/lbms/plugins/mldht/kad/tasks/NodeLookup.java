@@ -17,6 +17,7 @@
 package lbms.plugins.mldht.kad.tasks;
 
 
+import java.util.Collection;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -140,6 +141,10 @@ public class NodeLookup extends IteratingTask {
 	@Override
 	void callTimeout (RPCCall c) {
 
+	}
+	
+	public void injectCandidates(Collection<KBucketEntry> cand) {
+		todo.addCandidates(null, cand);
 	}
 
 	/* (non-Javadoc)

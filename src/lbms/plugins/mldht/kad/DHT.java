@@ -17,6 +17,7 @@
 package lbms.plugins.mldht.kad;
 
 import static the8472.bencode.Utils.prettyPrint;
+import static the8472.utils.Functional.awaitAll;
 
 import lbms.plugins.mldht.DHTConfiguration;
 import lbms.plugins.mldht.kad.GenericStorage.StorageItem;
@@ -69,6 +70,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -151,7 +154,7 @@ public class DHT implements DHTBase {
 		FILL
 	}
 
-	private AtomicReference<BootstrapState>	bootstrapping = new AtomicReference<>(BootstrapState.NONE);
+	AtomicReference<BootstrapState>	bootstrapping = new AtomicReference<>(BootstrapState.NONE);
 	private long							lastBootstrap;
 
 	DHTConfiguration						config;
@@ -927,39 +930,52 @@ public class DHT implements DHTBase {
 			return;
 		
 		if (useRouterBootstrapping && node.getNumEntriesInRoutingTable() < DHTConstants.USE_BT_ROUTER_IF_LESS_THAN_X_PEERS) {
-			resolveBootstrapAddresses();
-			Collection<InetSocketAddress> addrs = bootstrapAddresses;
-			
-			for(InetSocketAddress addr : addrs) {
-				if (!type.PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress()))
-					continue;
-				FindNodeRequest fnr = new FindNodeRequest(Key.createRandomKey());
-				fnr.setDestination(addr);
-				RPCCall c = new RPCCall(fnr);
-				RPCServer srv = serverManager.getRandomActiveServer(true);
-				c.addListener(new RPCCallListener() {
-					@Override
-					public void stateTransition(RPCCall c, RPCState previous, RPCState current) {
-						if(current == RPCState.RESPONDED) {
-							MessageBase b =  c.getResponse();
-							if(b instanceof FindNodeResponse) {
-								fillHomeBuckets(((FindNodeResponse) b).getNodes(getType()).entries().collect(Collectors.toList()));
-							}
-						}
-						
-						if(current == RPCState.TIMEOUT || current == RPCState.RESPONDED)
-							bootstrapping.compareAndSet(BootstrapState.BOOTSTRAP.FILL, BootstrapState.NONE);
-					}
-				});
-				srv.doCall(c);
-			}
-		} else if(node.getNumEntriesInRoutingTable() > 0) {
+			routerBootstrap();
+		} else {
 			fillHomeBuckets(Collections.emptyList());
 		}
-
+	}
+	
+	void routerBootstrap() {
+		
+		List<CompletableFuture<RPCCall>> callFutures = new ArrayList<>();
+		
+		resolveBootstrapAddresses();
+		Collection<InetSocketAddress> addrs = bootstrapAddresses;
+		
+		for(InetSocketAddress addr : addrs) {
+			if (!type.canUseSocketAddress(addr))
+				continue;
+			FindNodeRequest fnr = new FindNodeRequest(Key.createRandomKey());
+			fnr.setDestination(addr);
+			RPCCall c = new RPCCall(fnr);
+			CompletableFuture<RPCCall> f = new CompletableFuture<>();
+			
+			RPCServer srv = serverManager.getRandomActiveServer(true);
+			c.addListener(new RPCCallListener() {
+				@Override
+				public void stateTransition(RPCCall c, RPCState previous, RPCState current) {
+					if(current == RPCState.RESPONDED || current == RPCState.ERROR || current == RPCState.RESPONDED)
+						f.complete(c);
+				}
+			});
+			srv.doCall(c);
+		}
+		
+		awaitAll(callFutures).thenAccept(calls -> {
+			Class<FindNodeResponse> clazz = FindNodeResponse.class;
+			Set<KBucketEntry> s = calls.stream().filter(clazz::isInstance).map(clazz::cast).map(fnr -> fnr.getNodes(getType())).flatMap(NodeList::entries).collect(Collectors.toSet());
+			fillHomeBuckets(s);
+		});
+		
 	}
 	
 	void fillHomeBuckets(Collection<KBucketEntry> entries) {
+		if(node.getNumEntriesInRoutingTable() == 0 && entries.isEmpty()) {
+			bootstrapping.set(BootstrapState.NONE);
+			return;
+		}
+		
 		bootstrapping.set(BootstrapState.BOOTSTRAP);
 		
 		final AtomicInteger taskCount = new AtomicInteger();
@@ -981,6 +997,7 @@ public class DHT implements DHTBase {
 			findNode(srv.getDerivedID(), true, true, srv, t -> {
 				taskCount.incrementAndGet();
 				t.setInfo("Bootstrap: lookup for self");
+				t.injectCandidates(entries);
 				t.addListener(bootstrapListener);
 			});
 		}

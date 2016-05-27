@@ -256,7 +256,7 @@ public class PullMetaDataConnection implements Selectable {
 	
 	@Override
 	public void selectionEvent(SelectionKey key) throws IOException {
-		if(key.isConnectable())
+		if(key.isValid() && key.isConnectable())
 			connectEvent();
 		if(key.isValid() && key.isReadable())
 			canReadEvent();

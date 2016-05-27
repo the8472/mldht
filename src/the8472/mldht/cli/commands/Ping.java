@@ -1,5 +1,6 @@
 package the8472.mldht.cli.commands;
 
+import the8472.bencode.Utils;
 import the8472.mldht.cli.CommandProcessor;
 
 import lbms.plugins.mldht.kad.DHT;
@@ -85,7 +86,7 @@ public class Ping extends CommandProcessor {
 			
 			@Override
 			public void onResponse(RPCCall c, MessageBase rsp) {
-				println("#"+counter+" response time=" + c.getRTT() + "ms " + rsp.getID());
+				println("#"+counter+" response time=" + c.getRTT() + "ms " + rsp.getID() + rsp.getVersion().map(v -> " ver:" + Utils.prettyPrint(v)).orElse(""));
 				timer.schedule(Ping.this::doPing, 1, TimeUnit.SECONDS);
 				
 			}

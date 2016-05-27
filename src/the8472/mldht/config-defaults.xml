@@ -24,6 +24,9 @@
     <component>
       <className>the8472.mldht.cli.Server</className>
     </component>
+    <component>
+      <className>the8472.mldht.indexing.TorrentDumper</className>
+    </component>
   </components>
   -->
 </mldht:config>

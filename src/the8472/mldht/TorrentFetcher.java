@@ -85,7 +85,7 @@ public class TorrentFetcher {
 		AtomicInteger thingsBlockingCompletion = new AtomicInteger();
 		
 		Set<PullMetaDataConnection> connections = Collections.newSetFromMap(new ConcurrentHashMap<>());
-		Map<Integer, MetadataPool> pools = new ConcurrentHashMap<Integer, MetadataPool>();
+		Map<Integer, MetadataPool> pools = new ConcurrentHashMap<>();
 		
 		FetchState state = FetchState.PENDING;
 		
@@ -147,6 +147,7 @@ public class TorrentFetcher {
 					PeerLookupTask task = new PeerLookupTask(srv, d.getNode(), hash);
 					
 					task.setNoAnnounce(true);
+					task.setFastTerminate(true);
 					task.setResultHandler(this::addCandidate);
 					task.addListener(t -> thingsBlockingCompletion.decrementAndGet());
 					

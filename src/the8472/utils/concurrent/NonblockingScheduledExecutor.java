@@ -44,6 +44,7 @@ public class NonblockingScheduledExecutor implements ScheduledExecutorService {
 	
 	// there is only ever one single instance of this task in the pipeline. therefore anything done by it is guaranteed single-threaded execution
 	final Runnable scheduler = this::doStateMaintenance;
+	final Thread.UncaughtExceptionHandler exceptionHandler;
 	
 	private class WrappedThreadPoolExecutor extends ThreadPoolExecutor {
 
@@ -62,10 +63,28 @@ public class NonblockingScheduledExecutor implements ScheduledExecutorService {
 			super.execute(command);
 		}
 		
+		@Override
+		protected void afterExecute(Runnable r, Throwable t) {
+			super.afterExecute(r, t);
+			
+			if(exceptionHandler != null && r instanceof FutureTask<?>) {
+				FutureTask<?> ft = (FutureTask<?>) r;
+				if(ft.isDone() && !ft.isCancelled()) {
+					try {
+						ft.get();
+					} catch (InterruptedException | ExecutionException e) {
+						exceptionHandler.uncaughtException(null, e.getCause());
+					}
+				}
+				
+			}
+		}
+		
 	}
 	
 	public NonblockingScheduledExecutor(String name, int threadCount, UncaughtExceptionHandler handler) {
 		
+		this.exceptionHandler = handler;
 		group = new ThreadGroup(name);
 		
 		group.setDaemon(true);
@@ -290,7 +309,7 @@ public class NonblockingScheduledExecutor implements ScheduledExecutorService {
 
 	@Override
 	public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
-		SchedF<V> future = new SchedF<V>(callable, delay, unit);
+		SchedF<V> future = new SchedF<>(callable, delay, unit);
 		
 		submittedScheduledTasks.add(future);
 		wakeupWaiter(true);

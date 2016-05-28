@@ -142,10 +142,12 @@ public class TorrentDumper implements Component {
 				
 				if(t == null && r instanceof FutureTask<?>) {
 					FutureTask<?> ft = (FutureTask<?>) r;
-					try {
-						ft.get();
-					} catch (InterruptedException | ExecutionException e) {
-						t = e.getCause();
+					if(ft.isDone() && !ft.isCancelled()) {
+						try {
+							ft.get();
+						} catch (InterruptedException | ExecutionException e) {
+							t = e.getCause();
+						}
 					}
 				}
 				

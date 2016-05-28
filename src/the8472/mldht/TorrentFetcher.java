@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import lbms.plugins.mldht.kad.DHT;
@@ -141,13 +142,20 @@ public class TorrentFetcher {
 			});
 		}
 		
+		Consumer<PeerLookupTask> conf;
+		
+		public void configureLookup(Consumer<PeerLookupTask> conf) {
+			this.conf = conf;
+		}
+		
 		void lookups() {
 			dhts.stream().filter(DHT::isRunning).forEach(d -> {
 				Optional.ofNullable(d.getServerManager().getRandomActiveServer(false)).ifPresent(srv -> {
 					PeerLookupTask task = new PeerLookupTask(srv, d.getNode(), hash);
 					
 					task.setNoAnnounce(true);
-					task.setFastTerminate(true);
+					if(conf != null)
+						conf.accept(task);
 					task.setResultHandler(this::addCandidate);
 					task.addListener(t -> thingsBlockingCompletion.decrementAndGet());
 					
@@ -166,7 +174,7 @@ public class TorrentFetcher {
 			for(InetSocketAddress addr : canidates) {
 				if(pings.get() > 10)
 					break;
-				if(!pinged.add(addr))
+				if(!pinged.add(addr) || connectionAttempted.contains(addr))
 					continue;
 				
 				dhts.stream().filter(d -> d.getType().PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress())).findAny().ifPresent(d -> {
@@ -278,9 +286,14 @@ public class TorrentFetcher {
 	
 	
 	public FetchTask fetch(Key infohash) {
-		
+		return fetch(infohash, null);
+	}
+	
+	public FetchTask fetch(Key infohash, Consumer<FetchTask> configure) {
 		FetchTask t = new FetchTask();
 		t.hash = infohash;
+		if(configure != null)
+			configure.accept(t);
 		t.start();
 		
 		return t;

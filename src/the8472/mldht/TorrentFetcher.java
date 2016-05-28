@@ -4,6 +4,8 @@ import static the8472.utils.Functional.tap;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
@@ -19,6 +21,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import lbms.plugins.mldht.kad.DHT;
@@ -67,6 +70,14 @@ public class TorrentFetcher {
 		this.maxOpen = maxOpen;
 	}
 	
+	public int openConnections() {
+		return openConnections.get();
+	}
+	
+	public int socketcount() {
+		return socketsIncludingHalfOpen.get();
+	}
+	
 	public enum FetchState {
 		PENDING,
 		SUCCESS,
@@ -76,6 +87,7 @@ public class TorrentFetcher {
 	public class FetchTask {
 		
 		Key hash;
+		Instant startTime;
 		CompletableFuture<FetchTask> future = new CompletableFuture<>();
 		Set<InetSocketAddress> pinged = Collections.newSetFromMap(new ConcurrentHashMap<>()) ;
 		Set<InetSocketAddress> connectionAttempted = Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -96,6 +108,21 @@ public class TorrentFetcher {
 		
 		public Key infohash() {
 			return hash;
+		}
+		
+		@Override
+		public String toString() {
+			String[] str = {
+					hash.toString(false),
+					"age:",
+					Duration.between(startTime, Instant.now()).toString(),
+					"con tried:",
+					String.valueOf(connectionAttempted.size()),
+					"con active:",
+					connections.stream().collect(Collectors.groupingBy(PullMetaDataConnection::getState, Collectors.counting())).toString()
+			};
+			
+			return String.join(" ", str);
 		}
 
 		public FetchState getState() {
@@ -124,6 +151,7 @@ public class TorrentFetcher {
 		}
 
 		void start() {
+			startTime = Instant.now();
 			lookups();
 			timer.schedule(this::connections, 1, TimeUnit.SECONDS);
 		}

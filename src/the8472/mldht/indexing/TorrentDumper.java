@@ -10,6 +10,7 @@ import the8472.mldht.Component;
 import the8472.mldht.TorrentFetcher;
 import the8472.mldht.TorrentFetcher.FetchTask;
 import the8472.utils.ConfigReader;
+import the8472.utils.io.FileIO;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.Key;
@@ -42,6 +43,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 
 public class TorrentDumper implements Component {
@@ -91,6 +93,9 @@ public class TorrentDumper implements Component {
 			Map<String, Object> map = new TreeMap<>();
 			
 			map.put("k", k.getHash());
+			map.put("cnt", insertCount);
+			map.put("addr", lastTouchedBy.getAddress());
+			map.put("created", creationTime);
 			
 			return map;
 		}
@@ -169,7 +174,7 @@ public class TorrentDumper implements Component {
 		scheduler.scheduleWithFixedDelay(this::dumpStats, 10, 1, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::startFetches, 10, 1, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::cleanBlocklist, 1, 1, TimeUnit.MINUTES);
-		
+		scheduler.scheduleWithFixedDelay(this::diagnostics, 30, 30, TimeUnit.SECONDS);
 		
 	}
 	
@@ -262,23 +267,28 @@ public class TorrentDumper implements Component {
 				
 	}
 	
-	void startFetches() {
-		
+	Stream<FetchStats> fetchStatsStream() throws IOException {
 		Key start = Key.createRandomKey();
+		BDecoder dec = new BDecoder();
 		
+		return Files.find(statsDir, 3, (p, attr) -> {
+			if(!attr.isRegularFile())
+				return false;
+			String name = p.getFileName().toString();
+			return name.matches("[0-9A-F]{40}.stats") && name.compareTo(start.toString(false)) > 0;
+		}).map(p -> {
+			try {
+				return FetchStats.fromBencoded(dec.decode(ByteBuffer.wrap(Files.readAllBytes(p))));
+			} catch (IOException e) {
+				log(e);
+				return null;
+			}
+		}).filter(Objects::nonNull);
+	}
+	
+	void startFetches() {
 		try {
-			Files.find(statsDir, 3, (p, attr) -> {
-				if(!attr.isRegularFile())
-					return false;
-				String name = p.getFileName().toString();
-				return name.matches("[0-9A-F]{40}.stats") && name.compareTo(start.toString(false)) > 0;
-			}).forEach(p -> {
-				try {
-					fetch(p, FetchStats.fromBencoded(new BDecoder().decode(ByteBuffer.wrap(Files.readAllBytes(p)))));
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			});
+			fetchStatsStream().forEach(this::fetch);
 		} catch (Exception e) {
 			log(e);
 		}
@@ -288,7 +298,7 @@ public class TorrentDumper implements Component {
 	AtomicInteger activeCount = new AtomicInteger();
 	ConcurrentHashMap<Key, FetchTask> activeTasks = new ConcurrentHashMap<>();
 	
-	void fetch(Path statsFile, FetchStats stats) {
+	void fetch(FetchStats stats) {
 		Key k = stats.getK();
 		
 		if(activeTasks.containsKey(k))
@@ -310,17 +320,18 @@ public class TorrentDumper implements Component {
 		t.awaitCompletion().thenRun(() -> {
 			scheduler.execute(() -> {
 				// run on the scheduler so we don't end up with interfering file ops
-				taskFinished(statsFile, stats, t);
+				taskFinished(stats, t);
 			});
 			
 		});
 	}
 	
-	void taskFinished(Path statsFile, FetchStats stats, FetchTask t) {
+	void taskFinished(FetchStats stats, FetchTask t) {
 		activeCount.decrementAndGet();
 		blocklist.remove(stats.lastTouchedBy);
 		activeTasks.remove(t.infohash());
 		try {
+			Path statsFile = stats.name(statsDir, ".stats");
 			if(Files.isRegularFile(statsFile))
 				Files.delete(statsFile);
 			if(!t.getResult().isPresent())
@@ -335,12 +346,24 @@ public class TorrentDumper implements Component {
 		
 	}
 	
-	
+	void diagnostics() {
+		try {
+			FileIO.writeAndAtomicMove(storageDir.resolve("dumper.log"), (p) -> {
+				p.format("Fetcher:%n established: %d%n sockets: %d %n%n", fetcher.openConnections(), fetcher.socketcount());
+				
+				p.println("FetchTasks");
+				activeTasks.values().forEach(ft -> {
+					p.println(ft.toString());
+				});
+			});
+		} catch (IOException e) {
+			log(e);
+		}
+	}
 	
 
 	@Override
 	public void stop() {
-		// TODO Auto-generated method stub
 		scheduler.shutdown();
 		activeTasks.values().forEach(FetchTask::stop);
 	}

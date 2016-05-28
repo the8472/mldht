@@ -60,6 +60,7 @@ public class Arrays {
 	
 	
 	
+	@SuppressWarnings("unused")
 	private static int compareUnsignedFallback(byte[] a, byte[] b) {
 		int minLength = Math.min(a.length, b.length);
 		for(int i=0;i+7<minLength;i+=8)
@@ -98,6 +99,7 @@ public class Arrays {
 		return a.length - b.length;
 	}
 	
+	@SuppressWarnings("unused")
 	private static int mismatchFallback(byte[] a, byte[] b) {
 		int min = Math.min(a.length, b.length);
 		for(int i=0;i<min;i++) {

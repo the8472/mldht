@@ -3,12 +3,8 @@ package the8472.mldht;
 import static the8472.utils.Functional.unchecked;
 
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.net.InetAddress;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
@@ -36,6 +32,7 @@ import lbms.plugins.mldht.kad.Node.RoutingTable;
 import lbms.plugins.mldht.kad.Prefix;
 import the8472.bencode.Utils;
 import the8472.utils.Arrays;
+import the8472.utils.io.FileIO;
 import the8472.utils.io.NetMask;
 
 public class Diagnostics {
@@ -67,7 +64,7 @@ public class Diagnostics {
 	void printPUTStorage() throws IOException {
 		Path file = logDir.resolve("putDB.log");
 		
-		writeAndAtomicMove(file, writer -> dhts.stream().filter(DHT::isRunning).forEach(d -> {
+		FileIO.writeAndAtomicMove(file, writer -> dhts.stream().filter(DHT::isRunning).forEach(d -> {
 			writer.append("Type: " + d.getType().shortName + "\n");
 			formatStorage(writer, d.getStorage());
 		}));
@@ -89,7 +86,7 @@ public class Diagnostics {
 	void printDatabases() throws Exception {
 		Path file = logDir.resolve("getPeersDB.log");
 		
-		writeAndAtomicMove(file, writer -> dhts.stream().filter(DHT::isRunning).forEach(d -> {
+		FileIO.writeAndAtomicMove(file, writer -> dhts.stream().filter(DHT::isRunning).forEach(d -> {
 			writer.append("Type: " + d.getType().shortName + "\n");
 			formatDatabase(writer, d.getDatabase());
 		}));
@@ -174,7 +171,7 @@ java.lang.IllegalArgumentException: Comparison method violates its general contr
 	private void printRoutingTable() throws Exception {
 		Path file = logDir.resolve("routingTable.log");
 		
-		writeAndAtomicMove(file, writer -> dhts.stream().filter(DHT::isRunning).forEach(d -> this.formatRoutingTable(writer, d.getNode())));
+		FileIO.writeAndAtomicMove(file, writer -> dhts.stream().filter(DHT::isRunning).forEach(d -> this.formatRoutingTable(writer, d.getNode())));
 	}
 	
 	public void formatRoutingTable(Appendable writer, Node node) {
@@ -265,20 +262,7 @@ java.lang.IllegalArgumentException: Comparison method violates its general contr
 	void printMain() throws Exception {
 		Path diagnostics = logDir.resolve("diagnostics.log");
 		
-		writeAndAtomicMove(diagnostics, w -> dhts.stream().filter(DHT::isRunning).forEach(d -> d.printDiagnostics(w)));
-	}
-	
-	
-	static void writeAndAtomicMove(Path targetName, Consumer<PrintWriter> write) throws IOException {
-		Path tempFile = Files.createTempFile(targetName.getParent(), targetName.getFileName().toString(), ".tmp");
-		
-		try (PrintWriter statusWriter = new PrintWriter(Files.newBufferedWriter(tempFile, StandardCharsets.UTF_8))) {
-			
-			write.accept(statusWriter);
-
-			statusWriter.close();
-			Files.move(tempFile, targetName, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-		}
+		FileIO.writeAndAtomicMove(diagnostics, w -> dhts.stream().filter(DHT::isRunning).forEach(d -> d.printDiagnostics(w)));
 	}
 	
 	

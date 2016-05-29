@@ -16,7 +16,6 @@
  */
 package lbms.plugins.mldht.kad.tasks;
 
-import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
@@ -47,8 +46,6 @@ public class AnnounceTask extends TargetedTask {
 		this.port = port;
 		this.todo = new TreeMap<>(new KBucketEntry.DistanceOrder(info_hash));
 		todo.putAll(candidatesAndTokens);
-
-		DHT.logDebug("AnnounceTask started: " + getTaskID());
 	}
 
 	public void setSeed(boolean isSeed) {

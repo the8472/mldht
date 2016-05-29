@@ -28,7 +28,6 @@ import java.util.stream.Collectors;
 
 import lbms.plugins.mldht.kad.AnnounceNodeCache;
 import lbms.plugins.mldht.kad.DBItem;
-import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.KBucketEntry;
@@ -78,8 +77,6 @@ public class PeerLookupTask extends IteratingTask {
 		// register key even before the task is started so the cache can already accumulate entries
 		cache.register(targetKey,false);
 
-		DHT.logDebug("PeerLookupTask started: " + getTaskID());
-		
 		addListener(t -> updatePopulationEstimator());
 		
 	}

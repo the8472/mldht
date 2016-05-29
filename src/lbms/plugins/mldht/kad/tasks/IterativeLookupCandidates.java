@@ -193,6 +193,8 @@ public class IterativeLookupCandidates {
 			KBucketEntry kbe = me.getKey();
 			LookupGraphNode node = me.getValue();
 			
+			if(node.calls.size() > 0 && !allowRetransmits)
+				return false;
 			
 			InetAddress addr = kbe.getAddress().getAddress();
 			
@@ -204,12 +206,11 @@ public class IterativeLookupCandidates {
 				return false;
 			
 			int dups = 0;
+			
+			// also check other calls based on matching IP instead of strictly matching ip+port+id
 			for(RPCCall c : calls.keySet()) {
 				if(!addr.equals(c.getRequest().getDestination().getAddress()))
 					continue;
-				
-				if(!allowRetransmits)
-					return false;
 				
 				// in flight, not stalled
 				if(c.state() == RPCState.SENT || c.state() == RPCState.UNSENT)

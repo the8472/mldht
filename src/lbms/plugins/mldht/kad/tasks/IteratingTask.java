@@ -29,7 +29,7 @@ public abstract class IteratingTask extends TargetedTask {
 	
 	public String closestDebug() {
 		return this.closest.ids().<String>map(k -> {
-			return k + "  " + targetKey.distance(k) + " " + PopulationEstimator.distanceToDouble(k, targetKey) + " src:" + todo.allCand().unordered().filter(e -> e.getKey().getID().equals(k)).findAny().get().getValue().size();
+			return k + "  " + targetKey.distance(k) + " " + PopulationEstimator.distanceToDouble(k, targetKey) + " src:" + todo.allCand().unordered().filter(e -> e.getKey().getID().equals(k)).findAny().get().getValue().sources.size();
 		}).collect(Collectors.joining("\n"));
 	}
 	
@@ -44,7 +44,7 @@ public abstract class IteratingTask extends TargetedTask {
 				todo.allCand().sorted(todo.comp()).filter(me -> {
 					return targetKey.threeWayDistance(me.getKey().getID(), farthest) < 0;
 				}).<String>map(e -> {
-					return e.getKey().getID() + " " + targetKey.distance(e.getKey().getID()) + " " + AddressUtils.toString(e.getKey().getAddress()) + " src:" + e.getValue().size() + " call:" + todo.numCalls(e.getKey()) + " rsp:" + todo.numRsps(e.getKey()) + " " + e.getValue();
+					return e.getKey().getID() + " " + targetKey.distance(e.getKey().getID()) + " " + AddressUtils.toString(e.getKey().getAddress()) + " src:" + e.getValue().sources.size() + " call:" + todo.numCalls(e.getKey()) + " rsp:" + todo.numRsps(e.getKey()) + " " + e.getValue();
 				}).collect(Collectors.joining("\n"))
 
 				, LogLevel.Verbose);

@@ -11,10 +11,14 @@ import java.net.InetAddress;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /*
@@ -43,11 +47,52 @@ import java.util.stream.Stream;
 public class IterativeLookupCandidates {
 	
 	Key target;
-	Map<KBucketEntry, Set<KBucketEntry>> candidates;
+	Map<KBucketEntry, LookupGraphNode> candidates = new ConcurrentHashMap<>();
 	// maybe split out call tracking
 	Map<RPCCall, KBucketEntry> calls;
 	Collection<Object> accepted;
 	boolean allowRetransmits = true;
+	
+	class LookupGraphNode {
+		final KBucketEntry e;
+		Set<LookupGraphNode> sources = new CopyOnWriteArraySet<>();
+		List<LookupGraphNode> returnedNodes = new CopyOnWriteArrayList<>() ;
+		List<RPCCall> calls = new CopyOnWriteArrayList<>();
+		
+		public LookupGraphNode(KBucketEntry kbe) {
+			e = kbe;
+		}
+		
+		void addCall(RPCCall c) {
+			calls.add(c);
+		}
+		
+		void addSource(LookupGraphNode toAdd) {
+			sources.add(toAdd);
+		}
+		
+		boolean succeeded() {
+			return calls.stream().anyMatch(c -> c.state() == RPCState.RESPONDED);
+		}
+		
+		int nonSuccessfulDescendantCalls() {
+			return (int) returnedNodes.stream().mapToDouble(node -> (node.succeeded() ? 0. : 1.) / Math.max(node.sources.size(), 1)).sum();
+		}
+		
+		KBucketEntry toKbe() {
+			return e;
+		}
+		
+	}
+	
+	class Source {
+		KBucketEntry e;
+		List<RPCCall> sourcedCalls = new CopyOnWriteArrayList<>();
+		
+		void addCall(RPCCall c) {
+			sourcedCalls.add(c);
+		}
+	}
 	
 	public IterativeLookupCandidates(Key target) {
 		this.target = target;
@@ -65,6 +110,8 @@ public class IterativeLookupCandidates {
 		synchronized (this) {
 			calls.put(c, kbe);
 		}
+		
+		candidates.get(kbe).addCall(c);
 	}
 	
 	KBucketEntry acceptResponse(RPCCall c) {
@@ -88,14 +135,21 @@ public class IterativeLookupCandidates {
 	void addCandidates(KBucketEntry source, Collection<KBucketEntry> entries) {
 		Set<Object> dedup = new HashSet<>();
 		
+		LookupGraphNode sourceNode = null;
+		if(source != null)
+			sourceNode = candidates.get(source);
+		
 		for(KBucketEntry e : entries) {
 			if(!dedup.add(e.getID()) || !dedup.add(e.getAddress().getAddress()))
 				continue;
 			
 			synchronized (this) {
-				Set<KBucketEntry> set = candidates.compute(e, (unused, s) -> s == null ? new HashSet<>() : s);
-				if(source != null)
-					set.add(source);
+				LookupGraphNode node = candidates.computeIfAbsent(e, kbe -> {
+					return new LookupGraphNode(kbe);
+				});
+				
+				if(sourceNode != null)
+					node.addSource(sourceNode);
 			}
 			
 		}
@@ -104,13 +158,13 @@ public class IterativeLookupCandidates {
 	}
 	
 	Set<KBucketEntry> getSources(KBucketEntry e) {
-		return candidates.get(e);
+		return candidates.get(e).sources.stream().map(LookupGraphNode::toKbe).collect(Collectors.toSet());
 	}
 	
-	Comparator<Map.Entry<KBucketEntry, Set<KBucketEntry>>> comp() {
+	Comparator<Map.Entry<KBucketEntry, LookupGraphNode>> comp() {
 		Comparator<KBucketEntry> d = new KBucketEntry.DistanceOrder(target);
-		Comparator<Set<KBucketEntry>> s = (a, b) -> b.size() - a.size();
-		return Map.Entry.<KBucketEntry, Set<KBucketEntry>>comparingByKey(d).thenComparing(Map.Entry.comparingByValue(s));
+		Comparator<LookupGraphNode> s = (a, b) -> b.returnedNodes.size() - a.returnedNodes.size();
+		return Map.Entry.<KBucketEntry, LookupGraphNode>comparingByKey(d).thenComparing(Map.Entry.comparingByValue(s));
 	}
 	
 	Optional<KBucketEntry> next() {
@@ -119,12 +173,19 @@ public class IterativeLookupCandidates {
 		}
 	}
 	
-	Stream<Map.Entry<KBucketEntry, Set<KBucketEntry>>> cand() {
+	Stream<Map.Entry<KBucketEntry, LookupGraphNode>> cand() {
 		return candidates.entrySet().stream().filter(me -> {
 			KBucketEntry kbe = me.getKey();
+			LookupGraphNode node = me.getValue();
+			
+			
 			InetAddress addr = kbe.getAddress().getAddress();
 			
 			if(accepted.contains(addr) || accepted.contains(kbe.getID()))
+				return false;
+
+			// only do requests to nodes which have at least one source where the source has not given us lots of bogus candidates
+			if(node.sources.size() > 0 && node.sources.stream().noneMatch(source -> source.nonSuccessfulDescendantCalls() < 3))
 				return false;
 			
 			int dups = 0;
@@ -148,14 +209,14 @@ public class IterativeLookupCandidates {
 				dups++;
 			}
 			// log2 scale
-			int sources = 31 - Integer.numberOfLeadingZeros(max(me.getValue().size(), 1));
+			int sources = 31 - Integer.numberOfLeadingZeros(max(me.getValue().sources.size(), 1));
 			//System.out.println("sd:" + sources + " " + dups);
 			
 			return sources >= dups;
 		});
 	}
 	
-	Stream<Map.Entry<KBucketEntry, Set<KBucketEntry>>> allCand() {
+	Stream<Map.Entry<KBucketEntry, LookupGraphNode>> allCand() {
 		return candidates.entrySet().stream();
 	}
 	

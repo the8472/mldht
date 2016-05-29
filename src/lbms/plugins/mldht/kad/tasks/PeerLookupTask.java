@@ -104,6 +104,7 @@ public class PeerLookupTask extends IteratingTask {
 		if(!isQueued())
 			throw new IllegalStateException("cannot change lookup mode after startup");
 		this.fastTerminate = fastTerminate;
+		todo.allowRetransmits(!fastTerminate);
 		if(fastTerminate)
 			setNoAnnounce(true);
 	}

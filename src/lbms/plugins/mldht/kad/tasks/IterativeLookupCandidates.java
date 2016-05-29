@@ -47,6 +47,7 @@ public class IterativeLookupCandidates {
 	// maybe split out call tracking
 	Map<RPCCall, KBucketEntry> calls;
 	Collection<Object> accepted;
+	boolean allowRetransmits = true;
 	
 	public IterativeLookupCandidates(Key target) {
 		this.target = target;
@@ -54,6 +55,10 @@ public class IterativeLookupCandidates {
 		candidates = new ConcurrentHashMap<>();
 		accepted = new HashSet<>();
 						
+	}
+	
+	void allowRetransmits(boolean toggle) {
+		allowRetransmits = toggle;
 	}
 	
 	void addCall(RPCCall c, KBucketEntry kbe) {
@@ -122,6 +127,9 @@ public class IterativeLookupCandidates {
 			for(RPCCall c : calls.keySet()) {
 				if(!addr.equals(c.getRequest().getDestination().getAddress()))
 					continue;
+				
+				if(!allowRetransmits)
+					return false;
 				
 				// in flight, not stalled
 				if(c.state() == RPCState.SENT || c.state() == RPCState.UNSENT)

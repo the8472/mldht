@@ -72,7 +72,7 @@ public class IterativeLookupCandidates {
 		}
 		
 		boolean callsNotSuccessful() {
-			return calls.stream().noneMatch(c -> c.state() == RPCState.RESPONDED);
+			return !calls.isEmpty() && calls.stream().noneMatch(c -> c.state() == RPCState.RESPONDED);
 		}
 		
 		int nonSuccessfulDescendantCalls() {
@@ -98,6 +98,11 @@ public class IterativeLookupCandidates {
 		@Override
 		public int hashCode() {
 			return e.hashCode();
+		}
+		
+		@Override
+		public String toString() {
+			return "LookupNode desc:" + nonSuccessfulDescendantCalls();
 		}
 		
 	}

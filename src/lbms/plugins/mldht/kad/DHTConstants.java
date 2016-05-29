@@ -37,7 +37,7 @@ public class DHTConstants {
 
 	public static final int		CHECK_FOR_EXPIRED_ENTRIES				= 5 * 60 * 1000;
 	public static final int		MAX_ITEM_AGE							= 60 * 60 * 1000;
-	public static final int		TOKEN_TIMEOUT							= 3 * 60 * 1000;
+	public static final int		TOKEN_TIMEOUT							= 5 * 60 * 1000;
 	
 	public static final int		RPC_CALL_TIMEOUT_MAX					= 10 * 1000;
 	public static final int		RPC_CALL_TIMEOUT_BASELINE_MIN			= 100; // ms

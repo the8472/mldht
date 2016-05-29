@@ -16,6 +16,7 @@
  */
 package lbms.plugins.mldht.kad.tasks;
 
+import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -28,7 +29,9 @@ import java.util.stream.Collectors;
 
 import lbms.plugins.mldht.kad.AnnounceNodeCache;
 import lbms.plugins.mldht.kad.DBItem;
+import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.DHTtype;
+import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.KClosestNodesSearch;
@@ -236,6 +239,13 @@ public class PeerLookupTask extends IteratingTask {
 					long rtt = e.getRTT() * 2;
 					if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX && rtt < rpc.getTimeoutFilter().getStallTimeout())
 						call.setExpectedRTT(rtt); // only set a node-specific timeout if it's better than what the server would apply anyway
+					
+					if(DHT.isLogLevelEnabled(LogLevel.Verbose)) {
+						List<InetSocketAddress> sources = todo.getSources(e).stream().map(KBucketEntry::getAddress).collect(Collectors.toList());
+						DHT.log("Task "+getTaskID()+" sending call to "+ e + " sources:" + sources, LogLevel.Verbose);
+					}
+						
+					
 					todo.addCall(call, e);
 				})) {
 					break;

@@ -34,12 +34,16 @@ public abstract class IteratingTask extends TargetedTask {
 	}
 	
 	protected void logClosest() {
+		Key farthest = closest.tail();
+		
 		DHT.log(this.toString() + "\n" +
 
-				"done " + counts + " " + closest + "\n" + targetKey + "\n" + closestDebug()  + "\n" +
+				"Task "+ getTaskID() +"  done " + counts + " " + closest + "\n" + targetKey + "\n" + closestDebug()  + "\n" +
 				
 
-				todo.allCand().sorted(todo.comp()).limit(32).<String>map(e -> {
+				todo.allCand().sorted(todo.comp()).filter(me -> {
+					return targetKey.threeWayDistance(me.getKey().getID(), farthest) < 0;
+				}).<String>map(e -> {
 					return e.getKey().getID() + " " + targetKey.distance(e.getKey().getID()) + " " + AddressUtils.toString(e.getKey().getAddress()) + " src:" + e.getValue().size() + " call:" + todo.numCalls(e.getKey()) + " rsp:" + todo.numRsps(e.getKey()) + " " + e.getValue();
 				}).collect(Collectors.joining("\n"))
 

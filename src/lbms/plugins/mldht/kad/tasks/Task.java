@@ -173,7 +173,7 @@ public abstract class Task implements Comparable<Task> {
 	 */
 	public void start () {
 		if (queued) {
-			DHT.logDebug("Starting Task taskID: " + toString());
+			DHT.logDebug("Starting Task: " + toString());
 			queued = false;
 			startTime = System.currentTimeMillis();
 			try
@@ -447,6 +447,7 @@ public abstract class Task implements Comparable<Task> {
 		StringBuilder b = new StringBuilder(100);
 		TaskStats stats = counts.get();
 		b.append(this.getClass().getSimpleName());
+		b.append(' ').append(getTaskID());
 		if(this instanceof TargetedTask)
 			b.append(" target:").append(((TargetedTask)this).getTargetKey());
 		b.append(" todo:").append(getTodoCount());

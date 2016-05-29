@@ -103,6 +103,10 @@ public class IterativeLookupCandidates {
 		
 	}
 	
+	Set<KBucketEntry> getSources(KBucketEntry e) {
+		return candidates.get(e);
+	}
+	
 	Comparator<Map.Entry<KBucketEntry, Set<KBucketEntry>>> comp() {
 		Comparator<KBucketEntry> d = new KBucketEntry.DistanceOrder(target);
 		Comparator<Set<KBucketEntry>> s = (a, b) -> b.size() - a.size();

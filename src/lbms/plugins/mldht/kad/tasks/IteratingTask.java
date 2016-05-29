@@ -5,6 +5,7 @@ import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.Node;
 import lbms.plugins.mldht.kad.RPCServer;
+import lbms.plugins.mldht.kad.RPCState;
 import lbms.plugins.mldht.kad.tasks.IterativeLookupCandidates.LookupGraphNode;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.PopulationEstimator;
@@ -45,7 +46,8 @@ public abstract class IteratingTask extends TargetedTask {
 				todo.allCand().sorted(todo.comp()).filter(me -> {
 					return targetKey.threeWayDistance(me.getKey().getID(), farthest) <= 0;
 				}).<String>map(e -> {
-					return e.getKey().getID() + " " + targetKey.distance(e.getKey().getID()) + " " + AddressUtils.toString(e.getKey().getAddress()) + " src:" + e.getValue().sources.size() + " call:" + todo.numCalls(e.getKey()) + " rsp:" + todo.numRsps(e.getKey()) + " " + e.getValue().sources.stream().map(LookupGraphNode::toKbe).collect(Collectors.toList());
+					LookupGraphNode node = e.getValue();
+					return e.getKey().getID() + " " + targetKey.distance(e.getKey().getID()) + " " + AddressUtils.toString(e.getKey().getAddress()) + " src:" + node.sources.size() + " call:" + node.calls.size() + " rsp:" + node.calls.stream().filter(c -> c.state() == RPCState.RESPONDED).count() + " " + e.getValue().sources.stream().map(LookupGraphNode::toKbe).collect(Collectors.toList());
 				}).collect(Collectors.joining("\n"))
 
 				, LogLevel.Verbose);

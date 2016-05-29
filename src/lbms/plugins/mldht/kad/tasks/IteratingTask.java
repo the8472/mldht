@@ -43,7 +43,7 @@ public abstract class IteratingTask extends TargetedTask {
 				
 
 				todo.allCand().sorted(todo.comp()).filter(me -> {
-					return targetKey.threeWayDistance(me.getKey().getID(), farthest) < 0;
+					return targetKey.threeWayDistance(me.getKey().getID(), farthest) <= 0;
 				}).<String>map(e -> {
 					return e.getKey().getID() + " " + targetKey.distance(e.getKey().getID()) + " " + AddressUtils.toString(e.getKey().getAddress()) + " src:" + e.getValue().sources.size() + " call:" + todo.numCalls(e.getKey()) + " rsp:" + todo.numRsps(e.getKey()) + " " + e.getValue().sources.stream().map(LookupGraphNode::toKbe).collect(Collectors.toList());
 				}).collect(Collectors.joining("\n"))

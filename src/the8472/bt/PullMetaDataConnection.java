@@ -62,6 +62,7 @@ public class PullMetaDataConnection implements Selectable {
 	public static interface MetaConnectionHandler {
 		
 		void onTerminate(boolean wasConnected);
+		default void onStateChange(CONNECTION_STATE oldState, CONNECTION_STATE newState) {};
 		void onConnect();
 	}
 	
@@ -103,6 +104,8 @@ public class PullMetaDataConnection implements Selectable {
 	private static final int BT_MSG_ID_OFFSET = 4; // 0-3 length, 4 id
 	private static final int BT_LTEP_HEADER_OFFSET =  5; // 5 ltep id
 	
+	boolean						keepPexOnlyOpen = true;
+	
 	SocketChannel				channel;
 	NIOConnectionManager		connManager;
 	boolean						incoming;
@@ -113,7 +116,7 @@ public class PullMetaDataConnection implements Selectable {
 	boolean						remoteSupportsFastExtension;
 	boolean						remoteSupportsPort;
 	int							ltepRemoteMetadataExchangeMessageId;
-	int							ltepRemotePexId;
+	int							ltepRemotePexId = -1;
 	public int					dhtPort = -1;
 	
 	
@@ -151,9 +154,15 @@ public class PullMetaDataConnection implements Selectable {
 		}
 	}
 	
+	public void keepPexOnlyOpen(boolean toggle) {
+		keepPexOnlyOpen = toggle;
+	}
 	
 	void setState(CONNECTION_STATE newState) {
+		CONNECTION_STATE oldState = state;
 		state = newState;
+		if(metaHandler != null)
+			metaHandler.onStateChange(oldState, newState);
 	}
 	
 	public boolean isState(CONNECTION_STATE toTest) {return state == toTest; }
@@ -480,8 +489,10 @@ public class PullMetaDataConnection implements Selectable {
 
 					doMetaRequests();
 
-				} else {
+				} else if(pexMsgID != null && keepPexOnlyOpen) {
 					setState(STATE_PEX_ONLY);
+				} else {
+					terminate("pex only suppor, but keep open disabled");
 				}
 				
 				if(pexMsgID == null && (metaMsgID == null || metaLength == null)){

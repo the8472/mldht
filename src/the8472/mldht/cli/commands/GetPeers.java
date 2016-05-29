@@ -58,7 +58,7 @@ public class GetPeers extends CommandProcessor {
 				
 				//t.useCache(false);
 				
-				t.setResultHandler(item -> {
+				t.setResultHandler((source, item) -> {
 					Formatter f = new Formatter();
 					
 					Duration elapsed = Duration.between(start, Instant.now());

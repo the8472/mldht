@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 import lbms.plugins.mldht.kad.AnnounceNodeCache;
@@ -58,8 +58,8 @@ public class PeerLookupTask extends IteratingTask {
 	// nodes which have answered with tokens
 	private Map<KBucketEntry, byte[]>		announceCanidates;
 	private ScrapeResponseHandler			scrapeHandler;
-	Consumer<PeerAddressDBItem>				resultHandler = (x) -> {};
-
+	BiConsumer<KBucketEntry, PeerAddressDBItem>				resultHandler = (x,y) -> {};
+	
 	private Set<PeerAddressDBItem>			returnedItems;
 	
 	AnnounceNodeCache						cache;
@@ -89,7 +89,7 @@ public class PeerLookupTask extends IteratingTask {
 		useCache = c;
 	}
 	
-	public void setResultHandler(Consumer<PeerAddressDBItem> handler) {
+	public void setResultHandler(BiConsumer<KBucketEntry,PeerAddressDBItem> handler) {
 		resultHandler = handler;
 	}
 	
@@ -156,7 +156,7 @@ public class PeerLookupTask extends IteratingTask {
 			PeerAddressDBItem it = (PeerAddressDBItem) item;
 			// also add the items to the returned_items list
 			if(!AddressUtils.isBogon(it)) {
-				resultHandler.accept(it);
+				resultHandler.accept(match, it);
 				returnedItems.add(it);
 			}
 				
@@ -165,8 +165,6 @@ public class PeerLookupTask extends IteratingTask {
 		
 		if(returnedItems.size() > 0 && firstResultTime == 0)
 			firstResultTime = System.currentTimeMillis();
-		
-		KBucketEntry entry = new KBucketEntry(rsp.getOrigin(), rsp.getID());
 
 		// if someone has peers he might have filters, collect for scrape
 		if (!items.isEmpty() && scrapeHandler != null)
@@ -177,14 +175,14 @@ public class PeerLookupTask extends IteratingTask {
 
 		// add the peer who responded to the closest nodes list, so we can do an announce
 		if (gpr.getToken() != null && !noAnnounce)
-			announceCanidates.put(entry, gpr.getToken());
+			announceCanidates.put(match, gpr.getToken());
 
 
 		// if we scrape we don't care about tokens.
 		// otherwise we're only done if we have found the closest nodes that also returned tokens
 		if (noAnnounce || gpr.getToken() != null)
 		{
-			closest.insert(entry);
+			closest.insert(match);
 		}
 	}
 

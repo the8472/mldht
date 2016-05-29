@@ -1,44 +1,39 @@
 package the8472.mldht;
 
-import static the8472.utils.Functional.tap;
-
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
 import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.PeerAddressDBItem;
-import lbms.plugins.mldht.kad.RPCCall;
-import lbms.plugins.mldht.kad.RPCCallListener;
-import lbms.plugins.mldht.kad.RPCServer;
-import lbms.plugins.mldht.kad.messages.MessageBase;
-import lbms.plugins.mldht.kad.messages.PingRequest;
+import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.tasks.PeerLookupTask;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
 import the8472.bt.MetadataPool;
 import the8472.bt.MetadataPool.Completion;
 import the8472.bt.PullMetaDataConnection;
+import the8472.bt.PullMetaDataConnection.CONNECTION_STATE;
 import the8472.bt.PullMetaDataConnection.MetaConnectionHandler;
+import the8472.utils.concurrent.LoggingScheduledThreadPoolExecutor;
 
 public class TorrentFetcher {
 	
@@ -54,11 +49,7 @@ public class TorrentFetcher {
 	
 	public TorrentFetcher(Collection<DHT> dhts) {
 		this.dhts = dhts;
-		timer = new ScheduledThreadPoolExecutor(1);
-		timer.setThreadFactory((r) -> tap(new Thread(r),t -> {
-			t.setName("Torrent Fetcher Timer");
-			t.setDaemon(true);
-		}));
+		timer = new LoggingScheduledThreadPoolExecutor(1, LoggingScheduledThreadPoolExecutor.namedDaemonFactory("TorrentFetcher Timer"), t -> DHT.log(t, LogLevel.Fatal));
 		timer.setKeepAliveTime(4, TimeUnit.SECONDS);
 		timer.allowCoreThreadTimeOut(true);
 	}
@@ -79,6 +70,10 @@ public class TorrentFetcher {
 		return socketsIncludingHalfOpen.get();
 	}
 	
+	boolean socketLimitsReached() {
+		return openConnections.get() > maxOpen || socketsIncludingHalfOpen.get() > maxSockets;
+	}
+	
 	public enum FetchState {
 		PENDING,
 		SUCCESS,
@@ -92,8 +87,8 @@ public class TorrentFetcher {
 		CompletableFuture<FetchTask> future = new CompletableFuture<>();
 		Set<InetSocketAddress> pinged = Collections.newSetFromMap(new ConcurrentHashMap<>()) ;
 		Set<InetSocketAddress> connectionAttempted = Collections.newSetFromMap(new ConcurrentHashMap<>());
-		Queue<InetSocketAddress> canidates = new ConcurrentLinkedQueue<>();
-		Queue<InetSocketAddress> priorityCanidates = new ConcurrentLinkedQueue<>();
+		Map<InetSocketAddress, PullMetaDataConnection.CONNECTION_STATE> closed = new ConcurrentHashMap<>();
+		ConcurrentHashMap<InetSocketAddress, Set<InetAddress>> candidates = new ConcurrentHashMap<>();
 		boolean running = true;
 		ByteBuffer result;
 		AtomicInteger thingsBlockingCompletion = new AtomicInteger();
@@ -120,7 +115,9 @@ public class TorrentFetcher {
 					"con tried:",
 					String.valueOf(connectionAttempted.size()),
 					"con active:",
-					connections.stream().collect(Collectors.groupingBy(PullMetaDataConnection::getState, Collectors.counting())).toString()
+					connections.stream().collect(Collectors.groupingBy(PullMetaDataConnection::getState, Collectors.counting())).toString(),
+					"con closed:",
+					closed.entrySet().stream().collect(Collectors.groupingBy(Map.Entry::getValue, Collectors.counting())).toString()
 			};
 			
 			return String.join(" ", str);
@@ -157,12 +154,19 @@ public class TorrentFetcher {
 			timer.schedule(this::connections, 1, TimeUnit.SECONDS);
 		}
 		
-		void addCandidate(PeerAddressDBItem toAdd) {
-			addCandidate(toAdd.toSocketAddress());
+		void addCandidate(KBucketEntry source, PeerAddressDBItem toAdd) {
+			addCandidate(source.getAddress().getAddress() ,toAdd.toSocketAddress());
 		}
 		
-		void addCandidate(InetSocketAddress addr) {
-			canidates.add(addr);
+		void addCandidate(InetAddress source, InetSocketAddress toAdd) {
+			candidates.compute(toAdd, (k, sources) -> {
+				Set<InetAddress> newSources = new HashSet<>();
+				if(source != null)
+					newSources.add(source);
+				if(sources != null)
+					newSources.addAll(sources);
+				return newSources;
+			});
 		}
 		
 		MetadataPool getPool(int length) {
@@ -203,47 +207,6 @@ public class TorrentFetcher {
 			starters.forEach(Runnable::run);
 		}
 		
-		AtomicInteger pings = new AtomicInteger(0);
-		
-		void doPings() {
-			for(InetSocketAddress addr : canidates) {
-				if(pings.get() > 10)
-					break;
-				if(!pinged.add(addr) || connectionAttempted.contains(addr))
-					continue;
-				
-				dhts.stream().filter(d -> d.getType().PREFERRED_ADDRESS_TYPE.isInstance(addr.getAddress())).findAny().ifPresent(d -> {
-					RPCServer srv = d.getServerManager().getRandomActiveServer(false);
-					if(srv == null)
-						return;
-					PingRequest req = new PingRequest();
-					req.setDestination(addr);
-					RPCCall call = new RPCCall(req);
-					call.addListener(new RPCCallListener() {
-						
-						@Override
-						public void onTimeout(RPCCall c) {
-							pings.decrementAndGet();
-						}
-												
-						@Override
-						public void onStall(RPCCall c) {}
-						
-						@Override
-						public void onResponse(RPCCall c, MessageBase rsp) {
-							pings.decrementAndGet();
-							priorityCanidates.add(addr);
-						}
-					});
-					pings.incrementAndGet();
-					srv.doCall(call);
-				});
-								
-			}
-			
-		}
-		
-		
 		void connections() {
 			if(!running) {
 				return;
@@ -251,31 +214,40 @@ public class TorrentFetcher {
 			
 			timer.schedule(this::connections, 1, TimeUnit.SECONDS);
 
-			if(thingsBlockingCompletion.get() == 0 && canidates.isEmpty()) {
+			if(thingsBlockingCompletion.get() == 0 && candidates.isEmpty()) {
 				stop();
 				return;
 			}
 			
-			if(openConnections.get() > maxOpen || socketsIncludingHalfOpen.get() > maxSockets) {
-				doPings();
-				return;
-			}
+			candidates.keySet().removeAll(connectionAttempted);
 			
-			Stream.generate(() -> {
-				InetSocketAddress addr = priorityCanidates.poll();
-				if(addr == null)
-					addr = canidates.poll();
-				return addr;
-			}).filter(a -> !connectionAttempted.contains(a)).limit(5).filter(Objects::nonNull).forEach(addr -> {
+			Comparator<Map.Entry<InetSocketAddress, Set<InetAddress>>> comp = Map.Entry.comparingByValue(Comparator.comparingInt(Set::size));
+			comp = comp.reversed();
+			
+			InetSocketAddress[] cands = candidates.entrySet().stream().sorted(comp).map(Map.Entry::getKey).toArray(InetSocketAddress[]::new);
+			
+			int i = 0;
+			
+			for(InetSocketAddress addr : cands) {
+				
+				if(socketLimitsReached())
+					break;
+				if(i++ > 5)
+					break;
 				
 				connectionAttempted.add(addr);
+				candidates.remove(addr);
 
 				PullMetaDataConnection con = new PullMetaDataConnection(hash.getHash(), addr);
+				
+				con.keepPexOnlyOpen(cands.length < 20);
 				
 				con.poolGenerator = this::getPool;
 				con.dhtPort = dhts.stream().mapToInt(d -> d.getConfig().getListeningPort()).findAny().getAsInt();
 				con.pexConsumer = (toAdd) -> {
-					toAdd.forEach(this::addCandidate);
+					toAdd.forEach(item -> {
+						this.addCandidate(addr.getAddress(), item);
+					});
 				};
 				
 				connections.add(con);
@@ -305,6 +277,11 @@ public class TorrentFetcher {
 						thingsBlockingCompletion.decrementAndGet();
 						socketsIncludingHalfOpen.decrementAndGet();
 					}
+					
+					public void onStateChange(CONNECTION_STATE oldState, CONNECTION_STATE newState) {
+						if(newState == CONNECTION_STATE.STATE_CLOSED)
+							closed.put(addr, oldState);
+					};
 
 					@Override
 					public void onConnect() {
@@ -314,7 +291,7 @@ public class TorrentFetcher {
 				conMan.register(con);
 				thingsBlockingCompletion.incrementAndGet();
 				socketsIncludingHalfOpen.incrementAndGet();
-			});
+			}
 		}
 		
 	}

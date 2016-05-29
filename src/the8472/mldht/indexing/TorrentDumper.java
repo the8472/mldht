@@ -11,6 +11,7 @@ import the8472.mldht.TorrentFetcher;
 import the8472.mldht.TorrentFetcher.FetchTask;
 import the8472.mldht.indexing.TorrentDumper.FetchStats.State;
 import the8472.utils.ConfigReader;
+import the8472.utils.concurrent.LoggingScheduledThreadPoolExecutor;
 import the8472.utils.io.FileIO;
 
 import lbms.plugins.mldht.kad.DHT;
@@ -22,7 +23,6 @@ import lbms.plugins.mldht.kad.messages.GetPeersRequest;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 
 import java.io.IOException;
-import java.lang.Thread.UncaughtExceptionHandler;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
@@ -42,10 +42,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.FutureTask;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiPredicate;
@@ -174,43 +171,7 @@ public class TorrentDumper implements Component {
 	public void start(Collection<DHT> dhts, ConfigReader config) {
 		this.dhts = dhts;
 		fromMessages = new ConcurrentSkipListMap<>();
-		scheduler = new ScheduledThreadPoolExecutor(1, new ThreadFactory() {
-			
-			@Override
-			public Thread newThread(Runnable r) {
-				Thread t = new Thread(r);
-				t.setUncaughtExceptionHandler(new UncaughtExceptionHandler() {
-					
-					@Override
-					public void uncaughtException(Thread t, Throwable e) {
-						e.printStackTrace();
-					}
-				});
-				
-				t.setDaemon(true);
-
-				return t;
-			}
-		}) {
-			@Override
-			protected void afterExecute(Runnable r, Throwable t) {
-				super.afterExecute(r, t);
-				
-				if(t == null && r instanceof FutureTask<?>) {
-					FutureTask<?> ft = (FutureTask<?>) r;
-					if(ft.isDone() && !ft.isCancelled()) {
-						try {
-							ft.get();
-						} catch (InterruptedException | ExecutionException e) {
-							t = e.getCause();
-						}
-					}
-				}
-				
-				if(t != null)
-					log(t);
-			}
-		};
+		scheduler = new LoggingScheduledThreadPoolExecutor(1, new LoggingScheduledThreadPoolExecutor.NamedDaemonThreadFactory("torrent dumper"), this::log);
 		fetcher = new TorrentFetcher(dhts);
 		fetcher.setMaxOpen(40);
 

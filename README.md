@@ -26,6 +26,7 @@ Additional:
 - low latency lookups by using adaptive timeouts and a secondary routing table/cache tuned for RTT instead of stability
 - export of passively observed \<infohash, ip\> tuples to redis to survey torrent activity
 - remote CLI for common DHT operations
+- full automatic torrent indexing
 
 ## Dependencies
 
@@ -81,18 +82,21 @@ Message objects and their contents should not be modified.
 * The length of network interface send queues should be increased when the DHT node is operated in multihoming mode on a server with many public IPs.<br>This is necessary because UDP sends may be silently dropped when the send queue is full and DHT traffic can be very bursty, easily saturating too-small queues<br>Check system logs or netstat statistics to see if outgoing packets are dropped.
 * For similar reasons the maximum socket receive buffer size should be set to at least 2MB, which is the amount this implementation will request when configuring its sockets
 
-## launch with redis export
 
-add the following lines to the `<components>` section of the config.xml:
+## optional components
 
-```xml
-    <component xsi:type="mldht:redisIndexerType">
-      <className>the8472.mldht.PassiveRedisIndexer</className>
-      <address>127.0.0.1</address>
-    </component>
-```
+Some features are not enabled out of the box because they only require external infrastructure, provide public services or would cause extra traffic.
 
-## remote-cli component
+They are enabled by adding or uncommenting a `<component><className>...</className></component>` entry to the config.xml 
+
+
+* `the8472.mldht.cli.Server` to enable the remote CLI
+* `the8472.mldht.indexing.TorrentDumper` obtains infohashes from incoming traffic, then does all the necessary work to fetch them. can acquire approximately 0.3 torrents per second on a single-homed setup without firewall.
+* `the8472.mldht.indexing.ActiveLookupProvider` raw TCP interface for requesting DHT scrapes on port 36578. just send infohashes in hex, newline separated
+* `the8472.mldht.indexing.OpentrackerLiveSync` implements a lan-local multicast sender for opentracker's IPv4 live sync. for passively observed DHT lookups will be inserted as peers in opentracker instance. opentracker instance can then be used as source for DHT statistics as if it were just another tracker
+* `the8472.mldht.PassiveRedisIndexer` obtains statistics on peers seen on particular infohashes
+
+### remote-cli
 
 launch daemon with
 
@@ -126,15 +130,22 @@ BURST [count]                                        - run a batch of find_node 
 
 **Security note:** The CLI Server component listens on localhost, accepting commands without authentication from any user on the system. It is recommended to not use this component in a multi-user environment.
 
-## other components
-
-* `the8472.mldht.indexing.ActiveLookupProvider` raw TCP interface for requesting DHT scrapes on port 36578. just send infohashes in hex, newline separated
-* `the8472.mldht.indexing.OpentrackerLiveSync` implements a lan-local multicast sender for opentracker's IPv4 live sync. for passively observed DHT lookups will be inserted as peers in opentracker instance. opentracker instance can then be used as source for DHT statistics as if it were just another tracker
 
 
-## launching custom components
+### redis statistics export
 
-Implement [<tt>Component</tt>](src/the8472/mldht/Component.java) and configure the launcher to include it on startup through the config.xml:
+
+```xml
+    <component xsi:type="mldht:redisIndexerType">
+      <className>the8472.mldht.PassiveRedisIndexer</className>
+      <address>127.0.0.1</address><!-- additional parameter to allow exporting to other hosts -->
+    </component>
+```
+
+
+### custom components
+
+Simply implement [<tt>Component</tt>](src/the8472/mldht/Component.java) and configure the launcher to include it on startup through the config.xml:
 	
 ```xml
     <component>

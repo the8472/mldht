@@ -56,7 +56,7 @@ public class IterativeLookupCandidates {
 	class LookupGraphNode {
 		final KBucketEntry e;
 		Set<LookupGraphNode> sources = new CopyOnWriteArraySet<>();
-		List<LookupGraphNode> returnedNodes = new CopyOnWriteArrayList<>() ;
+		Set<LookupGraphNode> returnedNodes = ConcurrentHashMap.newKeySet();
 		List<RPCCall> calls = new CopyOnWriteArrayList<>();
 		
 		public LookupGraphNode(KBucketEntry kbe) {
@@ -71,27 +71,35 @@ public class IterativeLookupCandidates {
 			sources.add(toAdd);
 		}
 		
-		boolean succeeded() {
-			return calls.stream().anyMatch(c -> c.state() == RPCState.RESPONDED);
+		boolean callsNotSuccessful() {
+			return calls.stream().noneMatch(c -> c.state() == RPCState.RESPONDED);
 		}
 		
 		int nonSuccessfulDescendantCalls() {
-			return (int) returnedNodes.stream().mapToDouble(node -> (node.succeeded() ? 0. : 1.) / Math.max(node.sources.size(), 1)).sum();
+			return (int) Math.ceil(returnedNodes.stream().filter(LookupGraphNode::callsNotSuccessful).mapToDouble(node -> 1.0 / Math.max(node.sources.size(), 1)).sum());
+		}
+		
+		void addChild(LookupGraphNode toAdd) {
+			returnedNodes.add(toAdd);
 		}
 		
 		KBucketEntry toKbe() {
 			return e;
 		}
 		
-	}
-	
-	class Source {
-		KBucketEntry e;
-		List<RPCCall> sourcedCalls = new CopyOnWriteArrayList<>();
-		
-		void addCall(RPCCall c) {
-			sourcedCalls.add(c);
+		@Override
+		public boolean equals(Object other) {
+			if(other instanceof LookupGraphNode) {
+				return e.equals(((LookupGraphNode) other).e);
+			}
+			return false;
 		}
+		
+		@Override
+		public int hashCode() {
+			return e.hashCode();
+		}
+		
 	}
 	
 	public IterativeLookupCandidates(Key target) {
@@ -135,22 +143,24 @@ public class IterativeLookupCandidates {
 	void addCandidates(KBucketEntry source, Collection<KBucketEntry> entries) {
 		Set<Object> dedup = new HashSet<>();
 		
-		LookupGraphNode sourceNode = null;
-		if(source != null)
-			sourceNode = candidates.get(source);
+		LookupGraphNode sourceNode = source != null ? candidates.get(source) : null;
 		
 		for(KBucketEntry e : entries) {
 			if(!dedup.add(e.getID()) || !dedup.add(e.getAddress().getAddress()))
 				continue;
 			
-			synchronized (this) {
-				LookupGraphNode node = candidates.computeIfAbsent(e, kbe -> {
-					return new LookupGraphNode(kbe);
-				});
-				
+
+			LookupGraphNode newNode = candidates.compute(e, (kbe, node) -> {
+				if(node == null)
+					node = new LookupGraphNode(kbe);
 				if(sourceNode != null)
 					node.addSource(sourceNode);
-			}
+				return node;
+			});
+			
+			if(sourceNode != null)
+				sourceNode.addChild(newNode);
+
 			
 		}
 		

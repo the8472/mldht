@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -177,8 +178,8 @@ public class TorrentFetcher {
 		}
 		
 		void lookups() {
-			dhts.stream().filter(DHT::isRunning).forEach(d -> {
-				Optional.ofNullable(d.getServerManager().getRandomActiveServer(false)).ifPresent(srv -> {
+			List<Runnable> starters = dhts.stream().filter(DHT::isRunning).map(d -> {
+				return Optional.ofNullable(d.getServerManager().getRandomActiveServer(false)).map(srv -> {
 					PeerLookupTask task = new PeerLookupTask(srv, d.getNode(), hash);
 					
 					task.setNoAnnounce(true);
@@ -189,11 +190,17 @@ public class TorrentFetcher {
 					
 					thingsBlockingCompletion.incrementAndGet();
 					
-					d.getTaskManager().addTask(task);
+					
 					
 					future.thenAccept(x -> task.kill());
+
+					return (Runnable)() -> {d.getTaskManager().addTask(task);};
 				});
-			});
+			}).filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList());
+
+			// start tasks after we've incremented counters for all tasks
+			// otherwise tasks might finish so fast that the counters go back down to 0
+			starters.forEach(Runnable::run);
 		}
 		
 		AtomicInteger pings = new AtomicInteger(0);

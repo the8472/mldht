@@ -1,5 +1,7 @@
 # mldht
 
+[![Build Status](https://travis-ci.org/the8472/mldht.svg?branch=master)](https://travis-ci.org/the8472/mldht)
+
 A java library and standalone node implementing the Kademlia-based bittorrent mainline DHT, with long-running server-class nodes in mind.
 
 Originally developed as [DHT plugin](http://azsmrc.sourceforge.net/index.php?action=plugin-mldht) for Azureus/[Vuze](http://dev.vuze.com/)

@@ -102,9 +102,10 @@ public class Functional {
 		    throw (T) t;
 		}
 	}
-
-	public static <K, T> Optional<T> typedGet(Map<K, ?> map, K key, Class<T> clazz) {
-		return Optional.ofNullable(map.get(key)).filter(clazz::isInstance).map(clazz::cast);
+	
+	@SuppressWarnings("unchecked") // a supertype of the expected T can be passed to allow type-inference to match erased generics
+	public static <K, T> Optional<T> typedGet(Map<? super K, ?> map, K key, Class<? super T> clazz) {
+		return (Optional<T>) Optional.ofNullable(map.get(key)).filter(clazz::isInstance).map(clazz::cast);
 	}
 
 

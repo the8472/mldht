@@ -92,6 +92,43 @@
 			    </execution>
 			  </executions>
 			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>appassembler-maven-plugin</artifactId>
+				<version>1.10</version>
+				<configuration>
+					<assembleDirectory>./</assembleDirectory>
+					<endorsedDir>target</endorsedDir>
+					<programs>
+						<program>
+							<platforms>
+								<platform>unix</platform>
+							</platforms>
+							<mainClass>the8472.mldht.cli.TorrentInfo</mainClass>
+							<id>torrent-info</id>
+						</program>
+					</programs>
+				</configuration>
+			</plugin>
+			<plugin>
+				<artifactId>maven-antrun-plugin</artifactId>
+				<version>1.8</version>
+				<executions>
+					<execution>
+						<id>link</id>
+						<goals>
+							<goal>run</goal>
+						</goals>
+						<configuration>
+							<tasks>
+								<symlink link="${user.home}/bin/mldht-daemon" resource="${project.basedir}/bin/mldht-daemon" />
+								<symlink link="${user.home}/bin/mldht-remote-cli" resource="${project.basedir}/bin/mldht-remote-cli" />
+								<symlink link="${user.home}/bin/torrent-info" resource="${project.basedir}/bin/torrent-info" />
+							</tasks>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 	</build>
 	<dependencies>

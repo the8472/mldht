@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class TorrentInfo {
@@ -115,11 +116,13 @@ public class TorrentInfo {
 		
 		Stream<Path> files = args.parallelStream().unordered().map(Paths::get).filter(Files::exists).flatMap(p -> {
 			try {
-				return Files.walk(p, 1, FileVisitOption.FOLLOW_LINKS).unordered().parallel().filter(Files::isRegularFile);
+				return Files.find(p, 1, (f, attr) -> {
+					return attr.isRegularFile();
+				},  FileVisitOption.FOLLOW_LINKS);
 			} catch (IOException e) {
 				throw new UncheckedIOException(e);
 			}
-		}).distinct();
+		}).collect(Collectors.toSet()).parallelStream().unordered();
 
 		
 		Consumer<String> printer = SerializedTaskExecutor.runSerialized((String s) -> {
@@ -131,7 +134,6 @@ public class TorrentInfo {
 
 			return p.toString() + " " + ti.name();
 		}).forEach(printer::accept);
-
 		
 
 	}

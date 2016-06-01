@@ -28,7 +28,6 @@ import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
 import lbms.plugins.mldht.utils.Selectable;
 import static the8472.bt.PullMetaDataConnection.CONNECTION_STATE.*;
-
 import java.io.BufferedWriter;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -244,8 +243,12 @@ public class PullMetaDataConnection implements Selectable {
 
 		if(isState(STATE_CONNECTING))
 		{
-			if(channel.connect(destination))
-				connectEvent();
+			try {
+				if(channel.connect(destination))
+					connectEvent();
+			} catch (IOException e) {
+				terminate("connect failed " + e.getMessage());
+			}
 		} else
 		{ // incoming
 			metaHandler.onConnect();
@@ -678,18 +681,20 @@ public class PullMetaDataConnection implements Selectable {
 	}
 	
 	public void terminate(String reason) throws IOException {
-		if(isState(STATE_CLOSED))
-			return;
-		//if(!isState(STATE_FINISHED) && !isState(STATE_CONNECTING))
-			//MetaDataGatherer.log("closing connection for "+(infoHash != null ? new Key(infoHash).toString(false) : null)+" to "+destination+"/"+remoteClient+" state:"+state+" reason:"+reason);
-		if(pool != null)
-			pool.deRegister(this);
-		if(connManager != null)
-			connManager.deRegister(this);
-		boolean wasConnected = !isState(STAET_INITIAL) && !isState(STATE_CONNECTING);
-		setState(STATE_CLOSED);
-		metaHandler.onTerminate(wasConnected);
-		channel.close();
+		synchronized (this) {
+			if(isState(STATE_CLOSED))
+				return;
+			//if(!isState(STATE_FINISHED) && !isState(STATE_CONNECTING))
+				//MetaDataGatherer.log("closing connection for "+(infoHash != null ? new Key(infoHash).toString(false) : null)+" to "+destination+"/"+remoteClient+" state:"+state+" reason:"+reason);
+			if(pool != null)
+				pool.deRegister(this);
+			if(connManager != null)
+				connManager.deRegister(this);
+			boolean wasConnected = !isState(STAET_INITIAL) && !isState(STATE_CONNECTING);
+			setState(STATE_CLOSED);
+			metaHandler.onTerminate(wasConnected);
+			channel.close();
+		}
 	}
 	
 }

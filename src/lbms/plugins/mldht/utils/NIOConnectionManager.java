@@ -17,12 +17,12 @@
 package lbms.plugins.mldht.utils;
 
 import java.io.IOException;
+import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
@@ -34,8 +34,8 @@ public class NIOConnectionManager {
 	
 	ConcurrentLinkedQueue<Selectable> registrations = new ConcurrentLinkedQueue<>();
 	ConcurrentLinkedQueue<Selectable> updateInterestOps = new ConcurrentLinkedQueue<>();
-	List<Selectable> connections = new ArrayList<Selectable>();
-	AtomicReference<Thread> workerThread = new AtomicReference<Thread>();
+	List<Selectable> connections = new ArrayList<>();
+	AtomicReference<Thread> workerThread = new AtomicReference<>();
 	
 	String name;
 	Selector selector;
@@ -111,11 +111,12 @@ public class NIOConnectionManager {
 			return;
 		lastConnectionCheck = now;
 		
-		for(Selectable conn : new ArrayList<Selectable>(connections)) {
+		for(Selectable conn : new ArrayList<>(connections)) {
 			conn.doStateChecks(now);
-			Optional.ofNullable(conn.getChannel()).map(c -> c.keyFor(selector)).filter(k -> !k.isValid()).ifPresent(k -> {
+			SelectableChannel ch = conn.getChannel();
+			SelectionKey k;
+			if(ch == null || (k = ch.keyFor(selector)) == null || !k.isValid())
 				connections.remove(conn);
-			});
 		}
 	}
 	

@@ -79,7 +79,7 @@ public class PullMetaDataConnection implements Selectable {
 	}
 	
 	public enum CONNECTION_STATE {
-		STAET_INITIAL,
+		STATE_INITIAL,
 		STATE_CONNECTING,
 		STATE_BASIC_HANDSHAKING,
 		STATE_LTEP_HANDSHAKING,
@@ -690,7 +690,7 @@ public class PullMetaDataConnection implements Selectable {
 				pool.deRegister(this);
 			if(connManager != null)
 				connManager.deRegister(this);
-			boolean wasConnected = !isState(STAET_INITIAL) && !isState(STATE_CONNECTING);
+			boolean wasConnected = !isState(STATE_INITIAL) && !isState(STATE_CONNECTING);
 			setState(STATE_CLOSED);
 			metaHandler.onTerminate(wasConnected);
 			channel.close();

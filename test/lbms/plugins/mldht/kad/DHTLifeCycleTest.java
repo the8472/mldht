@@ -12,6 +12,7 @@ import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.DHTStatus;
 
 import java.lang.Thread.UncaughtExceptionHandler;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -64,6 +65,9 @@ public class DHTLifeCycleTest {
 			
 			@Override
 			public void log(Throwable t, LogLevel l) {
+				// allow bootstrap node resolution to fail in test environment
+				if(t instanceof UnknownHostException)
+					return;
 				exceptionCanary.completeExceptionally(t);
 				
 			}
@@ -144,7 +148,6 @@ public class DHTLifeCycleTest {
 		
 		// check for async exceptions
 		exceptionCanary.get();
-		
 		
 		assertFalse("should not create storage path, that's the caller's duty", Files.isDirectory(storagePath));
 		

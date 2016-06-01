@@ -71,6 +71,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -790,19 +791,20 @@ public class DHT implements DHTBase {
 		}
 		
 		for(ScheduledFuture<?> future : scheduledActions) {
-			// periodic tasks can only be completed by exceptions
-			if(future.isDone()) {
-				// none of the scheduled tasks should experience exceptions, log them if they did
-				try {
-					future.get();
-				} catch (ExecutionException e) {
-					DHT.log(e.getCause(), LogLevel.Fatal);
-				} catch (InterruptedException e) {
-					DHT.log(e, LogLevel.Fatal);
-				}
-			}
 			future.cancel(false);
+			// none of the scheduled tasks should experience exceptions, log them if they did
+			try {
+				future.get();
+			} catch (ExecutionException e) {
+				DHT.log(e.getCause(), LogLevel.Fatal);
+			} catch (InterruptedException e) {
+				DHT.log(e, LogLevel.Fatal);
+			} catch (CancellationException e) {
+				// do nothing, we just cancelled it
+			}
 		}
+		
+		
 			
 		// scheduler.getQueue().removeAll(scheduledActions);
 		scheduledActions.clear();

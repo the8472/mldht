@@ -51,6 +51,9 @@ public class LoggingScheduledThreadPoolExecutor extends ScheduledThreadPoolExecu
 				}
 			}
 			
+			if(t != null)
+				exceptionHandler.accept(t);
+			
 		}
 	}
 

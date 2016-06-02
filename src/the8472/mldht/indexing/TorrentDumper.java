@@ -221,16 +221,16 @@ public class TorrentDumper implements Component {
 			
 			Key ourId = srv.getDerivedID();
 			Key target = gpr.getInfoHash();
+
+			if(Stream.of(theirID, ourId, target).distinct().count() != 3)
+				return;
+
 			int myCloseness = ourId.distance(target).leadingOneBit();
 			int theirCloseness = theirID.distance(target).leadingOneBit();
 			
-			if(theirCloseness == -1)
-				return;  // they're looking exactly for their own id
+			
 			if(theirCloseness > myCloseness && theirCloseness - myCloseness >= 8)
 				return; // they're looking for something that's significantly closer to their own ID than we are
-			
-			if(m.getID().equals(((GetPeersRequest) m).getInfoHash()))
-				return;
 			process(gpr.getInfoHash(), gpr.getOrigin().getAddress(), null);
 		}
 		if(m instanceof AnnounceRequest) {

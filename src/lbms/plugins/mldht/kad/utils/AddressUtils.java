@@ -39,6 +39,13 @@ public class AddressUtils {
 		return !(port > 0 && port <= 0xFFFF && isGlobalUnicast(addr));
 	}
 	
+	public static boolean isTeredo(InetAddress addr) {
+		if(!(addr instanceof Inet6Address))
+			return false;
+		byte[] raw = addr.getAddress();
+		return raw[0] == 0x20 && raw[1] == 0x01 && raw[2] == 0x00 && raw[3] == 0x00;
+	}
+	
 	public static boolean isGlobalUnicast(InetAddress addr)
 	{
 		if(addr instanceof Inet4Address && addr.getAddress()[0] == 0)
@@ -127,9 +134,8 @@ public class AddressUtils {
 						if (addr.isIPv4CompatibleAddress() || !isGlobalUnicast(addr))
 							continue;
 	
-						byte[] raw = addr.getAddress();
 						// prefer other addresses over teredo
-						if (raw[0] == 0x20 && raw[1] == 0x01 && raw[2] == 0x00 && raw[3] == 0x00)
+						if (isTeredo(addr))
 							addrs.addLast(addr);
 						else
 							addrs.addFirst(addr);

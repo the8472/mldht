@@ -27,6 +27,7 @@ import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.PeerAddressDBItem;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.tasks.PeerLookupTask;
+import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
 import the8472.bt.MetadataPool;
 import the8472.bt.MetadataPool.Completion;
@@ -227,6 +228,8 @@ public class TorrentFetcher {
 			
 			Comparator<Map.Entry<InetSocketAddress, Set<InetAddress>>> comp = Map.Entry.comparingByValue(Comparator.comparingInt(Set::size));
 			comp = comp.reversed();
+			// deprioritize teredo addresses
+			comp = comp.thenComparing(Map.Entry.comparingByKey(Comparator.comparingInt((InetSocketAddress addr) -> AddressUtils.isTeredo(addr.getAddress()) ? 1 : 0))) ;
 			
 			InetSocketAddress[] cands = candidates.entrySet().stream().sorted(comp).map(Map.Entry::getKey).toArray(InetSocketAddress[]::new);
 			

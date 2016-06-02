@@ -149,7 +149,7 @@ public class TorrentFetcher {
 			future.complete(this);
 		}
 		
-		public Map<Object, Long> closeCounts() {
+		public Map<CONNECTION_STATE, Long> closeCounts() {
 			return closed.entrySet().stream().collect(Collectors.groupingBy(Map.Entry::getValue, Collectors.counting()));
 		}
 

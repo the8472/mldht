@@ -437,7 +437,8 @@ public class TorrentDumper implements Component {
 			// closed on ltep means peers didn't support metadata exchange
 			// if we see many of those that swarm is probably dominated by a client that doesn't speak BEP 9
 			// don't waste resources on those unless we have nothing else to do
-			if(t.closeCounts().get(CONNECTION_STATE.STATE_LTEP_HANDSHAKING) > 50)
+			Long count = t.closeCounts().get(CONNECTION_STATE.STATE_LTEP_HANDSHAKING);
+			if(count != null && count > 50)
 				t.stop();
 		});
 	}

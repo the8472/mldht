@@ -510,7 +510,7 @@ public class TorrentDumper implements Component {
 			FileIO.writeAndAtomicMove(storageDir.resolve("dumper.log"), (p) -> {
 				p.format("Fetcher:%n established: %d%n sockets: %d %n%n", fetcher.openConnections(), fetcher.socketcount());
 				
-				p.println("FetchTasks");
+				p.format("FetchTasks: %d %n", activeCount.get());
 				activeTasks.values().forEach(ft -> {
 					p.println(ft.toString());
 				});

@@ -117,7 +117,7 @@ public class TorrentFetcher {
 					"con active:",
 					connections.stream().collect(Collectors.groupingBy(PullMetaDataConnection::getState, Collectors.counting())).toString(),
 					"con closed:",
-					closed.entrySet().stream().collect(Collectors.groupingBy(Map.Entry::getValue, Collectors.counting())).toString()
+					closeCounts().toString()
 			};
 			
 			return String.join(" ", str);
@@ -146,6 +146,10 @@ public class TorrentFetcher {
 				}
 			});
 			future.complete(this);
+		}
+		
+		public Map<Object, Long> closeCounts() {
+			return closed.entrySet().stream().collect(Collectors.groupingBy(Map.Entry::getValue, Collectors.counting()));
 		}
 
 		void start() {

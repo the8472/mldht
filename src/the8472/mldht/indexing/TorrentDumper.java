@@ -5,6 +5,7 @@ import static the8472.utils.Functional.typedGet;
 
 import the8472.bencode.BDecoder;
 import the8472.bencode.BEncoder;
+import the8472.bt.PullMetaDataConnection.CONNECTION_STATE;
 import the8472.bt.TorrentUtils;
 import the8472.mldht.Component;
 import the8472.mldht.TorrentFetcher;
@@ -190,7 +191,7 @@ public class TorrentDumper implements Component {
 		scheduler.scheduleWithFixedDelay(this::cleanBlocklist, 1, 1, TimeUnit.MINUTES);
 		scheduler.scheduleWithFixedDelay(this::diagnostics, 30, 30, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::purgeStats, 5, 30, TimeUnit.MINUTES);
-		
+		scheduler.scheduleWithFixedDelay(this::scrubActive, 10, 20, TimeUnit.SECONDS);
 	}
 	
 	void log(Throwable t) {
@@ -393,6 +394,20 @@ public class TorrentDumper implements Component {
 	
 	AtomicInteger activeCount = new AtomicInteger();
 	ConcurrentHashMap<Key, FetchTask> activeTasks = new ConcurrentHashMap<>();
+	
+	void scrubActive() {
+		activeTasks.values().forEach(t -> {
+			// cease scrubbing if we have enough spare capacity
+			if(activeCount.get() < 50)
+				return;
+			
+			// closed on ltep means peers didn't support metadata exchange
+			// if we see many of those that swarm is probably dominated by a client that doesn't speak BEP 9
+			// don't waste resources on those unless we have nothing else to do
+			if(t.closeCounts().get(CONNECTION_STATE.STATE_LTEP_HANDSHAKING) > 50)
+				t.stop();
+		});
+	}
 	
 	void fetch(FetchStats stats) {
 		Key k = stats.getK();

@@ -194,6 +194,10 @@ public class TorrentFetcher {
 		public Map<CONNECTION_STATE, Long> closeCounts() {
 			return closed.entrySet().stream().collect(Collectors.groupingBy(Map.Entry::getValue, Collectors.counting()));
 		}
+		
+		public int attemptedCount() {
+			return connectionAttempted.size();
+		}
 
 		void start() {
 			startTime = Instant.now();

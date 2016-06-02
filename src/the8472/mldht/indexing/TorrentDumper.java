@@ -5,7 +5,6 @@ import static the8472.utils.Functional.typedGet;
 
 import the8472.bencode.BDecoder;
 import the8472.bencode.BEncoder;
-import the8472.bt.PullMetaDataConnection.CONNECTION_STATE;
 import the8472.bt.TorrentUtils;
 import the8472.mldht.Component;
 import the8472.mldht.TorrentFetcher;
@@ -35,7 +34,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.AbstractMap;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -429,17 +430,20 @@ public class TorrentDumper implements Component {
 	ConcurrentHashMap<Key, FetchTask> activeTasks = new ConcurrentHashMap<>();
 	
 	void scrubActive() {
-		activeTasks.values().forEach(t -> {
-			// cease scrubbing if we have enough spare capacity
-			if(activeCount.get() < 50)
-				return;
-			
-			// closed on ltep means peers didn't support metadata exchange
-			// if we see many of those that swarm is probably dominated by a client that doesn't speak BEP 9
-			// don't waste resources on those unless we have nothing else to do
-			Long count = t.closeCounts().get(CONNECTION_STATE.STATE_LTEP_HANDSHAKING);
-			if(count != null && count > 50)
-				t.stop();
+		
+		// as long as there are young connections it means some fraction of the fetch tasks dies quickly
+		// we're fine with other ones taking longer as long as that's the case
+		long youngConnections = activeTasks.values().stream().filter(t -> t.attemptedCount() < 5).count();
+		
+		if(youngConnections > 15 || activeCount.get() < 90)
+			return;
+		
+		
+		Comparator<Map.Entry<FetchTask, Integer>> comp = Map.Entry.comparingByValue();
+		comp = comp.reversed();
+		
+		activeTasks.values().stream().map(t -> new AbstractMap.SimpleEntry<>(t, t.attemptedCount())).filter(e -> e.getValue() > 70).sorted(comp).limit(10).forEach(e -> {
+			e.getKey().stop();
 		});
 	}
 	

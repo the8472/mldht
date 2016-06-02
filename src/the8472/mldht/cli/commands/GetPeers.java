@@ -63,7 +63,7 @@ public class GetPeers extends CommandProcessor {
 					
 					Duration elapsed = Duration.between(start, Instant.now());
 					
-					f.format("%-5dms %s %s", elapsed.toMillis(), h.toString(), item.toString());
+					f.format("%-5dms %s %s from: %s", elapsed.toMillis(), h.toString(), item.toString(), source);
 					
 					println(f.toString());
 				});

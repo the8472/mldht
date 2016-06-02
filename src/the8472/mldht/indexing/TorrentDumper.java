@@ -23,16 +23,17 @@ import lbms.plugins.mldht.kad.messages.GetPeersRequest;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
@@ -45,9 +46,10 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiPredicate;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 
 public class TorrentDumper implements Component {
@@ -154,7 +156,8 @@ public class TorrentDumper implements Component {
 		}
 		
 		public Path name(Path dir, String suffix) {
-			return dir.resolve(k.toString(false)+suffix);
+			String hex = k.toString(false);
+			return dir.resolve(hex.substring(0, 2)).resolve(hex.substring(2, 4)).resolve(hex+suffix);
 		}
 		
 		public Path statsName(Path statsDir, State st) {
@@ -224,7 +227,7 @@ public class TorrentDumper implements Component {
 			if(theirCloseness == -1)
 				return;  // they're looking exactly for their own id
 			if(theirCloseness > myCloseness && theirCloseness - myCloseness >= 8)
-				return;  // they're looking for something that's significantly closer to their own ID than we are
+				return; // they're looking for something that's significantly closer to their own ID than we are
 			
 			if(m.getID().equals(((GetPeersRequest) m).getInfoHash()))
 				return;
@@ -310,9 +313,12 @@ public class TorrentDumper implements Component {
 				}
 					
 				
+				Path statsFile = s.statsName(statsDir, null);
+				
+				Files.createDirectories(statsFile.getParent());
 
 				// TODO: atomic-move
-				try(FileChannel ch = FileChannel.open(s.statsName(statsDir, null), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+				try(FileChannel ch = FileChannel.open(statsFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
 					ByteBuffer buf = new BEncoder().encode(s.forBencoding(), 16*1024);
 					ch.write(buf);
 				}
@@ -334,7 +340,7 @@ public class TorrentDumper implements Component {
 		long now = System.currentTimeMillis();
 		
 		try {
-			Stream<FetchStats> st = Files.find(failedDir, 1, (p, attr) -> {
+			Stream<FetchStats> st = Files.find(failedDir, 4, (p, attr) -> {
 				return p.getFileName().toString().matches("\\.stats$");
 			}).map(p -> {
 				try {
@@ -358,21 +364,46 @@ public class TorrentDumper implements Component {
 		}
 	}
 	
+	
+	Function<Path, Stream<Path>> flatMapper(DirectoryStream.Filter<Path> f) {
+		return (p) -> {
+			DirectoryStream<Path> rootDStream;
+
+			try {
+				rootDStream = Files.newDirectoryStream(p, f);
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+
+			return StreamSupport.stream(rootDStream.spliterator(), false).onClose(() -> {
+				try {
+					rootDStream.close();
+				} catch (IOException e1) {
+					log(e1);
+				}
+			});
+		};
+	}
+	
+	
 	Stream<FetchStats> fetchStatsStream() throws IOException {
 		Key start = Key.createRandomKey();
+		String hex = start.toString(false);
+		String layer1Prefix = hex.substring(0, 2);
+		String layer2Prefix = hex.substring(2, 4);
+		
 		BDecoder dec = new BDecoder();
 		
-		BiPredicate<Path, BasicFileAttributes> fileFilter = (p, attr) -> {
-			if(!attr.isRegularFile())
-				return false;
-			String name = p.getFileName().toString();
-			return name.matches("^[0-9A-F]{40}\\.stats$") && name.compareTo(start.toString(false)) > 0;
-		};
 		
 		Path prio = FetchStats.State.PRIORITY.stateDir(statsDir);
 		Path normal = FetchStats.State.INITIAL.stateDir(statsDir);
+
+		Stream<Path> prioritizedRoots = Stream.of(prio, normal);
+		Stream<Path> layer1 = prioritizedRoots.flatMap(flatMapper(p -> p.getFileName().toString().compareTo(layer1Prefix) >= 0 && Files.isDirectory(p)));
+		Stream<Path> layer2 = layer1.flatMap(flatMapper(p -> (p.getParent().getFileName().toString().compareTo(layer1Prefix) > 0 || p.getFileName().toString().compareTo(layer2Prefix) >= 0) && Files.isDirectory(p)));
+		Stream<Path> leafs = layer2.flatMap(flatMapper(file -> file.getFileName().toString().compareTo(hex) >= 0 && Files.isRegularFile(file)));
 		
-		return Stream.concat(Files.find(prio, 3, fileFilter), Files.find(normal, 3, fileFilter)).map(p -> {
+		return leafs.map(p -> {
 			try {
 				return FetchStats.fromBencoded(dec.decode(ByteBuffer.wrap(Files.readAllBytes(p))));
 			} catch (IOException e) {
@@ -384,7 +415,9 @@ public class TorrentDumper implements Component {
 	
 	void startFetches() {
 		try {
-			fetchStatsStream().forEach(this::fetch);
+			try(Stream<FetchStats> st = fetchStatsStream()) {
+				st.limit(200).forEach(this::fetch);
+			};
 		} catch (Exception e) {
 			log(e);
 		}
@@ -434,13 +467,21 @@ public class TorrentDumper implements Component {
 			if(!t.getResult().isPresent()) {
 				stats.setState(FetchStats.State.FAILED);
 				stats.lastFetchTime = System.currentTimeMillis();
-				try(FileChannel statsChan = FileChannel.open(stats.statsName(statsDir, null), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+				
+				Path failedStatsFile = stats.statsName(statsDir, null);
+				Files.createDirectories(failedStatsFile.getParent());
+				
+				try(FileChannel statsChan = FileChannel.open(failedStatsFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
 					statsChan.write(new BEncoder().encode(stats.forBencoding(), 4*1024));
 				}
 				return;
 			}
 			ByteBuffer buf = t.getResult().get();
-			try(FileChannel chan = FileChannel.open(stats.name(torrentDir, ".torrent"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+			
+			Path torrentFile = stats.name(torrentDir, ".torrent");
+			Files.createDirectories(torrentFile.getParent());
+			
+			try(FileChannel chan = FileChannel.open(torrentFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
 				chan.write(TorrentUtils.wrapBareInfoDictionary(buf));
 			}
 		} catch (Exception e) {

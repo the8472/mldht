@@ -150,7 +150,6 @@ public class TorrentDumper implements Component {
 			insertCount += other.insertCount;
 			lastTouchedBy = otherIsNewer ? other.lastTouchedBy : lastTouchedBy;
 			creationTime = min(creationTime, other.creationTime);
-			state = otherIsNewer ? other.state : state;
 			
 			return this;
 		}
@@ -314,6 +313,9 @@ public class TorrentDumper implements Component {
 							return;
 						
 						s.merge(old);
+						
+						if(old.state != FetchStats.State.INITIAL)
+							s.state = old.state;
 						
 					} catch (IOException e) {
 						log(e);
@@ -492,9 +494,9 @@ public class TorrentDumper implements Component {
 		blocklist.remove(stats.lastTouchedBy);
 		activeTasks.remove(t.infohash());
 		try {
-			Path statsFile = stats.statsName(statsDir, null);
-			if(Files.isRegularFile(statsFile))
-				Files.delete(statsFile);
+			for(FetchStats.State st : FetchStats.State.values()) {
+				Files.deleteIfExists(stats.statsName(statsDir, st));
+			}
 			
 			if(!t.getResult().isPresent()) {
 				stats.setState(FetchStats.State.FAILED);

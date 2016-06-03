@@ -37,7 +37,9 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.AbstractMap;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -50,9 +52,8 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
-import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 
 public class TorrentDumper implements Component {
@@ -178,7 +179,9 @@ public class TorrentDumper implements Component {
 		this.dhts = dhts;
 		fromMessages = new ConcurrentSkipListMap<>();
 		scheduler = new LoggingScheduledThreadPoolExecutor(1, new LoggingScheduledThreadPoolExecutor.NamedDaemonThreadFactory("torrent dumper"), this::log);
+		
 		fetcher = new TorrentFetcher(dhts);
+		
 		fetcher.setMaxOpen(40);
 
 		dhts.forEach(d -> d.addIncomingMessageListener(this::incomingMessage));
@@ -355,10 +358,10 @@ public class TorrentDumper implements Component {
 		
 		long now = System.currentTimeMillis();
 		
-		try {
-			Stream<FetchStats> st = Files.find(failedDir, 4, (p, attr) -> {
-				return p.getFileName().toString().matches("\\.stats$");
-			}).map(p -> {
+		try (Stream<Path> pst = Files.find(failedDir, 4, (p, attr) -> {
+			return p.getFileName().toString().matches("\\.stats$");
+		})) {
+			Stream<FetchStats> st = pst.map(p -> {
 				try {
 					return FetchStats.fromBencoded(dec.decode(ByteBuffer.wrap(Files.readAllBytes(p))));
 				} catch (IOException e) {
@@ -366,7 +369,7 @@ public class TorrentDumper implements Component {
 					return null;
 				}
 			});
-			
+
 			st.filter(Objects::nonNull).filter(stat -> now - stat.lastFetchTime > TimeUnit.HOURS.toMillis(2)).forEach(stat -> {
 				try {
 					Files.delete(stat.statsName(statsDir, null));
@@ -374,34 +377,30 @@ public class TorrentDumper implements Component {
 					log(e);
 				}
 			});
-			
-		} catch (IOException e) {
+
+		} catch (UncheckedIOException | IOException e) {
 			log(e);
 		}
-	}
-	
-	
-	Function<Path, Stream<Path>> flatMapper(DirectoryStream.Filter<Path> f) {
-		return (p) -> {
-			DirectoryStream<Path> rootDStream;
 
-			try {
-				rootDStream = Files.newDirectoryStream(p, f);
-			} catch (IOException e) {
-				throw new UncheckedIOException(e);
-			}
-
-			return StreamSupport.stream(rootDStream.spliterator(), false).onClose(() -> {
+		try (Stream<Path> st = Files.find(statsDir, 5, (p, attr) -> attr.isDirectory())) {
+			st.filter(d -> {
+				try (DirectoryStream<Path> dst = Files.newDirectoryStream(d)) {
+					return !dst.iterator().hasNext();
+				} catch (IOException e) {
+					throw new UncheckedIOException(e);
+				}
+			}).forEach(d -> {
 				try {
-					rootDStream.close();
-				} catch (IOException e1) {
-					log(e1);
+					Files.delete(d);
+				} catch (IOException e) {
+					throw new UncheckedIOException(e);
 				}
 			});
-		};
-	}
-	
-	
+		} catch (UncheckedIOException | IOException e) {
+			log(e);
+		}
+
+			
 		
 		
 	}

@@ -43,7 +43,8 @@ public class Functional {
 		try {
 			return f.get();
 		} catch (Throwable e) {
-			throw new RuntimeException(e);
+			throwAsUnchecked(e);
+			return null;
 		}
 	}
 	
@@ -58,7 +59,19 @@ public class Functional {
 			try {
 				return f.apply(arg);
 			} catch(Throwable e) {
-				throw new RuntimeException(e);
+				throwAsUnchecked(e);
+				return null;
+			}
+		};
+	}
+	
+	public static <T> Consumer<T> uncheckedCons(ThrowingConsumer<T, ?> cons) {
+		return (arg) -> {
+			try {
+				cons.accept(arg);
+			} catch (Throwable e) {
+				throwAsUnchecked(e);
+				return;
 			}
 		};
 	}

@@ -88,6 +88,13 @@ public class PullMetaDataConnection implements Selectable {
 		STATE_CLOSED,
 	}
 	
+	public enum CloseReason {
+		NO_LTEP,
+		NO_META_EXCHANGE,
+		CONNECT_FAILED,
+		OTHER
+	}
+	
 
 	
 	private static final int RCV_TIMEOUT = 25*1000;
@@ -136,6 +143,8 @@ public class PullMetaDataConnection implements Selectable {
 	
 	InetSocketAddress			destination;
 	String 						remoteClient;
+	
+	CloseReason					closeReason;
 	
 	public Consumer<List<InetSocketAddress>> pexConsumer = (x) -> {};
 	public IntFunction<MetadataPool> 	poolGenerator = (i) -> new MetadataPool(i);
@@ -247,7 +256,7 @@ public class PullMetaDataConnection implements Selectable {
 				if(channel.connect(destination))
 					connectEvent();
 			} catch (IOException e) {
-				terminate("connect failed " + e.getMessage());
+				terminate("connect failed " + e.getMessage(), CloseReason.CONNECT_FAILED);
 			}
 		} else
 		{ // incoming
@@ -294,7 +303,7 @@ public class PullMetaDataConnection implements Selectable {
 			}
 		} catch (IOException e) {
 			//System.err.println("connect failed "+e.getMessage());
-			terminate("connect failed");
+			terminate("connect failed", CloseReason.CONNECT_FAILED);
 		}
 	}
 	
@@ -319,7 +328,8 @@ public class PullMetaDataConnection implements Selectable {
 
 			// check LTEP support
 			inputBuffer.get(otherBitfield);
-			connectionMatches &= (otherBitfield[5] & 0x10) != 0;
+			if((otherBitfield[5] & 0x10) == 0)
+				terminate("peer does not support LTEP", CloseReason.NO_LTEP);
 			
 			remoteSupportsFastExtension = (otherBitfield[7] & 0x04) != 0;
 			remoteSupportsPort	= (otherBitfield[7] & 0x01) != 0;
@@ -342,8 +352,10 @@ public class PullMetaDataConnection implements Selectable {
 			inputBuffer.get(temp);
 			// log
 			idWriter.append(System.currentTimeMillis()+ " " + new Key(temp).toString(false) + " " + destination.getAddress().getHostAddress()+ " \n");
-			if(temp[0] == '-' && temp[1] == 'S' && temp[2] == 'D' && temp[3] == '0' && temp[4] == '1' && temp[5] == '0' &&  temp[6] == '0' && temp[7] == '-')
-				connectionMatches = false; // xunlei claims ltep support but doesn't actually do it
+			if(temp[0] == '-' && temp[1] == 'S' && temp[2] == 'D' && temp[3] == '0' && temp[4] == '1' && temp[5] == '0' &&  temp[6] == '0' && temp[7] == '-') {
+				terminate("xunlei doesn't support ltep", CloseReason.NO_LTEP);
+			}
+				
 
 
 			if(!connectionMatches)
@@ -454,7 +466,7 @@ public class PullMetaDataConnection implements Selectable {
 				Map<String,Object> messages = (Map<String, Object>) remoteHandshake.get("m");
 				if(messages == null)
 				{
-					terminate("no LTEP messages defined");
+					terminate("no LTEP messages defined", CloseReason.NO_META_EXCHANGE);
 					return;
 				}
 
@@ -495,7 +507,7 @@ public class PullMetaDataConnection implements Selectable {
 				} else if(pexMsgID != null && keepPexOnlyOpen) {
 					setState(STATE_PEX_ONLY);
 				} else {
-					terminate("pex only suppor, but keep open disabled");
+					terminate("no metadata exchange advertised, keep open disabled", CloseReason.NO_META_EXCHANGE);
 				}
 				
 				if(pexMsgID == null && (metaMsgID == null || metaLength == null)){
@@ -680,19 +692,26 @@ public class PullMetaDataConnection implements Selectable {
 			terminate("async close detected");
 	}
 	
-	public void terminate(String reason) throws IOException {
+	public void terminate(String reasonStr, CloseReason reason)  throws IOException  {
 		synchronized (this) {
 			if(isState(STATE_CLOSED))
 				return;
-			//if(!isState(STATE_FINISHED) && !isState(STATE_CONNECTING))
-				//MetaDataGatherer.log("closing connection for "+(infoHash != null ? new Key(infoHash).toString(false) : null)+" to "+destination+"/"+remoteClient+" state:"+state+" reason:"+reason);
+			//if(!isState(STATE_CONNECTING))
+				//System.out.println("closing connection for "+(infoHash != null ? new Key(infoHash).toString(false) : null)+" to "+destination+"/"+remoteClient+" state:"+state+" reason:"+reason);
 			if(pool != null)
 				pool.deRegister(this);
+
+			closeReason = reason;
 			boolean wasConnected = !isState(STATE_INITIAL) && !isState(STATE_CONNECTING);
 			setState(STATE_CLOSED);
 			metaHandler.onTerminate(wasConnected);
 			channel.close();
 		}
+	}
+	
+	@Deprecated
+	public void terminate(String reason) throws IOException {
+		terminate(reason, CloseReason.OTHER);
 	}
 	
 }

@@ -5,6 +5,7 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -16,7 +17,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -34,6 +37,7 @@ import the8472.bt.MetadataPool.Completion;
 import the8472.bt.PullMetaDataConnection;
 import the8472.bt.PullMetaDataConnection.CONNECTION_STATE;
 import the8472.bt.PullMetaDataConnection.MetaConnectionHandler;
+import the8472.bt.UselessPeerFilter;
 import the8472.utils.concurrent.LoggingScheduledThreadPoolExecutor;
 
 public class TorrentFetcher {
@@ -44,6 +48,8 @@ public class TorrentFetcher {
 	
 	AtomicInteger socketsIncludingHalfOpen = new AtomicInteger();
 	AtomicInteger openConnections = new AtomicInteger();
+	
+	List<FetchTask> tasks = new ArrayList<>();
 	
 	int maxOpen = 10;
 	int maxSockets = 1000;
@@ -73,6 +79,48 @@ public class TorrentFetcher {
 	
 	boolean socketLimitsReached() {
 		return openConnections.get() > maxOpen || socketsIncludingHalfOpen.get() > maxSockets;
+	}
+	
+	UselessPeerFilter pf;
+	
+	public void setPeerFilter(UselessPeerFilter pf) {
+		this.pf = pf;
+	}
+	
+	ScheduledFuture<?> f = null;
+	
+	void ensureRunning() {
+		synchronized (this) {
+			if(f == null && tasks.size() > 0) {
+				f = timer.scheduleWithFixedDelay(this::scheduleConnections, 0, 1, TimeUnit.SECONDS);
+			}
+				
+		}
+	}
+	
+	void scheduleConnections() {
+		synchronized (this) {
+			if(tasks.size() == 0 && f != null) {
+				f.cancel(false);
+				f = null;
+				return;
+			}
+			
+			int offset = ThreadLocalRandom.current().nextInt(tasks.size());
+				
+			for(int i= 0;i<tasks.size();i++) {
+				int idx = Math.floorMod(i+offset, tasks.size());
+				
+				if(socketLimitsReached())
+					break;
+				
+				tasks.get(idx).connections();
+			}
+			
+			
+				
+						
+		}
 	}
 	
 	public enum FetchState {
@@ -146,17 +194,21 @@ public class TorrentFetcher {
 					e.printStackTrace();
 				}
 			});
+			remove(this);
 			future.complete(this);
 		}
 		
 		public Map<CONNECTION_STATE, Long> closeCounts() {
 			return closed.entrySet().stream().collect(Collectors.groupingBy(Map.Entry::getValue, Collectors.counting()));
 		}
+		
+		public int attemptedCount() {
+			return connectionAttempted.size();
+		}
 
 		void start() {
 			startTime = Instant.now();
 			lookups();
-			timer.schedule(this::connections, 1, TimeUnit.SECONDS);
 		}
 		
 		void addCandidate(KBucketEntry source, PeerAddressDBItem toAdd) {
@@ -164,6 +216,10 @@ public class TorrentFetcher {
 		}
 		
 		void addCandidate(InetAddress source, InetSocketAddress toAdd) {
+			
+			if(pf != null && pf.isBad(toAdd))
+				return;
+			
 			candidates.compute(toAdd, (k, sources) -> {
 				Set<InetAddress> newSources = new HashSet<>();
 				if(source != null)
@@ -217,8 +273,6 @@ public class TorrentFetcher {
 				return;
 			}
 			
-			timer.schedule(this::connections, 1, TimeUnit.SECONDS);
-
 			if(thingsBlockingCompletion.get() == 0 && candidates.isEmpty()) {
 				stop();
 				return;
@@ -283,6 +337,8 @@ public class TorrentFetcher {
 							
 						thingsBlockingCompletion.decrementAndGet();
 						socketsIncludingHalfOpen.decrementAndGet();
+						if(pf != null)
+							pf.insert(con);
 					}
 					
 					public void onStateChange(CONNECTION_STATE oldState, CONNECTION_STATE newState) {
@@ -303,6 +359,18 @@ public class TorrentFetcher {
 		
 	}
 	
+	void remove(FetchTask t) {
+		synchronized (this) {
+			tasks.remove(t);
+		}
+	}
+	
+	void add(FetchTask t) {
+		synchronized (this) {
+			tasks.add(t);
+		}
+		ensureRunning();
+	}
 	
 	public FetchTask fetch(Key infohash) {
 		return fetch(infohash, null);
@@ -313,6 +381,7 @@ public class TorrentFetcher {
 		t.hash = infohash;
 		if(configure != null)
 			configure.accept(t);
+		add(t);
 		t.start();
 		
 		return t;

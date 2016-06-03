@@ -606,7 +606,10 @@ public class Node {
 	void removeId(Key k)
 	{
 		usedIDs.remove(k);
-		dht.getScheduler().execute(singleThreadedUpdateHomeBuckets);
+		
+		
+		if(dht.isRunning()) // don't schedule another task if we're already shutting down
+			dht.getScheduler().execute(singleThreadedUpdateHomeBuckets);
 	}
 	
 	void registerServer(RPCServer srv) {

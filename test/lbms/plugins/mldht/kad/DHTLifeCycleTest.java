@@ -117,28 +117,23 @@ public class DHTLifeCycleTest {
 		
 		assertEquals(1, dhtInstance.getServerManager().getServerCount());
 		
-		CompletableFuture<Boolean> awaitShutdown = new CompletableFuture<>();
+		CompletableFuture<Boolean> wasEmpty = new CompletableFuture<>();
 		
 		// single-threaded executor -> we can let startup tasks complete and then stop the DHT from the pool itself
 		// thus there should be no pending tasks on the executor
 		scheduler.execute(() -> {
 			dhtInstance.stop();
-			scheduler.execute(() -> {
-				awaitShutdown.complete(true);
-			});
+
+			scheduler.purge();
 			
+			wasEmpty.complete(scheduler.getQueue().isEmpty());
 		});
 		
-		awaitShutdown.get();
+		assertTrue("no tasks should remain queued after stop()", wasEmpty.get());
 		
 		assertEquals(DHTStatus.Stopped, dhtInstance.getStatus());
 		
 		assertEquals("no messages should have been sent on a bootstrapless startup", 0, dhtInstance.getStats().getNumSentPackets());
-		
-		scheduler.purge();
-
-		assertEquals("no tasks should be executing after shutdown", 0, scheduler.getActiveCount());
-		assertTrue("no tasks should remain queued after shutdown", scheduler.getQueue().isEmpty());
 		
 		scheduler.shutdown();
 		

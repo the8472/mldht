@@ -810,6 +810,7 @@ public class DHT implements DHTBase {
 		scheduledActions.clear();
 
 		logInfo("stopping servers");
+		running = false;
 		serverManager.destroy();
 		try {
 			logInfo("persisting routing table on shutdown");
@@ -818,7 +819,7 @@ public class DHT implements DHTBase {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		running = false;
+		
 		stopped();
 		tman = null;
 		db = null;

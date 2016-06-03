@@ -188,9 +188,14 @@ public class NIOConnectionManager {
 		}
 	}
 	
+	/**
+	 * 
+	 * @deprecated method was not threadsafe. users should close their channel instead which will remove it from the selector
+	 */
+	@Deprecated
 	public void deRegister(Selectable connection)
 	{
-		connections.remove(connection);
+		//connections.remove(connection);
 	}
 	
 	public void register(Selectable connection)

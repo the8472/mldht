@@ -688,8 +688,6 @@ public class PullMetaDataConnection implements Selectable {
 				//MetaDataGatherer.log("closing connection for "+(infoHash != null ? new Key(infoHash).toString(false) : null)+" to "+destination+"/"+remoteClient+" state:"+state+" reason:"+reason);
 			if(pool != null)
 				pool.deRegister(this);
-			if(connManager != null)
-				connManager.deRegister(this);
 			boolean wasConnected = !isState(STATE_INITIAL) && !isState(STATE_CONNECTING);
 			setState(STATE_CLOSED);
 			metaHandler.onTerminate(wasConnected);

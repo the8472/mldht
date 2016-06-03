@@ -129,7 +129,7 @@ public class PullMetaDataConnection implements Selectable {
 	long						lastReceivedTime;
 	int							consecutiveKeepAlives;
 	
-	CONNECTION_STATE			state;
+	CONNECTION_STATE			state = STATE_INITIAL;
 	
 	BDecoder					decoder = new BDecoder();
 	MetaConnectionHandler		metaHandler;

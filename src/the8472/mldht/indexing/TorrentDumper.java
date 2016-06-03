@@ -402,22 +402,39 @@ public class TorrentDumper implements Component {
 	}
 	
 	
-	Stream<FetchStats> fetchStatsStream() throws IOException {
-		Key start = Key.createRandomKey();
-		String hex = start.toString(false);
-		String layer1Prefix = hex.substring(0, 2);
-		String layer2Prefix = hex.substring(2, 4);
 		
+		
+	}
+	
+	
+	Stream<Path> dirShuffler(Path p) {
+		if(!Files.isDirectory(p))
+			return null;
+		List<Path> sub;
+		try(Stream<Path> st = Files.list(p)) {
+			sub = st.collect(Collectors.toList());
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+		Collections.shuffle(sub);
+		return sub.stream();
+	}
+	
+	
+	Stream<FetchStats> fetchStatsStream() throws IOException {
 		BDecoder dec = new BDecoder();
 		
 		
 		Path prio = FetchStats.State.PRIORITY.stateDir(statsDir);
 		Path normal = FetchStats.State.INITIAL.stateDir(statsDir);
 
-		Stream<Path> prioritizedRoots = Stream.of(prio, normal);
-		Stream<Path> layer1 = prioritizedRoots.flatMap(flatMapper(p -> p.getFileName().toString().compareTo(layer1Prefix) >= 0 && Files.isDirectory(p)));
-		Stream<Path> layer2 = layer1.flatMap(flatMapper(p -> (p.getParent().getFileName().toString().compareTo(layer1Prefix) > 0 || p.getFileName().toString().compareTo(layer2Prefix) >= 0) && Files.isDirectory(p)));
-		Stream<Path> leafs = layer2.flatMap(flatMapper(file -> file.getFileName().toString().compareTo(hex) >= 0 && Files.isRegularFile(file)));
+		// this does not use a true shuffle, the stream will emit straight runs at the 16bit keyspace granularity
+		// and then batches of such runs shuffled at the 8bit level
+		// it's closer to linear scan from a random starting point
+		// but polling in small batches should lead to reasonable task randomization without expensive full directory traversal
+		Stream<Path> leafs = Stream.concat(
+				Stream.of(prio).flatMap(this::dirShuffler).flatMap(this::dirShuffler).flatMap(this::dirShuffler),
+				Stream.of(normal).flatMap(this::dirShuffler).flatMap(this::dirShuffler).flatMap(this::dirShuffler));
 		
 		return leafs.map(p -> {
 			try {
@@ -432,7 +449,7 @@ public class TorrentDumper implements Component {
 	void startFetches() {
 		try {
 			try(Stream<FetchStats> st = fetchStatsStream()) {
-				st.limit(200).forEach(this::fetch);
+				st.limit(200).forEachOrdered(this::fetch);
 			};
 		} catch (Exception e) {
 			log(e);

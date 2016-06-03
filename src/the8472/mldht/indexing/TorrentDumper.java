@@ -6,6 +6,7 @@ import static the8472.utils.Functional.typedGet;
 import the8472.bencode.BDecoder;
 import the8472.bencode.BEncoder;
 import the8472.bt.TorrentUtils;
+import the8472.bt.UselessPeerFilter;
 import the8472.mldht.Component;
 import the8472.mldht.TorrentFetcher;
 import the8472.mldht.TorrentFetcher.FetchTask;
@@ -67,6 +68,7 @@ public class TorrentDumper implements Component {
 	ConcurrentMap<InetAddress, Long> blocklist = new ConcurrentHashMap<>();
 	
 	TorrentFetcher fetcher;
+	UselessPeerFilter pf;
 	
 	static class FetchStats {
 		final Key k;
@@ -182,6 +184,7 @@ public class TorrentDumper implements Component {
 
 		dhts.forEach(d -> d.addIncomingMessageListener(this::incomingMessage));
 		try {
+			pf = new UselessPeerFilter(storageDir.resolve("bad-peers"));
 			Files.createDirectories(torrentDir);
 			for(State st : FetchStats.State.values()) {
 				Files.createDirectories(st.stateDir(statsDir));
@@ -190,12 +193,21 @@ public class TorrentDumper implements Component {
 			throw new RuntimeException(e);
 		}
 		
+		fetcher.setPeerFilter(pf);
+		
 		scheduler.scheduleWithFixedDelay(this::dumpStats, 10, 1, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::startFetches, 10, 1, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::cleanBlocklist, 1, 1, TimeUnit.MINUTES);
 		scheduler.scheduleWithFixedDelay(this::diagnostics, 30, 30, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::purgeStats, 5, 30, TimeUnit.MINUTES);
 		scheduler.scheduleWithFixedDelay(this::scrubActive, 10, 20, TimeUnit.SECONDS);
+		scheduler.scheduleWithFixedDelay(() -> {
+			try {
+				pf.clean();
+			} catch (IOException e) {
+				log(e);
+			}
+		}, 10, 5, TimeUnit.MINUTES);
 	}
 	
 	void log(Throwable t) {

@@ -37,6 +37,7 @@ import the8472.bt.MetadataPool.Completion;
 import the8472.bt.PullMetaDataConnection;
 import the8472.bt.PullMetaDataConnection.CONNECTION_STATE;
 import the8472.bt.PullMetaDataConnection.MetaConnectionHandler;
+import the8472.bt.UselessPeerFilter;
 import the8472.utils.concurrent.LoggingScheduledThreadPoolExecutor;
 
 public class TorrentFetcher {
@@ -78,6 +79,12 @@ public class TorrentFetcher {
 	
 	boolean socketLimitsReached() {
 		return openConnections.get() > maxOpen || socketsIncludingHalfOpen.get() > maxSockets;
+	}
+	
+	UselessPeerFilter pf;
+	
+	public void setPeerFilter(UselessPeerFilter pf) {
+		this.pf = pf;
 	}
 	
 	ScheduledFuture<?> f = null;
@@ -209,6 +216,10 @@ public class TorrentFetcher {
 		}
 		
 		void addCandidate(InetAddress source, InetSocketAddress toAdd) {
+			
+			if(pf != null && pf.isBad(toAdd))
+				return;
+			
 			candidates.compute(toAdd, (k, sources) -> {
 				Set<InetAddress> newSources = new HashSet<>();
 				if(source != null)
@@ -326,6 +337,8 @@ public class TorrentFetcher {
 							
 						thingsBlockingCompletion.decrementAndGet();
 						socketsIncludingHalfOpen.decrementAndGet();
+						if(pf != null)
+							pf.insert(con);
 					}
 					
 					public void onStateChange(CONNECTION_STATE oldState, CONNECTION_STATE newState) {

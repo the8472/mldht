@@ -57,7 +57,8 @@ public class UselessPeerFilter {
 	}
 	
 	String nameFromAddr(InetSocketAddress addr) {
-		return addr.getAddress().getHostAddress() + ";" + addr.getPort();
+		// : is reserved on windows
+		return addr.getAddress().getHostAddress().replace(':', '_') + ";" + addr.getPort();
 	}
 	
 	public void clean() throws IOException {

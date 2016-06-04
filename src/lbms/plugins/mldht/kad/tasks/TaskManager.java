@@ -18,9 +18,10 @@ package lbms.plugins.mldht.kad.tasks;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Deque;
-import java.util.LinkedList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.NavigableSet;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,7 +38,7 @@ import lbms.plugins.mldht.kad.RPCServer;
  */
 public class TaskManager {
 
-	private ConcurrentHashMap<Key, Deque<Task>> queued;
+	private ConcurrentHashMap<Key, NavigableSet<Task>> queued;
 	private ConcurrentSkipListSet<Task>	tasks;
 	private DHT					dht;
 	private AtomicInteger		next_id = new AtomicInteger();
@@ -46,6 +47,20 @@ public class TaskManager {
 		dequeue(t.getRPC().getDerivedID());
 		tasks.remove(t);
 	};
+	
+	static final Comparator<Task> comp;
+	
+	static {
+		
+		Comparator<Task> prio = Comparator.comparing(Task::isMaintenanceTask).reversed();
+		Comparator<Task> group = Comparator.comparingInt(t -> t.getTaskID() >>> 5);
+		Comparator<Task> targeted = Comparator.comparing(t -> (t instanceof TargetedTask) ? ((TargetedTask)t).getTargetKey() : null, Comparator.nullsFirst(Key.BYTE_REVERSED_ORDER));
+		
+		// priority tasks first, then batches of 32 (derived from task it), then by LSBs of target id, then task id
+		// this should mitigate task submissions that contain runs of shared prefixes
+		comp = prio.thenComparing(group).thenComparing(targeted).thenComparing(Task::getTaskID);
+		
+	}
 
 	public TaskManager (DHT dht) {
 		this.dht = dht;
@@ -63,10 +78,10 @@ public class TaskManager {
 	public void dequeue(Key k)
 	{
 		Task t = null;
-		Deque<Task> q = queued.get(k);
+		NavigableSet<Task> q = queued.get(k);
 		synchronized (q) {
-			while ((t = q.peekFirst()) != null && canStartTask(t)) {
-				q.removeFirst();
+			while (!q.isEmpty() && (t = q.first()) != null && canStartTask(t)) {
+				q.pollFirst();
 				if(t.isFinished())
 					continue;
 				tasks.add(t);
@@ -86,6 +101,7 @@ public class TaskManager {
 	 * @param task
 	 */
 	public void addTask (Task task, boolean isPriority) {
+		task.setMaintenanceTask(isPriority);
 		int id = next_id.incrementAndGet();
 		task.addListener(finishListener);
 		task.setTaskID(id);
@@ -99,14 +115,11 @@ public class TaskManager {
 		
 		
 		
-		Deque<Task> q = queued.computeIfAbsent(rpcId, k -> new LinkedList<>());;
+		NavigableSet<Task> q = queued.computeIfAbsent(rpcId, k -> new TreeSet<>(comp));
 			
 		synchronized (q)
 		{
-			if (isPriority)
-				q.addFirst(task);
-			else
-				q.addLast(task);
+			q.add(task);
 		}
 	}
 
@@ -128,7 +141,7 @@ public class TaskManager {
 
 	public Task[] getQueuedTasks () {
 		List<Task> temp = new ArrayList<>();
-		for(Deque<Task> q : queued.values())
+		for(NavigableSet<Task> q : queued.values())
 			synchronized (q)
 			{
 				temp.addAll(q);

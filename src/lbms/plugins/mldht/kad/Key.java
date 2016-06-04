@@ -16,6 +16,7 @@
  */
 package lbms.plugins.mldht.kad;
 
+import static java.lang.Math.min;
 import static the8472.utils.Arrays.compareUnsigned;
 import static the8472.utils.Arrays.mismatch;
 
@@ -52,6 +53,27 @@ public class Key implements Radixable<Key> {
 			//return target.distance(o1).compareTo(target.distance(o2));
 		}
 	}
+	
+	/**
+	 * compares the least significant bits first on the assumption that they're mostly random and thus the resulting order is mostly random
+	 * 
+	 * this can be useful when an order is needed where neighboring keys share prefix bits
+	 */
+	public static final Comparator<Key> BYTE_REVERSED_ORDER = (a, b) -> {
+		byte[] ha = a.hash;
+		byte[] hb = b.hash;
+		
+		for(int i = min(ha.length, hb.length) - 1 ; i>= 0; i--) {
+			int b1 = Byte.toUnsignedInt(ha[i]);
+			int b2 = Byte.toUnsignedInt(hb[i]);
+			
+			int diff = Integer.compareUnsigned(b1, b2);
+			if(diff != 0)
+				return diff;
+		}
+		
+		return 0;
+	};
 	
 	public static final Key MIN_KEY;
 	public static final Key MAX_KEY;

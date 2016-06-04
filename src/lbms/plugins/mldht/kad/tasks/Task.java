@@ -69,6 +69,7 @@ public abstract class Task implements Comparable<Task> {
 	private boolean						queued;
 	private List<TaskListener>			listeners;
 	private boolean						lowPriority;
+	private boolean								maintenanceTask;
 	protected final AtomicReference<TaskStats>				counts = new AtomicReference<>(new TaskStats());
 	
 	/**
@@ -312,6 +313,16 @@ public abstract class Task implements Comparable<Task> {
 	public boolean isFinished () {
 		return taskFinished;
 	}
+
+	public boolean isMaintenanceTask() {
+		return maintenanceTask;
+	}
+
+
+	void setMaintenanceTask(boolean maintenanceTask) {
+		this.maintenanceTask = maintenanceTask;
+	}
+
 
 	/// Set the task ID
 	void setTaskID (int tid) {

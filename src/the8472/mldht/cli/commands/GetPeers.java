@@ -28,6 +28,7 @@ public class GetPeers extends CommandProcessor {
 	protected void process() {
 		
 		boolean fast = ParseArgs.extractBool(arguments, "-fast");
+		boolean nocache = ParseArgs.extractBool(arguments, "-nocache");
 		
 		List<Key> hashes = arguments.stream()
 				.filter(Key.STRING_PATTERN.asPredicate())
@@ -48,6 +49,7 @@ public class GetPeers extends CommandProcessor {
 				
 				t.setNoAnnounce(true);
 				t.setFastTerminate(fast);
+				t.useCache(!nocache);
 				
 				counter.incrementAndGet();
 				

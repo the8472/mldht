@@ -427,13 +427,14 @@ public class TorrentDumper implements Component {
 		Path prio = FetchStats.State.PRIORITY.stateDir(statsDir);
 		Path normal = FetchStats.State.INITIAL.stateDir(statsDir);
 
-		// this does not use a true shuffle, the stream will emit straight runs at the 16bit keyspace granularity
-		// and then batches of such runs shuffled at the 8bit level
+		// this does not use a true shuffle, the stream will emit some clusters at the 8bit keyspace granularity
 		// it's closer to linear scan from a random starting point
 		// but polling in small batches should lead to reasonable task randomization without expensive full directory traversal
 		Stream<Path> leafs = Stream.concat(
-				Stream.of(prio).flatMap(this::dirShuffler).flatMap(this::dirShuffler).flatMap(this::dirShuffler),
-				Stream.of(normal).flatMap(this::dirShuffler).flatMap(this::dirShuffler).flatMap(this::dirShuffler));
+				// status -> bits 0-7 -> bits 8-15 -> files
+				Stream.of(prio).flatMap(this::dirShuffler).flatMap(p -> dirShuffler(p).limit(8)).flatMap(p -> dirShuffler(p).limit(1)),
+				Stream.of(normal).flatMap(this::dirShuffler).flatMap(p -> dirShuffler(p).limit(8)).flatMap(p -> dirShuffler(p).limit(1))
+		);
 		
 		return leafs.map(p -> {
 			try {

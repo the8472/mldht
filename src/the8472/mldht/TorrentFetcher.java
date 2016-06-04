@@ -316,10 +316,7 @@ public class TorrentFetcher {
 				con.setListener(new MetaConnectionHandler() {
 
 					@Override
-					public void onTerminate(boolean wasConnected) {
-						if(wasConnected)
-							openConnections.decrementAndGet();
-						
+					public void onTerminate() {
 						connections.remove(con);
 						
 						MetadataPool pool = con.getMetaData();
@@ -336,19 +333,25 @@ public class TorrentFetcher {
 						}
 							
 						thingsBlockingCompletion.decrementAndGet();
-						socketsIncludingHalfOpen.decrementAndGet();
 						if(pf != null)
 							pf.insert(con);
 					}
 					
 					public void onStateChange(CONNECTION_STATE oldState, CONNECTION_STATE newState) {
-						if(newState == CONNECTION_STATE.STATE_CLOSED)
+						if(newState == CONNECTION_STATE.STATE_CLOSED) {
 							closed.put(addr, oldState);
+							socketsIncludingHalfOpen.decrementAndGet();
+						}
+							
+						if(oldState == CONNECTION_STATE.STATE_CONNECTING && newState != CONNECTION_STATE.STATE_CLOSED)
+							openConnections.incrementAndGet();
+						if(oldState != CONNECTION_STATE.STATE_INITIAL && oldState != CONNECTION_STATE.STATE_CONNECTING && newState == CONNECTION_STATE.STATE_CLOSED)
+							openConnections.decrementAndGet();
 					};
 
 					@Override
 					public void onConnect() {
-						openConnections.incrementAndGet();
+						
 					}
 				});
 				conMan.register(con);

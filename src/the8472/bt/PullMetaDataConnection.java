@@ -45,10 +45,13 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
@@ -60,7 +63,7 @@ public class PullMetaDataConnection implements Selectable {
 	
 	public static interface MetaConnectionHandler {
 		
-		void onTerminate(boolean wasConnected);
+		void onTerminate();
 		default void onStateChange(CONNECTION_STATE oldState, CONNECTION_STATE newState) {};
 		void onConnect();
 	}
@@ -136,7 +139,7 @@ public class PullMetaDataConnection implements Selectable {
 	long						lastReceivedTime;
 	int							consecutiveKeepAlives;
 	
-	CONNECTION_STATE			state = STATE_INITIAL;
+	AtomicReference<CONNECTION_STATE> 			state = new AtomicReference<>(STATE_INITIAL) ;
 	
 	BDecoder					decoder = new BDecoder();
 	MetaConnectionHandler		metaHandler;
@@ -166,17 +169,27 @@ public class PullMetaDataConnection implements Selectable {
 		keepPexOnlyOpen = toggle;
 	}
 	
-	void setState(CONNECTION_STATE newState) {
-		CONNECTION_STATE oldState = state;
-		state = newState;
-		if(metaHandler != null)
-			metaHandler.onStateChange(oldState, newState);
+	boolean setState(CONNECTION_STATE expected, CONNECTION_STATE newState) {
+		return setState(EnumSet.of(expected), newState);
 	}
 	
-	public boolean isState(CONNECTION_STATE toTest) {return state == toTest; }
+	boolean setState(Set<CONNECTION_STATE> expected, CONNECTION_STATE newState) {
+		CONNECTION_STATE current;
+		do {
+			current = state.get();
+			if(!expected.contains(current))
+				return false;
+		} while(!state.weakCompareAndSet(current, newState));
+
+		if(metaHandler != null)
+			metaHandler.onStateChange(current, newState);
+		return true;
+	}
+	
+	public boolean isState(CONNECTION_STATE toTest) {return state.get() == toTest; }
 	
 	public CONNECTION_STATE getState() {
-		return state;
+		return state.get();
 	}
 	
 	public void setListener(MetaConnectionHandler handler) {
@@ -198,7 +211,7 @@ public class PullMetaDataConnection implements Selectable {
 		}
 		
 		destination = (InetSocketAddress) chan.socket().getRemoteSocketAddress();
-		setState(STATE_BASIC_HANDSHAKING);
+		setState(STATE_INITIAL, STATE_BASIC_HANDSHAKING);
 	}
 	
 	
@@ -223,7 +236,7 @@ public class PullMetaDataConnection implements Selectable {
 			DHT.log(e, LogLevel.Error);
 		}
 		
-		setState(STATE_CONNECTING);
+		setState(STATE_INITIAL, STATE_CONNECTING);
 		sendBTHandshake();
 	}
 	
@@ -296,7 +309,8 @@ public class PullMetaDataConnection implements Selectable {
 		try {
 			if(channel.isConnectionPending() && channel.finishConnect())
 			{
-				setState(STATE_BASIC_HANDSHAKING);
+				if(!setState(STATE_CONNECTING, STATE_BASIC_HANDSHAKING))
+					return;
 				connManager.interestOpsChanged(this);
 				metaHandler.onConnect();
 				//System.out.println("connection!");
@@ -409,7 +423,7 @@ public class PullMetaDataConnection implements Selectable {
 
 			inputBuffer.position(0);
 			inputBuffer.limit(BT_HEADER_LENGTH);
-			setState(STATE_LTEP_HANDSHAKING);
+			setState(STATE_BASIC_HANDSHAKING,STATE_LTEP_HANDSHAKING);
 			return;
 		}
 
@@ -499,13 +513,13 @@ public class PullMetaDataConnection implements Selectable {
 
 					ltepRemoteMetadataExchangeMessageId = metaMsgID.intValue();
 
-					setState(STATE_GETTING_METADATA);
+					setState(STATE_LTEP_HANDSHAKING,STATE_GETTING_METADATA);
 
 
 					doMetaRequests();
 
 				} else if(pexMsgID != null && keepPexOnlyOpen) {
-					setState(STATE_PEX_ONLY);
+					setState(STATE_LTEP_HANDSHAKING, STATE_PEX_ONLY);
 				} else {
 					terminate("no metadata exchange advertised, keep open disabled", CloseReason.NO_META_EXCHANGE);
 				}
@@ -694,7 +708,7 @@ public class PullMetaDataConnection implements Selectable {
 	
 	public void terminate(String reasonStr, CloseReason reason)  throws IOException  {
 		synchronized (this) {
-			if(isState(STATE_CLOSED))
+			if(!setState(EnumSet.complementOf(EnumSet.of(STATE_CLOSED)), STATE_CLOSED))
 				return;
 			//if(!isState(STATE_CONNECTING))
 				//System.out.println("closing connection for "+(infoHash != null ? new Key(infoHash).toString(false) : null)+" to "+destination+"/"+remoteClient+" state:"+state+" reason:"+reason);
@@ -702,9 +716,7 @@ public class PullMetaDataConnection implements Selectable {
 				pool.deRegister(this);
 
 			closeReason = reason;
-			boolean wasConnected = !isState(STATE_INITIAL) && !isState(STATE_CONNECTING);
-			setState(STATE_CLOSED);
-			metaHandler.onTerminate(wasConnected);
+			metaHandler.onTerminate();
 			channel.close();
 		}
 	}

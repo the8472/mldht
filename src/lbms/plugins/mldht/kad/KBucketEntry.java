@@ -322,6 +322,7 @@ public class KBucketEntry {
 		long now = System.currentTimeMillis();
 		
 		// don't ping if recently seen to allow NAT entries to time out
+		// see https://arxiv.org/pdf/1605.05606v1.pdf for numbers
 		// and do exponential backoff after failures to reduce traffic
 		if(now - lastSeen < 30*1000 || withinBackoffWindow(now))
 			return false;

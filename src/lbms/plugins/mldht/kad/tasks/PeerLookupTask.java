@@ -272,12 +272,7 @@ public class PeerLookupTask extends IteratingTask {
 				
 		RequestCandidateEvaluator eval = new RequestCandidateEvaluator(this, this.closest, todo, closest, inFlight.values());
 
-		boolean isDone = eval.terminationPrecondition();
-		if(isDone) {
-			logClosest();
-		}
-
-		return isDone;
+		return eval.terminationPrecondition();
 	}
 
 	private void updatePopulationEstimator() {
@@ -332,6 +327,10 @@ public class PeerLookupTask extends IteratingTask {
 			cache.register(targetKey,fastTerminate);
 			todo.addCandidates(null, cache.get(targetKey,DHTConstants.MAX_CONCURRENT_REQUESTS * 2));
 		}
+		
+		addListener(unused -> {
+			logClosest();
+		});
 
 		super.start();
 	}

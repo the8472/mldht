@@ -54,6 +54,8 @@ Routing table sanitizing
 * since lookups are seeded from the routing table and some maintenance lookups may also visit nearby nodes which might be in the routing table all RPCs of all types should be used to check existing routing table entries
 * generally put a focus on the maintenance of local buckets. this is where bad entries result in other people's lookups getting "stuck" exhausting all the contacts presented instead of skipping over most of them like they do during the homing-in-on-target phase of a lookup.
 * if the routing table is lazy about evicting nodes that failed to respond to RPCs from non-full buckets (as per kademlia paper) then it should apply stricter standards about what to include in ``nodes`` lists, otherwise it's returning probably-unreachable nodes to others, leading to wasted lookup traffic.
+* multi-homed nodes should use the observer-independence verification approach from BEP 45. https://github.com/bittorrent/bittorrent.org/blob/master/html/beps/bep_0045.rst#shared-routing-table
+
 
 Sanitizing Lookups
 ------------------

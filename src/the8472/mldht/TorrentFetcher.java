@@ -21,6 +21,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -138,7 +139,7 @@ public class TorrentFetcher {
 		Set<InetSocketAddress> connectionAttempted = Collections.newSetFromMap(new ConcurrentHashMap<>());
 		Map<InetSocketAddress, PullMetaDataConnection.CONNECTION_STATE> closed = new ConcurrentHashMap<>();
 		ConcurrentHashMap<InetSocketAddress, Set<InetAddress>> candidates = new ConcurrentHashMap<>();
-		boolean running = true;
+		AtomicBoolean running = new AtomicBoolean(true);
 		ByteBuffer result;
 		AtomicInteger thingsBlockingCompletion = new AtomicInteger();
 		
@@ -181,9 +182,8 @@ public class TorrentFetcher {
 		}
 		
 		public void stop() {
-			if(!running)
+			if(!running.compareAndSet(true, false))
 				return;
-			running = false;
 			if(state == FetchState.PENDING)
 				state = FetchState.FAILURE;
 			connections.forEach(c -> {
@@ -251,7 +251,10 @@ public class TorrentFetcher {
 					if(conf != null)
 						conf.accept(task);
 					task.setResultHandler(this::addCandidate);
-					task.addListener(t -> thingsBlockingCompletion.decrementAndGet());
+					task.addListener(t -> {
+						thingsBlockingCompletion.decrementAndGet();
+						checkCompletion();
+					});
 					
 					thingsBlockingCompletion.incrementAndGet();
 					
@@ -268,15 +271,20 @@ public class TorrentFetcher {
 			starters.forEach(Runnable::run);
 		}
 		
-		void connections() {
-			if(!running) {
-				return;
-			}
-			
+		void checkCompletion() {
 			if(thingsBlockingCompletion.get() == 0 && candidates.isEmpty()) {
 				stop();
 				return;
 			}
+		}
+		
+		void connections() {
+			checkCompletion();
+			
+			if(!running.get()) {
+				return;
+			}
+			
 			
 			candidates.keySet().removeAll(connectionAttempted);
 			

@@ -137,6 +137,9 @@ public abstract class Task implements Comparable<Task> {
 						if (!isFinished())
 							callFinished(c, c.getResponse());
 						break;
+					case ERROR:
+						inFlight.remove(c.getExpectedID(), c);
+						break;
 					case TIMEOUT:
 						inFlight.remove(c.getExpectedID(), c);
 						if (!isFinished())

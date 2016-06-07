@@ -472,7 +472,7 @@ public class TorrentDumper implements Component {
 		Comparator<Map.Entry<FetchTask, Integer>> comp = Map.Entry.comparingByValue();
 		comp = comp.reversed();
 		
-		activeTasks.values().stream().map(t -> new AbstractMap.SimpleEntry<>(t, t.attemptedCount())).filter(e -> e.getValue() > 70).sorted(comp).limit(10).forEach(e -> {
+		activeTasks.values().stream().map(t -> new AbstractMap.SimpleEntry<>(t, t.attemptedCount())).filter(e -> e.getValue() > 70).sorted(comp).limit(10).forEachOrdered(e -> {
 			e.getKey().stop();
 		});
 	}

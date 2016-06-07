@@ -141,7 +141,7 @@ public class TorrentFetcher {
 		ConcurrentHashMap<InetSocketAddress, Set<InetAddress>> candidates = new ConcurrentHashMap<>();
 		AtomicBoolean running = new AtomicBoolean(true);
 		ByteBuffer result;
-		AtomicInteger thingsBlockingCompletion = new AtomicInteger();
+		AtomicInteger thingsBlockingCompletion = new AtomicInteger(1);
 		
 		Set<PullMetaDataConnection> connections = Collections.newSetFromMap(new ConcurrentHashMap<>());
 		Map<Integer, MetadataPool> pools = new ConcurrentHashMap<>();
@@ -269,6 +269,7 @@ public class TorrentFetcher {
 			// start tasks after we've incremented counters for all tasks
 			// otherwise tasks might finish so fast that the counters go back down to 0
 			starters.forEach(Runnable::run);
+			thingsBlockingCompletion.decrementAndGet();
 		}
 		
 		void checkCompletion() {

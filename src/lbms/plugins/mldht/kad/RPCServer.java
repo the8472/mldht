@@ -129,7 +129,6 @@ public class RPCServer {
 		this.manager = manager;
 		// reserve an ID
 		derivedId = dh_table.getNode().registerId();
-		dh_table.getNode().registerServer(this);
 		sel = new SocketHandler();
 	}
 	

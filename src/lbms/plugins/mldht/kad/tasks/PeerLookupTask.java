@@ -108,8 +108,13 @@ public class PeerLookupTask extends IteratingTask {
 			throw new IllegalStateException("cannot change lookup mode after startup");
 		this.fastTerminate = fastTerminate;
 		todo.allowRetransmits(!fastTerminate);
-		if(fastTerminate)
+		if(fastTerminate) {
 			setNoAnnounce(true);
+			todo.setNonReachableCache(node.getDHT().getUnreachableCache());
+		} else {
+			todo.setNonReachableCache(null);
+		}
+			
 	}
 
 	public void setNoAnnounce(boolean noAnnounce) {

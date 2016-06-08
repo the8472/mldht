@@ -164,6 +164,8 @@ public class DHT implements DHTBase {
 	private GenericStorage					storage;
 	private Database						db;
 	private TaskManager						tman;
+	IDMismatchDetector						mismatchDetector;
+	NonReachableCache						unreachableCache;
 	private Path							table_file;
 	private boolean							useRouterBootstrapping;
 
@@ -579,6 +581,10 @@ public class DHT implements DHTBase {
 	public DHTtype getType() {
 		return type;
 	}
+	
+	public NonReachableCache getUnreachableCache() {
+		return unreachableCache;
+	}
 
 	/*
 	 * (non-Javadoc)
@@ -611,6 +617,26 @@ public class DHT implements DHTBase {
 			port = 49001;
 		return port;
 	}
+	
+	
+
+	
+	final RPCCallListener rpcListener = new RPCCallListener() {
+		public void stateTransition(RPCCall c, RPCState previous, RPCState current) {
+			if(current == RPCState.RESPONDED)
+				mismatchDetector.add(c);
+			if(current == RPCState.RESPONDED || current == RPCState.TIMEOUT)
+				unreachableCache.onCallFinished(c);
+		}
+	};
+	
+	final Consumer<RPCServer> serverListener = (srv) -> {
+		node.registerServer(srv);
+
+		srv.onEnqueue((c) -> {
+			c.addListener(rpcListener);
+		});
+	};
 
 
 	void populate() {
@@ -621,7 +647,11 @@ public class DHT implements DHTBase {
 		stats.setRpcStats(serverStats);
 		
 		serverManager = new RPCServerManager(this);
+		mismatchDetector = new IDMismatchDetector(this);
 		node = new Node(this);
+		unreachableCache = new NonReachableCache();
+
+		serverManager.notifyOnServerAdded(serverListener);
 		db = new Database();
 		stats.setDbStats(db.getStats());
 		tman = new TaskManager(this);
@@ -772,6 +802,9 @@ public class DHT implements DHTBase {
 				e2.printStackTrace();
 			}
 		}, DHTConstants.RANDOM_LOOKUP_INTERVAL, DHTConstants.RANDOM_LOOKUP_INTERVAL, TimeUnit.MILLISECONDS));
+		
+		scheduledActions.add(scheduler.scheduleWithFixedDelay(mismatchDetector::purge, 2, 3, TimeUnit.MINUTES));
+		scheduledActions.add(scheduler.scheduleWithFixedDelay(unreachableCache::cleanStaleEntries, 2, 3, TimeUnit.MINUTES));
 	}
 
 	/*
@@ -837,6 +870,10 @@ public class DHT implements DHTBase {
 	 */
 	public Node getNode () {
 		return node;
+	}
+	
+	public IDMismatchDetector getMismatchDetector() {
+		return mismatchDetector;
 	}
 	
 	public Database getDatabase() {
@@ -958,7 +995,7 @@ public class DHT implements DHTBase {
 			c.addListener(new RPCCallListener() {
 				@Override
 				public void stateTransition(RPCCall c, RPCState previous, RPCState current) {
-					if(current == RPCState.RESPONDED || current == RPCState.ERROR || current == RPCState.RESPONDED)
+					if(current == RPCState.RESPONDED || current == RPCState.ERROR || current == RPCState.TIMEOUT)
 						f.complete(c);
 				}
 			});
@@ -1133,11 +1170,14 @@ public class DHT implements DHTBase {
 		w.append(stats.toString());
 		w.append("-----------------------\n");
 		w.append("Routing table\n");
-		w.append(node.toString());
+		w.append(node.toString() + "\n");
 		w.append("-----------------------\n");
 		w.append("RPC Servers\n");
 		for(RPCServer srv : serverManager.getAllServers())
 			w.append(srv.toString());
+		w.append("-----------------------\n");
+		w.append("Blacklist\n");
+		w.append(mismatchDetector.toString() + '\n');
 		w.append("-----------------------\n");
 		w.append("Lookup Cache\n");
 		cache.printDiagnostics(w);

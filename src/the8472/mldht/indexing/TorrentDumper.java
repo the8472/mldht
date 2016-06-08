@@ -22,6 +22,7 @@ import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.messages.AnnounceRequest;
 import lbms.plugins.mldht.kad.messages.GetPeersRequest;
 import lbms.plugins.mldht.kad.messages.MessageBase;
+import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -30,10 +31,13 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.AbstractMap;
 import java.util.Collection;
@@ -178,7 +182,7 @@ public class TorrentDumper implements Component {
 	public void start(Collection<DHT> dhts, ConfigReader config) {
 		this.dhts = dhts;
 		fromMessages = new ConcurrentSkipListMap<>();
-		scheduler = new LoggingScheduledThreadPoolExecutor(1, new LoggingScheduledThreadPoolExecutor.NamedDaemonThreadFactory("torrent dumper"), this::log);
+		scheduler = new LoggingScheduledThreadPoolExecutor(2, new LoggingScheduledThreadPoolExecutor.NamedDaemonThreadFactory("torrent dumper"), this::log);
 		
 		fetcher = new TorrentFetcher(dhts);
 		
@@ -201,7 +205,7 @@ public class TorrentDumper implements Component {
 		scheduler.scheduleWithFixedDelay(this::startFetches, 10, 1, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::cleanBlocklist, 1, 1, TimeUnit.MINUTES);
 		scheduler.scheduleWithFixedDelay(this::diagnostics, 30, 30, TimeUnit.SECONDS);
-		scheduler.scheduleWithFixedDelay(this::purgeStats, 5, 30, TimeUnit.MINUTES);
+		scheduler.scheduleWithFixedDelay(this::purgeStats, 5, 15, TimeUnit.MINUTES);
 		scheduler.scheduleWithFixedDelay(this::scrubActive, 10, 20, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(() -> {
 			try {
@@ -328,19 +332,25 @@ public class TorrentDumper implements Component {
 				if(s.state == State.INITIAL && s.insertCount > 1) {
 					s.state = State.PRIORITY;
 					if(existing.isPresent())
-						Files.delete(existing.get());
+						Files.deleteIfExists(existing.get());
 				}
 					
 				
 				Path statsFile = s.statsName(statsDir, null);
 				
-				Files.createDirectories(statsFile.getParent());
-
-				// TODO: atomic-move
-				try(FileChannel ch = FileChannel.open(statsFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+				Path tempFile = Files.createTempFile(statsDir, statsFile.getFileName().toString(), ".stats");
+				
+				try(FileChannel ch = FileChannel.open(tempFile, StandardOpenOption.WRITE)) {
 					ByteBuffer buf = new BEncoder().encode(s.forBencoding(), 16*1024);
 					ch.write(buf);
+					ch.close();
+					Files.createDirectories(statsFile.getParent());
+					Files.move(tempFile, statsFile, StandardCopyOption.ATOMIC_MOVE);
+				} finally {
+					Files.deleteIfExists(tempFile);
 				}
+
+				
 			} catch (Exception e) {
 				log(e);
 			}
@@ -354,25 +364,15 @@ public class TorrentDumper implements Component {
 	void purgeStats() {
 		Path failedDir = FetchStats.State.FAILED.stateDir(statsDir);
 		
-		BDecoder dec = new BDecoder();
-		
 		long now = System.currentTimeMillis();
 		
-		try (Stream<Path> pst = Files.find(failedDir, 4, (p, attr) -> {
-			return p.getFileName().toString().matches("\\.stats$");
-		})) {
-			Stream<FetchStats> st = pst.map(p -> {
-				try {
-					return FetchStats.fromBencoded(dec.decode(ByteBuffer.wrap(Files.readAllBytes(p))));
-				} catch (IOException e) {
-					log(e);
-					return null;
-				}
-			});
-
+		try (Stream<Path> pst = Files.find(failedDir, 5, (p, a) -> a.isRegularFile())) {
+			
+			Stream<FetchStats> st = filesToFetchers(pst);
+			
 			st.filter(Objects::nonNull).filter(stat -> now - stat.lastFetchTime > TimeUnit.HOURS.toMillis(2)).forEach(stat -> {
 				try {
-					Files.delete(stat.statsName(statsDir, null));
+					Files.deleteIfExists(stat.statsName(statsDir, null));
 				} catch (IOException e) {
 					log(e);
 				}
@@ -382,7 +382,8 @@ public class TorrentDumper implements Component {
 			log(e);
 		}
 
-		try (Stream<Path> st = Files.find(statsDir, 5, (p, attr) -> attr.isDirectory())) {
+		// 0 -> stats, 1 -> {failed|initial|prio}, 2 -> 00, 3 -> 00/00
+		try (Stream<Path> st = Files.find(statsDir, 3, (p, attr) -> attr.isDirectory())) {
 			st.filter(d -> {
 				try (DirectoryStream<Path> dst = Files.newDirectoryStream(d)) {
 					return !dst.iterator().hasNext();
@@ -391,7 +392,9 @@ public class TorrentDumper implements Component {
 				}
 			}).forEach(d -> {
 				try {
-					Files.delete(d);
+					Files.deleteIfExists(d);
+				} catch(DirectoryNotEmptyException e) {
+					// someone on another thread wrote to it. do nothing
 				} catch (IOException e) {
 					throw new UncheckedIOException(e);
 				}
@@ -420,34 +423,54 @@ public class TorrentDumper implements Component {
 	}
 	
 	
-	Stream<FetchStats> fetchStatsStream() throws IOException {
-		BDecoder dec = new BDecoder();
+	Stream<Path> fetchStatsStream(Stream<Path> rootDirs) throws IOException {
 		
 		
-		Path prio = FetchStats.State.PRIORITY.stateDir(statsDir);
-		Path normal = FetchStats.State.INITIAL.stateDir(statsDir);
+		
+
 
 		// this does not use a true shuffle, the stream will emit straight runs at the 16bit keyspace granularity
 		// and then batches of such runs shuffled at the 8bit level
 		// it's closer to linear scan from a random starting point
 		// but polling in small batches should lead to reasonable task randomization without expensive full directory traversal
-		Stream<Path> leafs = Stream.concat(
-				Stream.of(prio).flatMap(this::dirShuffler).flatMap(this::dirShuffler).flatMap(this::dirShuffler),
-				Stream.of(normal).flatMap(this::dirShuffler).flatMap(this::dirShuffler).flatMap(this::dirShuffler));
+		Stream<Path> leafs = rootDirs.flatMap(d -> {
+			return Stream.of(d).flatMap(this::dirShuffler).flatMap(this::dirShuffler).flatMap(this::dirShuffler);
+		});
 		
-		return leafs.map(p -> {
-			try {
-				return FetchStats.fromBencoded(dec.decode(ByteBuffer.wrap(Files.readAllBytes(p))));
-			} catch (IOException e) {
-				log(e);
+		return leafs;
+	}
+	
+	Stream<FetchStats> filesToFetchers(Stream<Path> st) throws IOException {
+		ThreadLocal<ByteBuffer> bufProvider = new ThreadLocal<>();
+		
+		return st.map(p -> {
+			try(FileChannel ch = FileChannel.open(p, StandardOpenOption.READ)) {
+				long size = ch.size();
+				ByteBuffer buf = bufProvider.get();
+				if(buf == null || buf.capacity() < size)
+					buf = ByteBuffer.allocate((int) (size * 1.5));
+				buf.clear();
+				ch.read(buf);
+				buf.flip();
+				bufProvider.set(buf);
+				return FetchStats.fromBencoded(ThreadLocalUtils.getDecoder().decode(buf));
+			} catch(NoSuchFileException ex) {
+				// expect async deletes
+				return null;
+			} catch(IOException ex) {
+				log(ex);
 				return null;
 			}
 		}).filter(Objects::nonNull);
+		
 	}
+	
 	
 	void startFetches() {
 		try {
-			try(Stream<FetchStats> st = fetchStatsStream()) {
+			Path prio = FetchStats.State.PRIORITY.stateDir(statsDir);
+			Path normal = FetchStats.State.INITIAL.stateDir(statsDir);
+			try(Stream<FetchStats> st = filesToFetchers(fetchStatsStream(Stream.of(prio, normal)))) {
 				st.limit(200).forEachOrdered(this::fetch);
 			};
 		} catch (Exception e) {

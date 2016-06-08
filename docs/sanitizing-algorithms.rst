@@ -66,12 +66,13 @@ I have not yet settled on a final strategy that I could recommend, but I have fo
 
 * ignore responses that don't match the expected ID.
 * score contacts based on how many other nodes returned them. this is a good tie-breaker when multiple ports are returned for the same contact
-* use a cache. this shortens the path towards the closest set and thus the opportunities for attackers
+* use a cache. this shortens the path towards the closest set and thus the opportunities for attackers. implemented as multi-homed routing table with home IDs from target IDs of recent lookups. much shorter timeouts, more  aggressive replacement strategy
 * retransmits can improve precision, but do so at the expense of swiftness. but this tradeoff is not a bad one to make, e.g. in announces vs. scrapes
 * generally avoid sending multiple requests to the same IP even if suggested ports or IDs differ. but use scoring system to decide otherwise in some circumstances. related to retransmit logic
 * ignore contacts that have been returned by a single node and N RPCs to other contacts supplied by it are already in flight or have failed. this reduces the impact of collusion or polluted routing tables (those two problems are nearly indistinguishable). For this it is necessary to keep a graph of which contacts have been suggested by which previously visited contacts.
-* filter out contacts based on the mismatch oracle (see below)
-* [todo] de-prioritize teredo addresses on ipv6
+* filter contacts based on the mismatch oracle (see below)
+* filter contacts based on a recently observed non-reachability -> reduces packets wasted on nodes that inject themselves into many routing tables but stay silent on get_peers 
+* [todo] de-prioritize teredo addresses on ipv6?
 * [todo] factor BEP42 compliance into scoring system
 * [todo] Evaluate the disjoint path approach of S/Kademlia http://doc.tm.uka.de/SKademlia_2007.pdf
 

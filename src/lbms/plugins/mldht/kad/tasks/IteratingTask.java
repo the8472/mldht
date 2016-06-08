@@ -20,7 +20,7 @@ public abstract class IteratingTask extends TargetedTask {
 	
 	public IteratingTask(Key target, RPCServer srv, Node node) {
 		super(target, srv, node);
-		todo = new IterativeLookupCandidates(target);
+		todo = new IterativeLookupCandidates(target, node.getDHT().getMismatchDetector(), node.getDHT().getUnreachableCache());
 		closest = new ClosestSet(target, DHTConstants.MAX_ENTRIES_PER_BUCKET);
 	}
 	
@@ -47,7 +47,20 @@ public abstract class IteratingTask extends TargetedTask {
 					return targetKey.threeWayDistance(me.getKey().getID(), farthest) <= 0;
 				}).<String>map(e -> {
 					LookupGraphNode node = e.getValue();
-					return e.getKey().getID() + " " + targetKey.distance(e.getKey().getID()) + " " + AddressUtils.toString(e.getKey().getAddress()) + " src:" + node.sources.size() + " call:" + node.calls.size() + " rsp:" + node.calls.stream().filter(c -> c.state() == RPCState.RESPONDED).count() + " " + e.getValue().sources.stream().map(LookupGraphNode::toKbe).collect(Collectors.toList());
+					
+					return String.format("%s %s %s %s src:%d-%d call:%d rsp:%d acc:%d %s",
+							e.getKey().getID(),
+							targetKey.distance(e.getKey().getID()),
+							AddressUtils.toString(e.getKey().getAddress()),
+							node.tainted ? "!" : " ",
+							node.sources.size(),
+							node.previouslyFailedCount,
+							node.calls.size(),
+							node.calls.stream().filter(c -> c.state() == RPCState.RESPONDED).count(),
+							node.acceptedResponse ? 1 : 0,
+							e.getValue().sources.stream().map(LookupGraphNode::toKbe).collect(Collectors.toList())
+						);
+
 				}).collect(Collectors.joining("\n"))
 
 				, LogLevel.Verbose);

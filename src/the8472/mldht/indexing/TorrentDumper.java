@@ -229,6 +229,9 @@ public class TorrentDumper implements Component {
 	}
 	
 	void incomingMessage(DHT d, MessageBase m) {
+		if(d.getMismatchDetector().isIdInconsistencyExpected(m.getOrigin(), m.getID()))
+			return;
+		
 		if(m instanceof GetPeersRequest) {
 			GetPeersRequest gpr = (GetPeersRequest) m;
 			
@@ -429,13 +432,13 @@ public class TorrentDumper implements Component {
 		
 
 
-		// this does not use a true shuffle, the stream will emit straight runs at the 16bit keyspace granularity
-		// and then batches of such runs shuffled at the 8bit level
+		// this does not use a true shuffle, the stream will emit some clusters at the 8bit keyspace granularity
 		// it's closer to linear scan from a random starting point
 		// but polling in small batches should lead to reasonable task randomization without expensive full directory traversal
 		Stream<Path> leafs = rootDirs.flatMap(d -> {
 			return Stream.of(d).flatMap(this::dirShuffler).flatMap(this::dirShuffler).flatMap(this::dirShuffler);
 		});
+
 		
 		return leafs;
 	}

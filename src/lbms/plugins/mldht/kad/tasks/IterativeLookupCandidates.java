@@ -2,8 +2,10 @@ package lbms.plugins.mldht.kad.tasks;
 
 import static java.lang.Math.max;
 
+import lbms.plugins.mldht.kad.IDMismatchDetector;
 import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
+import lbms.plugins.mldht.kad.NonReachableCache;
 import lbms.plugins.mldht.kad.RPCCall;
 import lbms.plugins.mldht.kad.RPCState;
 
@@ -18,6 +20,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -52,12 +55,17 @@ public class IterativeLookupCandidates {
 	Map<RPCCall, KBucketEntry> calls;
 	Collection<Object> accepted;
 	boolean allowRetransmits = true;
+	IDMismatchDetector detector;
+	private NonReachableCache nonReachableCache;
 	
 	class LookupGraphNode {
 		final KBucketEntry e;
 		Set<LookupGraphNode> sources = new CopyOnWriteArraySet<>();
 		Set<LookupGraphNode> returnedNodes = ConcurrentHashMap.newKeySet();
 		List<RPCCall> calls = new CopyOnWriteArrayList<>();
+		boolean tainted;
+		boolean acceptedResponse;
+		int previouslyFailedCount;
 		
 		public LookupGraphNode(KBucketEntry kbe) {
 			e = kbe;
@@ -72,7 +80,7 @@ public class IterativeLookupCandidates {
 		}
 		
 		boolean callsNotSuccessful() {
-			return !calls.isEmpty() && calls.stream().noneMatch(c -> c.state() == RPCState.RESPONDED);
+			return !calls.isEmpty() && !wasAccepted();
 		}
 		
 		int nonSuccessfulDescendantCalls() {
@@ -85,6 +93,14 @@ public class IterativeLookupCandidates {
 		
 		KBucketEntry toKbe() {
 			return e;
+		}
+		
+		void accept() {
+			acceptedResponse = true;
+		}
+		
+		boolean wasAccepted() {
+			return acceptedResponse;
 		}
 		
 		@Override
@@ -107,12 +123,13 @@ public class IterativeLookupCandidates {
 		
 	}
 	
-	public IterativeLookupCandidates(Key target) {
+	public IterativeLookupCandidates(Key target, IDMismatchDetector detector, NonReachableCache nrc) {
 		this.target = target;
 		calls = new ConcurrentHashMap<>();
 		candidates = new ConcurrentHashMap<>();
 		accepted = new HashSet<>();
-						
+		this.detector = detector;
+		this.nonReachableCache = nrc;
 	}
 	
 	void allowRetransmits(boolean toggle) {
@@ -134,11 +151,15 @@ public class IterativeLookupCandidates {
 				return null;
 			
 			KBucketEntry kbe = calls.get(c);
+			if(!kbe.getVersion().isPresent())
+				c.getResponse().getVersion().ifPresent(kbe::setVersion);
+			LookupGraphNode node = candidates.get(kbe);
 			
 			boolean insertOk = !accepted.contains(kbe.getAddress().getAddress()) && !accepted.contains(kbe.getID());
 			if(insertOk) {
 				accepted.add(kbe.getAddress().getAddress());
 				accepted.add(kbe.getID());
+				node.accept();
 				return kbe;
 			}
 			return null;
@@ -156,8 +177,13 @@ public class IterativeLookupCandidates {
 			
 
 			LookupGraphNode newNode = candidates.compute(e, (kbe, node) -> {
-				if(node == null)
+				if(node == null) {
 					node = new LookupGraphNode(kbe);
+					node.tainted = detector.isIdInconsistencyExpected(kbe.getAddress(), kbe.getID());
+					int failures = nonReachableCache.getFailures(kbe.getAddress());
+					// 5% chance we ignore failure counts;
+					node.previouslyFailedCount = ThreadLocalRandom.current().nextFloat() < 0.05 ? 0 : failures;
+				}
 				if(sourceNode != null)
 					node.addSource(sourceNode);
 				return node;
@@ -193,6 +219,9 @@ public class IterativeLookupCandidates {
 			KBucketEntry kbe = me.getKey();
 			LookupGraphNode node = me.getValue();
 			
+			if(node.tainted)
+				return false;
+			
 			if(node.calls.size() > 0 && !allowRetransmits)
 				return false;
 			
@@ -226,6 +255,7 @@ public class IterativeLookupCandidates {
 			}
 			// log2 scale
 			int sources = 31 - Integer.numberOfLeadingZeros(max(me.getValue().sources.size(), 1));
+			sources -= node.previouslyFailedCount;
 			//System.out.println("sd:" + sources + " " + dups);
 			
 			return sources >= dups;

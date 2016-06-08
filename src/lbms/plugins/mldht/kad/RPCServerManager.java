@@ -9,6 +9,8 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import lbms.plugins.mldht.kad.utils.AddressUtils;
@@ -131,8 +133,15 @@ public class RPCServerManager {
 	private void newServer(InetAddress addr) {
 		RPCServer srv = new RPCServer(this,addr,dht.config.getListeningPort(), dht.serverStats);
 		// doing the socket setup takes time, do it in the background
+		onServerRegistration.forEach(c -> c.accept(srv));
 		dht.getScheduler().execute(srv::start);
 		interfacesInUse.put(addr, srv);
+	}
+	
+	List<Consumer<RPCServer>> onServerRegistration = new CopyOnWriteArrayList<>();
+	
+	void notifyOnServerAdded(Consumer<RPCServer> toNotify) {
+		onServerRegistration.add(toNotify);
 	}
 	
 	void serverRemoved(RPCServer srv) {

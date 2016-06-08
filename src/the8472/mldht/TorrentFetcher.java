@@ -363,9 +363,9 @@ public class TorrentFetcher {
 						
 					}
 				});
-				conMan.register(con);
 				thingsBlockingCompletion.incrementAndGet();
 				socketsIncludingHalfOpen.incrementAndGet();
+				conMan.register(con);
 			}
 		}
 		

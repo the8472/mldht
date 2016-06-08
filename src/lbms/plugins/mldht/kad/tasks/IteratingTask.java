@@ -20,7 +20,7 @@ public abstract class IteratingTask extends TargetedTask {
 	
 	public IteratingTask(Key target, RPCServer srv, Node node) {
 		super(target, srv, node);
-		todo = new IterativeLookupCandidates(target, node.getDHT().getMismatchDetector(), node.getDHT().getUnreachableCache());
+		todo = new IterativeLookupCandidates(target, node.getDHT().getMismatchDetector());
 		closest = new ClosestSet(target, DHTConstants.MAX_ENTRIES_PER_BUCKET);
 	}
 	

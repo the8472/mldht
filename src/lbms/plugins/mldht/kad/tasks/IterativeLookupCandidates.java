@@ -123,15 +123,18 @@ public class IterativeLookupCandidates {
 		
 	}
 	
-	public IterativeLookupCandidates(Key target, IDMismatchDetector detector, NonReachableCache nrc) {
+	public IterativeLookupCandidates(Key target, IDMismatchDetector detector) {
 		this.target = target;
 		calls = new ConcurrentHashMap<>();
 		candidates = new ConcurrentHashMap<>();
 		accepted = new HashSet<>();
 		this.detector = detector;
-		this.nonReachableCache = nrc;
 	}
 	
+	public void setNonReachableCache(NonReachableCache nonReachableCache) {
+		this.nonReachableCache = nonReachableCache;
+	}
+
 	void allowRetransmits(boolean toggle) {
 		allowRetransmits = toggle;
 	}
@@ -180,9 +183,11 @@ public class IterativeLookupCandidates {
 				if(node == null) {
 					node = new LookupGraphNode(kbe);
 					node.tainted = detector.isIdInconsistencyExpected(kbe.getAddress(), kbe.getID());
-					int failures = nonReachableCache.getFailures(kbe.getAddress());
-					// 5% chance we ignore failure counts;
-					node.previouslyFailedCount = ThreadLocalRandom.current().nextFloat() < 0.05 ? 0 : failures;
+					if(nonReachableCache != null) {
+						int failures = nonReachableCache.getFailures(kbe.getAddress());
+						// 5% chance we ignore failure counts;
+						node.previouslyFailedCount = ThreadLocalRandom.current().nextFloat() < 0.05 ? 0 : failures;
+					}
 				}
 				if(sourceNode != null)
 					node.addSource(sourceNode);

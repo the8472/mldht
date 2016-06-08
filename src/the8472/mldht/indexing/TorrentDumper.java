@@ -24,7 +24,6 @@ import lbms.plugins.mldht.kad.messages.GetPeersRequest;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetAddress;
@@ -35,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
@@ -454,7 +454,7 @@ public class TorrentDumper implements Component {
 				buf.flip();
 				bufProvider.set(buf);
 				return FetchStats.fromBencoded(ThreadLocalUtils.getDecoder().decode(buf));
-			} catch(FileNotFoundException ex) {
+			} catch(NoSuchFileException ex) {
 				// expect async deletes
 				return null;
 			} catch(IOException ex) {

@@ -236,6 +236,11 @@ public class IterativeLookupCandidates {
 		return candidates.entrySet().stream();
 	}
 	
+	LookupGraphNode nodeForEntry(KBucketEntry e) {
+		return candidates.get(e);
+		
+	}
+	
 	int numCalls(KBucketEntry kbe) {
 		return (int) calls.entrySet().stream().filter(me -> me.getValue().equals(kbe)).count();
 	}

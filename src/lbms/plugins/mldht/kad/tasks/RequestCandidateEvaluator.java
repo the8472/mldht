@@ -47,7 +47,7 @@ public class RequestCandidateEvaluator {
 	}
 	
 	private boolean inStabilization() {
-		int[] suggestedCounts = closest.ids().mapToInt((k) -> {return todo.allCand().unordered().filter(e -> e.getKey().getID().equals(k)).findAny().get().getValue().sources.size();}).toArray();
+		int[] suggestedCounts = closest.entries().mapToInt((k) -> {return todo.nodeForEntry(k).sources.size();}).toArray();
 		
 		return Arrays.stream(suggestedCounts).anyMatch(i -> i >= 5) || Arrays.stream(suggestedCounts).filter(i -> i >= 4).count() >= 2;
 	}

@@ -60,6 +60,10 @@ public class ClosestSet {
 		return closest.stream().map(KBucketEntry::getID);
 	}
 	
+	Stream<KBucketEntry> entries() {
+		return closest.stream();
+	}
+	
 	public Key tail() {
 		if(closest.isEmpty())
 			return target.distance(Key.MAX_KEY);

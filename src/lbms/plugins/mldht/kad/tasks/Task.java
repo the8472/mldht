@@ -42,6 +42,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -61,12 +62,28 @@ public abstract class Task implements Comparable<Task> {
 	protected String					info;
 	protected RPCServer					rpc;
 	
+	public enum TaskState {
+		INITIAL,
+		QUEUED,
+		RUNNING,
+		FINISHED,
+		KILLED;
+		
+		public boolean isTerminal() {
+			return this == FINISHED || this == KILLED;
+		}
+		
+		public boolean preStart() {
+			return this == INITIAL || this == QUEUED;
+		}
+		
+	}
+	
+	AtomicReference<TaskState>			state = new AtomicReference<>(TaskState.INITIAL);
 	long 								startTime;
 	long								firstResultTime;
 	long								finishTime;
 	private int							taskID;
-	private boolean						taskFinished;
-	private boolean						queued;
 	private List<TaskListener>			listeners;
 	private boolean						lowPriority;
 	protected final AtomicReference<TaskStats>				counts = new AtomicReference<>(new TaskStats());
@@ -82,14 +99,27 @@ public abstract class Task implements Comparable<Task> {
 		
 		this.rpc = rpc;
 		this.node = node;
-		queued = true;
-		
 	
 		inFlight = new ConcurrentHashMap<>();
-		
-		taskFinished = false;
 	}
 	
+	boolean setState(TaskState expected, TaskState newState) {
+		return setState(EnumSet.of(expected), newState);
+	}
+	
+	
+	boolean setState(Set<TaskState> expected, TaskState newState) {
+		TaskState current;
+		do {
+			current = state.get();
+			if(!expected.contains(current))
+				return false;
+			
+		} while(!state.weakCompareAndSet(current, newState));
+		
+		return true;
+		
+	}
 	
 	public RPCServer getRPC() {
 		return rpc;
@@ -175,9 +205,8 @@ public abstract class Task implements Comparable<Task> {
 	 *  Start the task, to be used when a task is queued.
 	 */
 	public void start () {
-		if (queued) {
+		if (setState(EnumSet.of(TaskState.INITIAL, TaskState.QUEUED), TaskState.RUNNING)) {
 			DHT.logDebug("Starting Task: " + toString());
-			queued = false;
 			startTime = System.currentTimeMillis();
 			try
 			{
@@ -191,14 +220,14 @@ public abstract class Task implements Comparable<Task> {
 	
 	private void runStuff() {
 		if(isDone())
-			finished();
+			finish();
 		
 		if (canDoRequest() && !isFinished()) {
 			serializedUpdate.run();
 
 			// check again in case todo-queue has been drained by update()
 			if(isDone())
-				finished();
+				finish();
 		}
 		
 
@@ -313,7 +342,7 @@ public abstract class Task implements Comparable<Task> {
 
 	/// Is the task finished
 	public boolean isFinished () {
-		return taskFinished;
+		return state.get().isTerminal();
 	}
 
 	/// Set the task ID
@@ -390,29 +419,22 @@ public abstract class Task implements Comparable<Task> {
 	}
 
 	public boolean isQueued () {
-		return queued;
+		return state.get() == TaskState.QUEUED;
 	}
 
 	/// Kills the task
-	public void kill () {
-		finishTime = -1;
-		finished();
+	public void kill() {
+		if(setState(EnumSet.complementOf(EnumSet.of(TaskState.FINISHED, TaskState.KILLED)), TaskState.KILLED))
+			notifyCompletionListeners();
+	}
+	
+	private void finish() {
+		if(setState(EnumSet.complementOf(EnumSet.of(TaskState.FINISHED, TaskState.KILLED)), TaskState.FINISHED))
+			notifyCompletionListeners();
 	}
 
-	/**
-	 * The task is finsihed.
-	 * @param t The Task
-	 */
-	private void finished () {
-		synchronized (this)
-		{
-			if(taskFinished)
-				return;
-			taskFinished = true;
-		}
-		
-		if(finishTime != -1)
-			finishTime = System.currentTimeMillis();
+	private void notifyCompletionListeners() {
+		finishTime = System.currentTimeMillis();
 		
 		DHT.logDebug("Task "+getTaskID()+" finished: " + toString());
 
@@ -430,7 +452,7 @@ public abstract class Task implements Comparable<Task> {
 			listeners = new ArrayList<>(1);
 		}
 		// listener is added after the task already terminated, thus it won't get the event, trigger it manually
-		if(taskFinished)
+		if(state.get().isTerminal())
 			listener.finished(this);
 		listeners.add(listener);
 	}
@@ -454,7 +476,7 @@ public abstract class Task implements Comparable<Task> {
 		if(this instanceof TargetedTask)
 			b.append(" target:").append(((TargetedTask)this).getTargetKey());
 		b.append(" todo:").append(getTodoCount());
-		if(!queued) {
+		if(!state.get().preStart()) {
 			//b.append(" sent:").append(stats.get(SENT));
 			//b.append(" recv:").append(stats.get(RECEIVED));
 			b.append(" ").append(stats);
@@ -462,12 +484,7 @@ public abstract class Task implements Comparable<Task> {
 		}
 		b.append(" srv: ").append(rpc.getDerivedID());
 		
-		if(finishTime == -1) {
-			b.append(" killed");
-		}
-		if(taskFinished) {
-			b.append(" finished");
-		}
+		b.append(' ').append(state.get().toString());
 		
 		if(startTime != 0) {
 			if(finishTime == 0)

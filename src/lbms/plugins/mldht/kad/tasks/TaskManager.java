@@ -29,6 +29,7 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.RPCServer;
+import lbms.plugins.mldht.kad.tasks.Task.TaskState;
 
 /**
  * Manages all dht tasks.
@@ -89,15 +90,18 @@ public class TaskManager {
 		int id = next_id.incrementAndGet();
 		task.addListener(finishListener);
 		task.setTaskID(id);
-		if (!task.isQueued())
+		if (task.state.get() == TaskState.RUNNING)
 		{
 			tasks.add(task);
 			return;
 		}
 		
+		if(!task.setState(TaskState.INITIAL, TaskState.QUEUED))
+			return;
+		
+		
+		
 		Key rpcId = task.getRPC().getDerivedID();
-		
-		
 		
 		Deque<Task> q = queued.computeIfAbsent(rpcId, k -> new LinkedList<>());;
 			

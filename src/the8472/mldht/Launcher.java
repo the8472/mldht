@@ -267,9 +267,16 @@ public class Launcher {
 		}
 	}
 	
+	boolean cleanupDone = false;
+	
 	void shutdownCleanup() {
-		components.forEach(Component::stop);
-		dhts.forEach(DHT::stop);
+		synchronized (this) {
+			if(cleanupDone)
+				return;
+			cleanupDone = true;
+			components.forEach(Component::stop);
+			dhts.forEach(DHT::stop);
+		}
 	}
 
 	/**

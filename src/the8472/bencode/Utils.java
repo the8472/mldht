@@ -3,10 +3,6 @@ package the8472.bencode;
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 
 public class Utils {
 	
@@ -62,91 +58,8 @@ public class Utils {
 	
 	public static String prettyPrint(Object o) {
 		StringBuilder b = new StringBuilder(1024);
-		prettyPrintInternal(b, o);
+		new PrettyPrinter(b).prettyPrintInternal(o);
 		return b.toString();
-	}
-	
-	private static void prettyPrintInternal(StringBuilder b, Object o) {
-		if(o instanceof Map) {
-			Map<Object,Object> m = (Map<Object, Object>) o;
-			
-			b.append("{");
-			Iterator<Entry<Object,Object>> it = m.entrySet().iterator();
-			while(it.hasNext()) {
-				Map.Entry<?,?> e = it.next();
-				prettyPrintInternal(b, e.getKey());
-				b.append(":");
-				prettyPrintInternal(b, e.getValue());
-				if(it.hasNext())
-					b.append(", ");
-			}
-			b.append("}");
-			return;
-		}
-		
-		if(o instanceof List) {
-			List<?> l = (List<?>) o;
-			b.append("[");
-			Iterator<?> it = l.iterator();
-			while(it.hasNext()) {
-				Object e = it.next();
-				prettyPrintInternal(b, e);
-				if(it.hasNext())
-					b.append(", ");
-			}
-			b.append("]");
-			return;
-		}
-		
-		if(o instanceof String) {
-			b.append('"');
-			b.append(o);
-			b.append('"');
-			return;
-		}
-		
-		if(o instanceof Long || o instanceof Integer) {
-			b.append(o);
-			return;
-		}
-		
-		if(o instanceof ByteBuffer) {
-			ByteBuffer buf = ((ByteBuffer) o).slice();
-			byte[] bytes;
-			if(buf.hasArray() && buf.arrayOffset() == 0 && buf.capacity() == buf.limit())
-				bytes = buf.array();
-			else {
-				bytes = new byte[buf.remaining()];
-				buf.get(bytes);
-			}
-			o = bytes;
-		}
-		
-		if(o instanceof byte[]) {
-			byte[] bytes = (byte[]) o;
-			if(bytes.length == 0) {
-				b.append("\"\"");
-				return;
-			}
-				
-			
-			if(bytes.length < 10) {
-				b.append(stripToAscii(bytes));
-				b.append('/');
-			}
-			b.append("0x");
-			toHex(bytes, b, 20);
-			
-			if(bytes.length > 20) {
-				b.append("...");
-				b.append('(');
-				b.append(bytes.length);
-				b.append(')');
-			}
-			return;
-		}
-		
-		b.append("unhandled type(").append(o).append(')');
 	}
 	
 	public static String stripToAscii(byte[] arr) {

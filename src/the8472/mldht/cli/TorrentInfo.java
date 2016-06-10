@@ -3,6 +3,7 @@ package the8472.mldht.cli;
 import static the8472.utils.Functional.typedGet;
 
 import the8472.bencode.PathMatcher;
+import the8472.bencode.PrettyPrinter;
 import the8472.bencode.Tokenizer;
 import the8472.utils.concurrent.SerializedTaskExecutor;
 
@@ -108,10 +109,21 @@ public class TorrentInfo {
 		 */
 		return Stream.empty();
 	}
+	
+	String raw() {
+		decode();
+		PrettyPrinter p = new PrettyPrinter();
+		p.indent("  ");
+		p.guessHumanReadableStringValues(true);
+		p.append(root);
+		return p.toString();
+	}
 
 
 	public static void main(String[] argsAry) throws IOException, InterruptedException {
 		List<String> args = new ArrayList<>(Arrays.asList(argsAry));
+		
+		boolean printRaw = ParseArgs.extractBool(args, "-raw");
 		
 		
 		Stream<Path> files = args.parallelStream().unordered().map(Paths::get).filter(Files::exists).flatMap(p -> {
@@ -131,8 +143,14 @@ public class TorrentInfo {
 		
 		files.map(p -> {
 			TorrentInfo ti = new TorrentInfo(p);
-
-			return p.toString() + " " + ti.name();
+			
+			String st = p.toString();
+			
+			if(printRaw)
+				return st + "\n" + ti.raw();
+			
+			
+			return st + " " + ti.name();
 		}).forEach(printer::accept);
 		
 

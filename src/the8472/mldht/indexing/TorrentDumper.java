@@ -13,9 +13,11 @@ import the8472.mldht.TorrentFetcher.FetchTask;
 import the8472.mldht.indexing.TorrentDumper.FetchStats.State;
 import the8472.utils.ConfigReader;
 import the8472.utils.concurrent.LoggingScheduledThreadPoolExecutor;
+import the8472.utils.concurrent.SerializedTaskExecutor;
 import the8472.utils.io.FileIO;
 
 import lbms.plugins.mldht.kad.DHT;
+import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -27,7 +29,7 @@ import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -40,9 +42,12 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.AbstractMap;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -78,10 +83,12 @@ public class TorrentDumper implements Component {
 	static class FetchStats {
 		final Key k;
 		int insertCount = 1;
-		InetAddress lastTouchedBy;
+		List<KBucketEntry> recentSources;
 		long creationTime = -1;
 		long lastFetchTime = -1;
 		State state = State.INITIAL;
+		
+		static final int max_entries = 10;
 		
 		enum State {
 			INITIAL,
@@ -106,13 +113,10 @@ public class TorrentDumper implements Component {
 			Key k = typedGet(map, "k", byte[].class).map(Key::new).orElseThrow(() -> new IllegalArgumentException("missing key in serialized form"));
 			
 			return new FetchStats(k, fs -> {
-				typedGet(map, "addr", byte[].class).map(t -> {
-					try {
-						return InetAddress.getByAddress(t);
-					} catch (UnknownHostException e) {
-						return null;
-					}
-				}).ifPresent(addr -> fs.lastTouchedBy = addr);
+				fs.recentSources = typedGet(map, "sources", List.class).map((List l) -> {
+					List<Map<String, Object>> typedList = l;
+					return typedList.stream().map(KBucketEntry::fromBencoded).collect(Collectors.toCollection(ArrayList::new));
+				}).orElse(new ArrayList<>());
 				
 				typedGet(map, "state", byte[].class).map(b -> new String(b, StandardCharsets.ISO_8859_1)).map(str -> {
 					try {
@@ -134,7 +138,7 @@ public class TorrentDumper implements Component {
 			
 			map.put("k", k.getHash());
 			map.put("cnt", insertCount);
-			map.put("addr", lastTouchedBy.getAddress());
+			map.put("sources", recentSources.stream().map(s -> s.toBencoded()).collect(Collectors.toCollection(ArrayList::new)));
 			map.put("created", creationTime);
 			map.put("state", state.name());
 			map.put("fetchtime", lastFetchTime);
@@ -150,10 +154,13 @@ public class TorrentDumper implements Component {
 			if(!k.equals(other.k))
 				throw new IllegalArgumentException("key mismatch");
 			
-			boolean otherIsNewer = other.creationTime > creationTime;
-			
 			insertCount += other.insertCount;
-			lastTouchedBy = otherIsNewer ? other.lastTouchedBy : lastTouchedBy;
+			recentSources.addAll(other.recentSources);
+			if(recentSources.size() > max_entries) {
+				recentSources.sort(Comparator.comparingLong((KBucketEntry e) -> e.getLastSeen()));
+				recentSources.subList(0, recentSources.size() - max_entries).clear();
+			}
+			
 			creationTime = min(creationTime, other.creationTime);
 			
 			return this;
@@ -202,7 +209,7 @@ public class TorrentDumper implements Component {
 		fetcher.setPeerFilter(pf);
 		
 		scheduler.scheduleWithFixedDelay(this::dumpStats, 10, 1, TimeUnit.SECONDS);
-		scheduler.scheduleWithFixedDelay(this::startFetches, 10, 1, TimeUnit.SECONDS);
+		scheduler.scheduleWithFixedDelay(this.singleThreadedFetches::run, 10, 1, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::cleanBlocklist, 1, 1, TimeUnit.MINUTES);
 		scheduler.scheduleWithFixedDelay(this::diagnostics, 30, 30, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::purgeStats, 5, 15, TimeUnit.MINUTES);
@@ -254,26 +261,24 @@ public class TorrentDumper implements Component {
 			
 			if(theirCloseness > myCloseness && theirCloseness - myCloseness >= 8)
 				return; // they're looking for something that's significantly closer to their own ID than we are
-			process(gpr.getInfoHash(), gpr.getOrigin().getAddress(), null);
+			process(gpr.getInfoHash(), gpr.getOrigin(), null);
 		}
 		if(m instanceof AnnounceRequest) {
 			AnnounceRequest anr = (AnnounceRequest) m;
-			process(anr.getInfoHash(), anr.getOrigin().getAddress(), anr.getNameUTF8().orElse(null));
+			process(anr.getInfoHash(), anr.getOrigin(), anr.getNameUTF8().orElse(null));
 		}
 	}
 	
-	void process(Key k, InetAddress src, String name) {
-		
-		
-		fromMessages.compute(k, (unused, f) -> {
-			FetchStats f2 = new FetchStats(k, init -> {
-				init.lastTouchedBy = src;
-				init.insertCount = 1;
-				init.creationTime = System.currentTimeMillis();
-			});
-			return f == null ? f2 : f.merge(f2);
+	void process(Key k, InetSocketAddress src, String name) {
+		FetchStats f = new FetchStats(k, init -> {
+			init.recentSources = new ArrayList<>();
+			init.recentSources.add(new KBucketEntry(src, k));
+			init.insertCount = 1;
+			init.creationTime = System.currentTimeMillis();
 		});
-						
+		
+		// if there are bursts, only take the first one
+		fromMessages.putIfAbsent(k, f);
 	}
 	
 	Key cursor = Key.MIN_KEY;
@@ -289,14 +294,14 @@ public class TorrentDumper implements Component {
 			}
 			
 			Key k = entry.getKey();
-			FetchStats s = entry.getValue();
+			FetchStats toStore = entry.getValue();
 			
 			fromMessages.remove(k);
 			
 			cursor = k.add(Key.setBit(159));
 
 			
-			if(Files.exists(s.name(torrentDir, ".torrent"))) {
+			if(Files.exists(toStore.name(torrentDir, ".torrent"))) {
 				continue;
 			}
 			
@@ -305,11 +310,11 @@ public class TorrentDumper implements Component {
 			
 			try {
 				
-				Optional<Path> existing = Stream.of(s.statsName(statsDir, FetchStats.State.FAILED), s.statsName(statsDir, FetchStats.State.PRIORITY), s.statsName(statsDir, FetchStats.State.INITIAL)).filter(Files::isRegularFile).findFirst();
+				Optional<Path> existing = Stream.of(toStore.statsName(statsDir, FetchStats.State.FAILED), toStore.statsName(statsDir, FetchStats.State.PRIORITY), toStore.statsName(statsDir, FetchStats.State.INITIAL)).filter(Files::isRegularFile).findFirst();
 
 				if(!existing.isPresent()) {
 					// only throttle IPs for new hashes we don't already know about and wouldn't try anyway
-					if(activeCount.get() > 50 && blocklist.putIfAbsent(s.lastTouchedBy, now) != null)
+					if(activeCount.get() > 50 && blocklist.putIfAbsent(toStore.recentSources.get(0).getAddress().getAddress(), now) != null)
 						continue;
 				}
 				
@@ -319,32 +324,35 @@ public class TorrentDumper implements Component {
 						FetchStats old = FetchStats.fromBencoded(new BDecoder().decode(ByteBuffer.wrap(Files.readAllBytes(p))));
 						
 						// avoid double-taps
-						if(old.lastTouchedBy.equals(s.lastTouchedBy))
+						Collection<InetAddress> oldAddrs = old.recentSources.stream().map(e -> e.getAddress().getAddress()).collect(Collectors.toList());
+						Collection<InetAddress> newAddrs = toStore.recentSources.stream().map(e -> e.getAddress().getAddress()).collect(Collectors.toList());
+						
+						if(oldAddrs.containsAll(newAddrs))
 							return;
 						
-						s.merge(old);
+						toStore.merge(old);
 						
 						if(old.state != FetchStats.State.INITIAL)
-							s.state = old.state;
+							toStore.state = old.state;
 						
 					} catch (IOException e) {
 						log(e);
 					}
 				}
 				
-				if(s.state == State.INITIAL && s.insertCount > 1) {
-					s.state = State.PRIORITY;
+				if(toStore.state == State.INITIAL && toStore.insertCount > 1) {
+					toStore.state = State.PRIORITY;
 					if(existing.isPresent())
 						Files.deleteIfExists(existing.get());
 				}
 					
 				
-				Path statsFile = s.statsName(statsDir, null);
+				Path statsFile = toStore.statsName(statsDir, null);
 				
 				Path tempFile = Files.createTempFile(statsDir, statsFile.getFileName().toString(), ".stats");
 				
 				try(FileChannel ch = FileChannel.open(tempFile, StandardOpenOption.WRITE)) {
-					ByteBuffer buf = new BEncoder().encode(s.forBencoding(), 16*1024);
+					ByteBuffer buf = new BEncoder().encode(toStore.forBencoding(), 16*1024);
 					ch.write(buf);
 					ch.close();
 					Files.createDirectories(statsFile.getParent());
@@ -469,17 +477,49 @@ public class TorrentDumper implements Component {
 	}
 	
 	
-	void startFetches() {
+	static final int PREFETCH_LOW_WATERMARK = 16;
+	
+	Deque<FetchStats> toFetchNext = new ArrayDeque<>();
+	
+	
+	void prefetch() {
 		try {
 			Path prio = FetchStats.State.PRIORITY.stateDir(statsDir);
 			Path normal = FetchStats.State.INITIAL.stateDir(statsDir);
-			try(Stream<FetchStats> st = filesToFetchers(fetchStatsStream(Stream.of(prio, normal)))) {
-				st.limit(200).forEachOrdered(this::fetch);
-			};
+			
+			List<FetchStats> batch = new ArrayList<>();
+
+			// 4 strides of 8 -> 32 -> 2 * the low watermark
+			// TODO: scale with # of rpcservers
+			for(int i = 0;i<4;i++) {
+				try(Stream<FetchStats> st = filesToFetchers(fetchStatsStream(Stream.of(prio, normal)))) {
+					st.limit(8).forEach(batch::add);
+				};
+			}
+			
+			// avoids that adjacent tasks are started at the same time. interleaving them with other tasks allows for better cache-priming
+			Collections.shuffle(batch);
+			
+			toFetchNext.addAll(batch);
+			
 		} catch (Exception e) {
 			log(e);
 		}
+	}
+	
+	
+	Runnable singleThreadedFetches = SerializedTaskExecutor.onceMore(this::startFetches);
+	
+	void startFetches() {
+		if(toFetchNext.size() < PREFETCH_LOW_WATERMARK)
+			prefetch();
 		
+		while(activeCount.get() < 100) {
+			FetchStats st = toFetchNext.poll();
+			if(st == null)
+				return;
+			fetch(st);
+		}
 	}
 	
 	AtomicInteger activeCount = new AtomicInteger();
@@ -508,9 +548,7 @@ public class TorrentDumper implements Component {
 		
 		if(activeTasks.containsKey(k))
 			return;
-		
-		if(activeCount.get() > 100)
-			return;
+
 		
 		FetchTask t = fetcher.fetch(k, (fetch) -> {
 			fetch.configureLookup(lookup -> {
@@ -533,7 +571,9 @@ public class TorrentDumper implements Component {
 	
 	void taskFinished(FetchStats stats, FetchTask t) {
 		activeCount.decrementAndGet();
-		blocklist.remove(stats.lastTouchedBy);
+		stats.recentSources.stream().max(Comparator.comparingLong(KBucketEntry::getLastSeen)).ifPresent(kbe -> {
+			blocklist.remove(kbe.getAddress().getAddress());
+		});
 		activeTasks.remove(t.infohash());
 		try {
 			for(FetchStats.State st : FetchStats.State.values()) {
@@ -563,6 +603,7 @@ public class TorrentDumper implements Component {
 		} catch (Exception e) {
 			log(e);
 		}
+		singleThreadedFetches.run();
 		
 	}
 	

@@ -39,8 +39,9 @@ Additional:
 ## build
 
     git clone --recursive https://github.com/the8472/mldht.git .
-    mvn compile
-    mvn jar:jar 
+    mvn package appassembly:assemble
+    # install symlink scripts to ~/bin/ 
+    mvn antrun:run@link
 
 ## run DHT node in standalone mode
 

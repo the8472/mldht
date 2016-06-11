@@ -5,6 +5,7 @@ import static the8472.utils.Functional.typedGet;
 import the8472.bencode.PathMatcher;
 import the8472.bencode.PrettyPrinter;
 import the8472.bencode.Tokenizer;
+import the8472.bencode.Tokenizer.BDecodingException;
 import the8472.utils.concurrent.SerializedTaskExecutor;
 
 import lbms.plugins.mldht.kad.Key;
@@ -129,7 +130,7 @@ public class TorrentInfo {
 		Stream<Path> files = args.parallelStream().unordered().map(Paths::get).filter(Files::exists).flatMap(p -> {
 			try {
 				return Files.find(p, 1, (f, attr) -> {
-					return attr.isRegularFile();
+					return attr.isRegularFile() && attr.size() > 0;
 				},  FileVisitOption.FOLLOW_LINKS);
 			} catch (IOException e) {
 				throw new UncheckedIOException(e);
@@ -143,11 +144,17 @@ public class TorrentInfo {
 		
 		files.map(p -> {
 			TorrentInfo ti = new TorrentInfo(p);
+			try {
+				ti.decode();
+			} catch(BDecodingException ex) {
+				return p.toString() + " does not appear to be a bencoded file: " + ex.getMessage();
+			}
+			
 			
 			String st = p.toString();
 			
 			if(printRaw)
-				return st + "\n" + ti.raw();
+				return st + "\n" + ti.raw() + '\n';
 			
 			
 			return st + " " + ti.name();

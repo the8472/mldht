@@ -261,24 +261,24 @@ public class TorrentDumper implements Component {
 			
 			if(theirCloseness > myCloseness && theirCloseness - myCloseness >= 8)
 				return; // they're looking for something that's significantly closer to their own ID than we are
-			process(gpr.getInfoHash(), gpr.getOrigin(), null);
+			process(gpr.getInfoHash(), theirID, gpr.getOrigin(), null);
 		}
 		if(m instanceof AnnounceRequest) {
 			AnnounceRequest anr = (AnnounceRequest) m;
-			process(anr.getInfoHash(), anr.getOrigin(), anr.getNameUTF8().orElse(null));
+			process(anr.getInfoHash(), anr.getID(), anr.getOrigin(), anr.getNameUTF8().orElse(null));
 		}
 	}
 	
-	void process(Key k, InetSocketAddress src, String name) {
-		FetchStats f = new FetchStats(k, init -> {
+	void process(Key targetId, Key sourceNodeId, InetSocketAddress src, String name) {
+		FetchStats f = new FetchStats(targetId, init -> {
 			init.recentSources = new ArrayList<>();
-			init.recentSources.add(new KBucketEntry(src, k));
+			init.recentSources.add(new KBucketEntry(src, sourceNodeId));
 			init.insertCount = 1;
 			init.creationTime = System.currentTimeMillis();
 		});
 		
 		// if there are bursts, only take the first one
-		fromMessages.putIfAbsent(k, f);
+		fromMessages.putIfAbsent(targetId, f);
 	}
 	
 	Key cursor = Key.MIN_KEY;

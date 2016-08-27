@@ -196,8 +196,8 @@ public class TorrentDumper implements Component {
 		fetcher.setMaxOpen(40);
 
 		dhts.forEach(d -> d.addIncomingMessageListener(this::incomingMessage));
+		pf = new UselessPeerFilter();
 		try {
-			pf = new UselessPeerFilter(storageDir.resolve("bad-peers"));
 			Files.createDirectories(torrentDir);
 			for(State st : FetchStats.State.values()) {
 				Files.createDirectories(st.stateDir(statsDir));

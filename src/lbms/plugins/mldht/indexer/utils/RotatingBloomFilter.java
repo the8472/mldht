@@ -8,6 +8,7 @@ public class RotatingBloomFilter {
 	GenericBloomFilter previous;
 	int insertCount;
 	int targetSize;
+	boolean autorotate;
 	
 	public RotatingBloomFilter(int targetSize, int bitCount) {
 		this.targetSize = targetSize;
@@ -15,22 +16,17 @@ public class RotatingBloomFilter {
 		previous = new GenericBloomFilter(bitCount, targetSize);
 	}
 	
+	public void setAutoRotate(boolean val) {
+		autorotate = val;
+	}
+	
 	
 	public void insert(ByteBuffer data)
 	{
 		current.insert(data);
 		insertCount++;
-		if(insertCount >= targetSize)
-		{
-			synchronized (this)
-			{
-				GenericBloomFilter toSwap = current;
-				current = previous;
-				current.clear();
-				previous = toSwap;
-				insertCount = 0;
-			}
-		}
+		if(autorotate && insertCount >= targetSize)
+			rotate();
 	}
 	
 	public boolean contains(ByteBuffer data)
@@ -38,6 +34,15 @@ public class RotatingBloomFilter {
 		return current.probablyContains(data) || previous.probablyContains(data);
 	}
 	
+	
+	public void rotate() {
+		GenericBloomFilter toSwap = current;
+		current = previous;
+		current.clear();
+		previous = toSwap;
+		insertCount = 0;
+		
+	}
 	
 	
 	

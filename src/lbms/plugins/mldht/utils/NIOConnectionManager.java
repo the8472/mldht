@@ -17,6 +17,7 @@
 package lbms.plugins.mldht.utils;
 
 import java.io.IOException;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -126,7 +127,16 @@ public class NIOConnectionManager {
 		while((toRegister = registrations.poll()) != null)
 		{
 			connections.add(toRegister);
-			toRegister.registrationEvent(NIOConnectionManager.this,toRegister.getChannel().register(selector, toRegister.calcInterestOps(),toRegister));
+			SelectableChannel ch = toRegister.getChannel();
+			SelectionKey key;
+			try {
+				key = ch.register(selector, toRegister.calcInterestOps(),toRegister);
+			} catch (ClosedChannelException ex) {
+				// async close
+				continue;
+			}
+			
+			toRegister.registrationEvent(NIOConnectionManager.this,key);
 		}
 	}
 	

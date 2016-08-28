@@ -999,6 +999,7 @@ public class DHT implements DHTBase {
 						f.complete(c);
 				}
 			});
+			callFutures.add(f);
 			srv.doCall(c);
 		}
 		

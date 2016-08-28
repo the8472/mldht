@@ -65,6 +65,7 @@ public class IterativeLookupCandidates {
 		List<RPCCall> calls = new CopyOnWriteArrayList<>();
 		boolean tainted;
 		boolean acceptedResponse;
+		boolean root;
 		int previouslyFailedCount;
 		
 		public LookupGraphNode(KBucketEntry kbe) {
@@ -182,6 +183,7 @@ public class IterativeLookupCandidates {
 			LookupGraphNode newNode = candidates.compute(e, (kbe, node) -> {
 				if(node == null) {
 					node = new LookupGraphNode(kbe);
+					node.root = source == null;
 					node.tainted = detector.isIdInconsistencyExpected(kbe.getAddress(), kbe.getID());
 					if(nonReachableCache != null) {
 						int failures = nonReachableCache.getFailures(kbe.getAddress());

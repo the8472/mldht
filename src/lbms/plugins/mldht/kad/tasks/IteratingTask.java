@@ -8,7 +8,6 @@ import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.RPCState;
 import lbms.plugins.mldht.kad.tasks.IterativeLookupCandidates.LookupGraphNode;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
-import lbms.plugins.mldht.kad.utils.PopulationEstimator;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 
 import java.util.stream.Collectors;
@@ -30,8 +29,9 @@ public abstract class IteratingTask extends TargetedTask {
 	}
 	
 	public String closestDebug() {
-		return this.closest.ids().<String>map(k -> {
-			return k + "  " + targetKey.distance(k) + " " + PopulationEstimator.distanceToDouble(k, targetKey) + " src:" + todo.allCand().unordered().filter(e -> e.getKey().getID().equals(k)).findAny().get().getValue().sources.size();
+		return this.closest.entries().<String>map(kbe -> {
+			Key k = kbe.getID();
+			return k + "  " + targetKey.distance(k) + " src:" + todo.nodeForEntry(kbe).sources.size();
 		}).collect(Collectors.joining("\n"));
 	}
 	
@@ -48,10 +48,12 @@ public abstract class IteratingTask extends TargetedTask {
 				}).<String>map(e -> {
 					LookupGraphNode node = e.getValue();
 					
-					return String.format("%s %s %s %s src:%d-%d call:%d rsp:%d acc:%d %s",
+					return String.format("%s %s %s %s%s%s src:%d-%d call:%d rsp:%d acc:%d %s",
 							e.getKey().getID(),
 							targetKey.distance(e.getKey().getID()),
 							AddressUtils.toString(e.getKey().getAddress()),
+							node.toKbe().hasSecureID() ? "🔒" : " ",
+							node.root ? "🌲" : " ",
 							node.tainted ? "!" : " ",
 							node.sources.size(),
 							node.previouslyFailedCount,

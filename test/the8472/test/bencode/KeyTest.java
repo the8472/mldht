@@ -1,6 +1,7 @@
 package the8472.test.bencode;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static the8472.utils.Functional.tap;
 
 import java.util.stream.IntStream;
@@ -13,10 +14,10 @@ public class KeyTest {
 
 	@Test
 	public void testCompareTo() {
-		assertEquals(Key.MIN_KEY.compareTo(Key.MAX_KEY), -1);
-		assertEquals(Key.MAX_KEY.compareTo(Key.MIN_KEY), 1);
+		assertTrue(Key.MIN_KEY.compareTo(Key.MAX_KEY) < 0);
+		assertTrue(Key.MAX_KEY.compareTo(Key.MIN_KEY) > 0);
 		assertEquals(Key.MAX_KEY.compareTo(Key.MAX_KEY), 0);
-		assertEquals(Key.MIN_KEY.compareTo(Key.createRandomKey()), -1);
+		assertTrue(Key.MIN_KEY.compareTo(Key.createRandomKey()) < 0);
 	}
 		
 	@Test

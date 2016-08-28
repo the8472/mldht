@@ -10,7 +10,7 @@ import lbms.plugins.mldht.kad.DHT.DHTtype;
 
 public class NodeFactory {
 
-	static InetAddress generateIp(byte subnet) {
+	public static InetAddress generateIp(byte subnet) {
 		// generate valid unicast IPs from 2001:20xx::/32
 		byte[] addr = new byte[16];
 		ThreadLocalRandom.current().nextBytes(addr);

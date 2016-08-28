@@ -9,9 +9,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -25,14 +27,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.PeerAddressDBItem;
+import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.tasks.PeerLookupTask;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
+
 import the8472.bt.MetadataPool;
 import the8472.bt.MetadataPool.Completion;
 import the8472.bt.PullMetaDataConnection;
@@ -49,6 +55,7 @@ public class TorrentFetcher {
 	
 	AtomicInteger socketsIncludingHalfOpen = new AtomicInteger();
 	AtomicInteger openConnections = new AtomicInteger();
+	Map<RPCServer, Set<Key>> activeLookups = new HashMap<>();
 	
 	List<FetchTask> tasks = new ArrayList<>();
 	
@@ -93,13 +100,13 @@ public class TorrentFetcher {
 	void ensureRunning() {
 		synchronized (this) {
 			if(f == null && tasks.size() > 0) {
-				f = timer.scheduleWithFixedDelay(this::scheduleConnections, 0, 1, TimeUnit.SECONDS);
+				f = timer.scheduleWithFixedDelay(this::schedule, 0, 1, TimeUnit.SECONDS);
 			}
 				
 		}
 	}
 	
-	void scheduleConnections() {
+	void schedule() {
 		synchronized (this) {
 			if(tasks.size() == 0 && f != null) {
 				f.cancel(false);
@@ -107,22 +114,74 @@ public class TorrentFetcher {
 				return;
 			}
 			
-			int offset = ThreadLocalRandom.current().nextInt(tasks.size());
-				
-			for(int i= 0;i<tasks.size();i++) {
-				int idx = Math.floorMod(i+offset, tasks.size());
-				
-				if(socketLimitsReached())
-					break;
-				
-				tasks.get(idx).connections();
-			}
+			startDHTTasks();
+			startConnections();
 			
-			
-				
-						
 		}
 	}
+	
+	
+	void startDHTTasks() {
+		// choose servers, then pick the task which maximizes the target key distance to all currently running tasks on that server
+		// this should avoid running adjacent keys at the same time
+		// conversely that means adjacent tasks are scheduled only after the previous one finished, which will make the caches more effective
+
+		while(true) {
+			FetchTask best = null;
+			List<RPCServer> servers = dhts.stream().filter(DHT::isRunning).map(d -> d.getServerManager().getRandomActiveServer(false)).filter(Objects::nonNull).collect(Collectors.toList());
+
+			if(servers.isEmpty())
+				break;
+
+			if(!servers.stream().allMatch(s -> s.getDHT().getTaskManager().queuedCount(s) == 0))
+				break;
+
+			
+			synchronized (this) {
+				Key bestDistance = Key.MIN_KEY;
+				
+				if(ThreadLocalRandom.current().nextFloat() < 0.05) {
+					best = tasks.stream().filter(t -> !t.dhtStarted).findFirst().orElse(null);
+				} else {
+					for(FetchTask t : tasks) {
+						if(t.dhtStarted)
+							continue;
+						
+						Key dist = servers.stream().flatMap(s -> activeLookups.getOrDefault(s, Collections.emptySet()).stream()).map(k -> t.hash.distance(k)).min(Comparator.naturalOrder()).orElse(Key.MAX_KEY);
+						
+						if(bestDistance.compareTo(dist) <= 0) {
+							best = t;
+							bestDistance = dist;
+						}
+						
+					}
+					
+				}
+
+			}
+			
+			if(best == null)
+				break;
+			best.lookups(servers.stream());
+			// since we only schedule new tasks when the queues are empty we want the manager to start them immediately instead of waiting for timers
+			servers.stream().forEach(s -> s.getDHT().getTaskManager().dequeue(s.getDerivedID()));
+		}
+	}
+
+	void startConnections() {
+		int offset = ThreadLocalRandom.current().nextInt(tasks.size());
+		
+		for(int i= 0;i<tasks.size();i++) {
+			int idx = Math.floorMod(i+offset, tasks.size());
+			
+			if(socketLimitsReached())
+				break;
+			
+			tasks.get(idx).connections();
+		}
+		
+	}
+	
 	
 	public enum FetchState {
 		PENDING,
@@ -145,6 +204,8 @@ public class TorrentFetcher {
 		
 		Set<PullMetaDataConnection> connections = Collections.newSetFromMap(new ConcurrentHashMap<>());
 		Map<Integer, MetadataPool> pools = new ConcurrentHashMap<>();
+		
+		boolean dhtStarted;
 		
 		FetchState state = FetchState.PENDING;
 		
@@ -208,7 +269,6 @@ public class TorrentFetcher {
 
 		void start() {
 			startTime = Instant.now();
-			lookups();
 		}
 		
 		void addCandidate(KBucketEntry source, PeerAddressDBItem toAdd) {
@@ -242,33 +302,41 @@ public class TorrentFetcher {
 			this.conf = conf;
 		}
 		
-		void lookups() {
-			List<Runnable> starters = dhts.stream().filter(DHT::isRunning).map(d -> {
-				return Optional.ofNullable(d.getServerManager().getRandomActiveServer(false)).map(srv -> {
-					PeerLookupTask task = new PeerLookupTask(srv, d.getNode(), hash);
-					
-					task.setNoAnnounce(true);
-					if(conf != null)
-						conf.accept(task);
-					task.setResultHandler(this::addCandidate);
-					task.addListener(t -> {
-						thingsBlockingCompletion.decrementAndGet();
-						checkCompletion();
-					});
-					
-					thingsBlockingCompletion.incrementAndGet();
-					
-					
-					
-					future.thenAccept(x -> task.kill());
+		void lookups(Stream<RPCServer> servers) {
+			dhtStarted = true;
+			
+			servers.forEach(srv -> {
+				DHT d = srv.getDHT();
+				PeerLookupTask task = new PeerLookupTask(srv, d.getNode(), hash);
+				
+				
+				synchronized (TorrentFetcher.this) {
+					activeLookups.computeIfAbsent(srv, unused -> new HashSet<>()).add(task.getTargetKey());
+				}
 
-					return (Runnable)() -> {d.getTaskManager().addTask(task);};
+				task.setNoAnnounce(true);
+				if(conf != null)
+					conf.accept(task);
+				task.setResultHandler(this::addCandidate);
+				task.addListener(t -> {
+					synchronized (TorrentFetcher.this) {
+						activeLookups.get(srv).remove(task.getTargetKey());
+					}
+					
+					thingsBlockingCompletion.decrementAndGet();
+					checkCompletion();
+					timer.execute(TorrentFetcher.this::startDHTTasks);
 				});
-			}).filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList());
 
-			// start tasks after we've incremented counters for all tasks
-			// otherwise tasks might finish so fast that the counters go back down to 0
-			starters.forEach(Runnable::run);
+				thingsBlockingCompletion.incrementAndGet();
+
+
+
+				future.thenAccept(x -> task.kill());
+				
+				d.getTaskManager().addTask(task);
+			});
+
 			thingsBlockingCompletion.decrementAndGet();
 		}
 		
@@ -285,7 +353,6 @@ public class TorrentFetcher {
 			if(!running.get()) {
 				return;
 			}
-			
 			
 			candidates.keySet().removeAll(connectionAttempted);
 			

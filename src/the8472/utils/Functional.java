@@ -9,9 +9,14 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Spliterator;
+import java.util.Spliterators;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 public class Functional {
 	
@@ -39,7 +44,7 @@ public class Functional {
 		R apply(T arg) throws E;
 	}
 	
-	public static <T> T unchecked(ThrowingSupplier<T, ?> f) {
+	public static <T> T unchecked(ThrowingSupplier<? extends T, ?> f) {
 		try {
 			return f.get();
 		} catch (Throwable e) {
@@ -52,6 +57,15 @@ public class Functional {
 		synchronized(obj) {
 			return supp.apply(obj);
 		}
+	}
+	
+	public static <RES, T extends AutoCloseable> RES autoclose(Supplier<T> s, Function<T,RES> f) throws Exception {
+		RES result;
+		try(T t = s.get()) {
+			result = f.apply(t);
+		}
+		
+		return result;
 	}
 	
 	public static <R,T> Function<T,R> unchecked(ThrowingFunction<R,T,?> f) {
@@ -107,6 +121,71 @@ public class Functional {
 	public static <K, T> Optional<T> typedGet(Map<? super K, ?> map, K key, Class<? super T> clazz) {
 		return (Optional<T>) Optional.ofNullable(map.get(key)).filter(clazz::isInstance).map(clazz::cast);
 	}
+
+
+	static class  ShortCircuitFlatMapSpliterator<R,T> extends Spliterators.AbstractSpliterator<R> {
+		
+		Spliterator<T> sourceSpliterator;
+		Stream<R> currentSubStream;
+		Spliterator<R> currentSubSpliterator;
+		Function<T, Stream<R>> flatMapper;
+
+		protected ShortCircuitFlatMapSpliterator(Spliterator<T> source, Function<T,Stream<R>> flatMapper) {
+			super(source.estimateSize(), 0);
+			sourceSpliterator = source;
+			this.flatMapper = flatMapper;
+		}
+
+		@Override
+		public boolean tryAdvance(Consumer<? super R> action) {
+			for(;;) {
+				if(currentSubSpliterator == null) {
+					if(!sourceSpliterator.tryAdvance(t -> {
+						currentSubStream = flatMapper.apply(t);
+					}))
+						return false;
+					
+					if(currentSubStream == null)
+						continue;
+
+					currentSubSpliterator = currentSubStream.spliterator();
+
+				}
+				
+				if(currentSubSpliterator.tryAdvance(action))
+					return true;
+
+
+				currentSubSpliterator = null;
+				currentSubStream.close();
+			}
+		}
+		
+		void close() {
+			if(currentSubStream != null) {
+				currentSubStream.close();
+			}
+		}
+
+
+		
+	}
+	
+	/**
+	 * workaround for https://bugs.openjdk.java.net/browse/JDK-8075939
+	 */
+	public static <R, T> Stream<R> shortCircuitingflatMap(Stream<T> st, Function<T, Stream<R>> flatMapper) {
+		Spliterator<T> sourceSpliterator = st.spliterator();
+		
+		ShortCircuitFlatMapSpliterator<R,T> sinkSpliterator = new ShortCircuitFlatMapSpliterator<>(sourceSpliterator, flatMapper);
+		Stream<R> resultStream = StreamSupport.stream(sinkSpliterator, false);
+		
+		resultStream = resultStream.onClose(st::close).onClose(sinkSpliterator::close);
+		
+		
+		return resultStream;
+	}
+	
 
 
 }

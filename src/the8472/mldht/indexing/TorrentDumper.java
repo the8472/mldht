@@ -1,7 +1,11 @@
 package the8472.mldht.indexing;
 
+import static java.lang.Math.max;
 import static java.lang.Math.min;
+import static the8472.utils.Functional.autoclose;
+import static the8472.utils.Functional.shortCircuitingflatMap;
 import static the8472.utils.Functional.typedGet;
+import static the8472.utils.Functional.unchecked;
 
 import the8472.bencode.BDecoder;
 import the8472.bencode.BEncoder;
@@ -21,6 +25,7 @@ import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
+import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.messages.AnnounceRequest;
 import lbms.plugins.mldht.kad.messages.GetPeersRequest;
 import lbms.plugins.mldht.kad.messages.MessageBase;
@@ -48,10 +53,12 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.Map.Entry;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -60,7 +67,10 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -71,6 +81,8 @@ public class TorrentDumper implements Component {
 	Path storageDir = Paths.get(".", "dump-storage");
 	Path statsDir = storageDir.resolve("stats");
 	Path torrentDir = storageDir.resolve("torrents");
+	
+	private static final int MAX_STAT_FILE_SIZE = 8*1024;
 	
 	ScheduledThreadPoolExecutor scheduler;
 	
@@ -86,6 +98,7 @@ public class TorrentDumper implements Component {
 		List<KBucketEntry> recentSources;
 		long creationTime = -1;
 		long lastFetchTime = -1;
+		int fetchCount = 0;
 		State state = State.INITIAL;
 		
 		static final int max_entries = 10;
@@ -129,6 +142,7 @@ public class TorrentDumper implements Component {
 				typedGet(map, "created", Long.class).ifPresent(time -> fs.creationTime = time);
 				typedGet(map, "cnt", Long.class).ifPresent(cnt -> fs.insertCount = cnt.intValue());
 				typedGet(map, "fetchtime", Long.class).ifPresent(time -> fs.lastFetchTime = time);
+				typedGet(map, "fetchcount", Long.class).ifPresent(i -> fs.fetchCount = i.intValue());
 				
 			});
 		}
@@ -142,6 +156,7 @@ public class TorrentDumper implements Component {
 			map.put("created", creationTime);
 			map.put("state", state.name());
 			map.put("fetchtime", lastFetchTime);
+			map.put("fetchcount", fetchCount);
 			
 			return map;
 		}
@@ -155,6 +170,7 @@ public class TorrentDumper implements Component {
 				throw new IllegalArgumentException("key mismatch");
 			
 			insertCount += other.insertCount;
+			fetchCount += other.fetchCount;
 			recentSources.addAll(other.recentSources);
 			if(recentSources.size() > max_entries) {
 				recentSources.sort(Comparator.comparingLong((KBucketEntry e) -> e.getLastSeen()));
@@ -162,6 +178,7 @@ public class TorrentDumper implements Component {
 			}
 			
 			creationTime = min(creationTime, other.creationTime);
+			lastFetchTime = max(lastFetchTime, other.lastFetchTime);
 			
 			return this;
 		}
@@ -189,15 +206,15 @@ public class TorrentDumper implements Component {
 	public void start(Collection<DHT> dhts, ConfigReader config) {
 		this.dhts = dhts;
 		fromMessages = new ConcurrentSkipListMap<>();
-		scheduler = new LoggingScheduledThreadPoolExecutor(2, new LoggingScheduledThreadPoolExecutor.NamedDaemonThreadFactory("torrent dumper"), this::log);
+		scheduler = new LoggingScheduledThreadPoolExecutor(3, new LoggingScheduledThreadPoolExecutor.NamedDaemonThreadFactory("torrent dumper"), this::log);
 		
 		fetcher = new TorrentFetcher(dhts);
 		
 		fetcher.setMaxOpen(40);
 
 		dhts.forEach(d -> d.addIncomingMessageListener(this::incomingMessage));
+		pf = new UselessPeerFilter();
 		try {
-			pf = new UselessPeerFilter(storageDir.resolve("bad-peers"));
 			Files.createDirectories(torrentDir);
 			for(State st : FetchStats.State.values()) {
 				Files.createDirectories(st.stateDir(statsDir));
@@ -207,20 +224,24 @@ public class TorrentDumper implements Component {
 		}
 		
 		fetcher.setPeerFilter(pf);
+		String foo;
 		
-		scheduler.scheduleWithFixedDelay(this::dumpStats, 10, 1, TimeUnit.SECONDS);
+		scheduler.scheduleWithFixedDelay(this::dumpStats, 10, 10, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this.singleThreadedFetches::run, 10, 1, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::cleanBlocklist, 1, 1, TimeUnit.MINUTES);
 		scheduler.scheduleWithFixedDelay(this::diagnostics, 30, 30, TimeUnit.SECONDS);
-		scheduler.scheduleWithFixedDelay(this::purgeStats, 5, 15, TimeUnit.MINUTES);
 		scheduler.scheduleWithFixedDelay(this::scrubActive, 10, 20, TimeUnit.SECONDS);
+		scheduler.scheduleWithFixedDelay(pf::clean, 10, 10, TimeUnit.MINUTES);
+		
 		scheduler.scheduleWithFixedDelay(() -> {
+			// long-running things working on the filesystem go here to avoid blocking all threads in the pool
 			try {
-				pf.clean();
-			} catch (IOException e) {
+				this.purgeStats();
+			} catch (Exception e) {
 				log(e);
 			}
-		}, 10, 5, TimeUnit.MINUTES);
+			
+		}, 5, 15, TimeUnit.MINUTES);
 	}
 	
 	void log(Throwable t) {
@@ -310,7 +331,7 @@ public class TorrentDumper implements Component {
 			
 			try {
 				
-				Optional<Path> existing = Stream.of(toStore.statsName(statsDir, FetchStats.State.FAILED), toStore.statsName(statsDir, FetchStats.State.PRIORITY), toStore.statsName(statsDir, FetchStats.State.INITIAL)).filter(Files::isRegularFile).findFirst();
+				Optional<Path> existing = Stream.of(toStore.statsName(statsDir, FetchStats.State.INITIAL), toStore.statsName(statsDir, FetchStats.State.FAILED), toStore.statsName(statsDir, FetchStats.State.PRIORITY)).filter(Files::isRegularFile).findFirst();
 
 				if(!existing.isPresent()) {
 					// only throttle IPs for new hashes we don't already know about and wouldn't try anyway
@@ -323,12 +344,13 @@ public class TorrentDumper implements Component {
 					try {
 						FetchStats old = FetchStats.fromBencoded(new BDecoder().decode(ByteBuffer.wrap(Files.readAllBytes(p))));
 						
-						// avoid double-taps
+						
 						Collection<InetAddress> oldAddrs = old.recentSources.stream().map(e -> e.getAddress().getAddress()).collect(Collectors.toList());
 						Collection<InetAddress> newAddrs = toStore.recentSources.stream().map(e -> e.getAddress().getAddress()).collect(Collectors.toList());
 						
-						if(oldAddrs.containsAll(newAddrs))
-							return;
+						// avoid double-taps promoting things to the priority list
+						if(oldAddrs.containsAll(newAddrs) && old.state == FetchStats.State.INITIAL)
+							continue;
 						
 						toStore.merge(old);
 						
@@ -352,13 +374,15 @@ public class TorrentDumper implements Component {
 				Path tempFile = Files.createTempFile(statsDir, statsFile.getFileName().toString(), ".stats");
 				
 				try(FileChannel ch = FileChannel.open(tempFile, StandardOpenOption.WRITE)) {
-					ByteBuffer buf = new BEncoder().encode(toStore.forBencoding(), 16*1024);
-					ch.write(buf);
+					ByteBuffer buf = new BEncoder().encode(toStore.forBencoding(), MAX_STAT_FILE_SIZE);
+					while(buf.hasRemaining())
+						ch.write(buf);
 					ch.close();
 					Files.createDirectories(statsFile.getParent());
 					Files.move(tempFile, statsFile, StandardCopyOption.ATOMIC_MOVE);
-				} finally {
+				} catch(Exception ex) {
 					Files.deleteIfExists(tempFile);
+					throw ex;
 				}
 
 				
@@ -374,22 +398,60 @@ public class TorrentDumper implements Component {
 	
 	void purgeStats() {
 		Path failedDir = FetchStats.State.FAILED.stateDir(statsDir);
+		Path initialDir = FetchStats.State.INITIAL.stateDir(statsDir);
 		
 		long now = System.currentTimeMillis();
 		
-		try (Stream<Path> pst = Files.find(failedDir, 5, (p, a) -> a.isRegularFile())) {
+		try {
+			Supplier<Stream<Path>> supplyInitial = () -> unchecked(() -> fetchStatsStream(Stream.of(initialDir)));
+			Supplier<Stream<Path>> supplyFailed = () -> unchecked(() -> fetchStatsStream(Stream.of(failedDir)));
+			Predicate<FetchStats> deleteInitial = stat -> now - stat.creationTime > TimeUnit.DAYS.toMillis(4);
+			Predicate<FetchStats> deleteFailed = stat -> {
+				long timeSinceFetch = now - stat.lastFetchTime;
+				
+				// this fetch attempt was from State.INITIAL, don't keep it around for so long, it's unlikely it'll get another hit
+				if(stat.insertCount == 1)
+					return timeSinceFetch > TimeUnit.HOURS.toMillis(1);
+				
+				long timeToFetch = stat.lastFetchTime - stat.creationTime;
+				timeToFetch = Math.max(TimeUnit.HOURS.toMillis(1), timeToFetch);
+				
+				// the longer it takes us to chew through the data the longer we keep things around
+				return timeSinceFetch > timeToFetch * 4 ;
+			};
 			
-			Stream<FetchStats> st = filesToFetchers(pst);
+			BiConsumer<Supplier<Stream<Path>>, Predicate<FetchStats>> doDeletes = (a, b) -> {
+				unchecked(() -> {
+					// probe first 100, only do a full pass if > N% are eligible for deletion
+					boolean doFullIteration = autoclose(a, (p) -> {
+						long cnt = filesToFetchers(p)
+							.filter(Objects::nonNull)
+							.limit(100)
+							.filter(b)
+							.count();
+						return cnt > 33;
+					});
+					
+					if(doFullIteration) {
+						autoclose(a, p -> {
+							filesToFetchers(p).filter(Objects::nonNull)
+								.filter(b)
+								.map(stat -> stat.statsName(statsDir, null))
+								.forEach(path -> unchecked(() -> Files.deleteIfExists(path)));
+							return null;
+						});
+					}
+					
+					return null;
+				});
+				
+			};
 			
-			st.filter(Objects::nonNull).filter(stat -> now - stat.lastFetchTime > TimeUnit.HOURS.toMillis(2)).forEach(stat -> {
-				try {
-					Files.deleteIfExists(stat.statsName(statsDir, null));
-				} catch (IOException e) {
-					log(e);
-				}
-			});
+			doDeletes.accept(supplyInitial, deleteInitial);
+			doDeletes.accept(supplyFailed, deleteFailed);
+			
 
-		} catch (UncheckedIOException | IOException e) {
+		} catch (Exception e) {
 			log(e);
 		}
 
@@ -443,27 +505,28 @@ public class TorrentDumper implements Component {
 		// this does not use a true shuffle, the stream will emit some clusters at the 8bit keyspace granularity
 		// it's closer to linear scan from a random starting point
 		// but polling in small batches should lead to reasonable task randomization without expensive full directory traversal
-		Stream<Path> leafs = rootDirs.flatMap(d -> {
-			return Stream.of(d).flatMap(this::dirShuffler).flatMap(this::dirShuffler).flatMap(this::dirShuffler);
-		});
+		Stream<Path> leafs = shortCircuitingflatMap(rootDirs, (d -> {
+			Stream<Path> sublevel = Stream.of(d);
+			sublevel = shortCircuitingflatMap(sublevel, this::dirShuffler);
+			sublevel = shortCircuitingflatMap(sublevel, this::dirShuffler);
+			sublevel = shortCircuitingflatMap(sublevel, this::dirShuffler);
+			return sublevel;
+		}));
 
 		
 		return leafs;
 	}
 	
-	Stream<FetchStats> filesToFetchers(Stream<Path> st) throws IOException {
+	Stream<FetchStats> filesToFetchers(Stream<Path> st) {
 		ThreadLocal<ByteBuffer> bufProvider = new ThreadLocal<>();
+		bufProvider.set(ByteBuffer.allocateDirect(MAX_STAT_FILE_SIZE));
 		
 		return st.map(p -> {
 			try(FileChannel ch = FileChannel.open(p, StandardOpenOption.READ)) {
-				long size = ch.size();
 				ByteBuffer buf = bufProvider.get();
-				if(buf == null || buf.capacity() < size)
-					buf = ByteBuffer.allocate((int) (size * 1.5));
 				buf.clear();
-				ch.read(buf);
+				while(-1 != ch.read(buf))
 				buf.flip();
-				bufProvider.set(buf);
 				return FetchStats.fromBencoded(ThreadLocalUtils.getDecoder().decode(buf));
 			} catch(NoSuchFileException ex) {
 				// expect async deletes
@@ -483,22 +546,34 @@ public class TorrentDumper implements Component {
 	
 	
 	void prefetch() {
+		
+		Set<Key> dedup = new HashSet<>();
+		
+		dedup.addAll(activeTasks.keySet());
+		toFetchNext.stream().map(FetchStats::getK).forEach(dedup::add);
+		
 		try {
 			Path prio = FetchStats.State.PRIORITY.stateDir(statsDir);
 			Path normal = FetchStats.State.INITIAL.stateDir(statsDir);
 			
 			List<FetchStats> batch = new ArrayList<>();
 
-			// 4 strides of 8 -> 32 -> 2 * the low watermark
+			// max_tasks strides of 8. should be >= low watermark
 			// TODO: scale with # of rpcservers
-			for(int i = 0;i<4;i++) {
+			for(int i = 0;i< DHTConstants.MAX_ACTIVE_TASKS ;i++) {
 				try(Stream<FetchStats> st = filesToFetchers(fetchStatsStream(Stream.of(prio, normal)))) {
-					st.limit(8).forEach(batch::add);
+					List<FetchStats> l = st.limit(200).filter(stats -> !dedup.contains(stats.k)).limit(8).collect(Collectors.toList());
+					
+					l.stream().map(FetchStats::getK).forEach(dedup::add);
+					
+					batch.addAll(l);
 				};
 			}
 			
 			// avoids that adjacent tasks are started at the same time. interleaving them with other tasks allows for better cache-priming
 			Collections.shuffle(batch);
+			
+			
 			
 			toFetchNext.addAll(batch);
 			
@@ -561,11 +636,7 @@ public class TorrentDumper implements Component {
 		activeTasks.put(k, t);
 		
 		t.awaitCompletion().thenRun(() -> {
-			scheduler.execute(() -> {
-				// run on the scheduler so we don't end up with interfering file ops
 				taskFinished(stats, t);
-			});
-			
 		});
 	}
 	
@@ -582,6 +653,7 @@ public class TorrentDumper implements Component {
 			
 			if(!t.getResult().isPresent()) {
 				stats.setState(FetchStats.State.FAILED);
+				stats.fetchCount++;
 				stats.lastFetchTime = System.currentTimeMillis();
 				
 				Path failedStatsFile = stats.statsName(statsDir, null);
@@ -592,19 +664,20 @@ public class TorrentDumper implements Component {
 				}
 				return;
 			}
-			ByteBuffer buf = t.getResult().get();
+			ByteBuffer infoDict = t.getResult().get();
 			
 			Path torrentFile = stats.name(torrentDir, ".torrent");
 			Files.createDirectories(torrentFile.getParent());
 			
 			try(FileChannel chan = FileChannel.open(torrentFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
-				chan.write(TorrentUtils.wrapBareInfoDictionary(buf));
+				ByteBuffer torrent = TorrentUtils.wrapBareInfoDictionary(infoDict);
+				while(torrent.hasRemaining())
+					chan.write(torrent);
 			}
 		} catch (Exception e) {
 			log(e);
 		}
-		singleThreadedFetches.run();
-		
+		scheduler.execute(singleThreadedFetches);
 	}
 	
 	void diagnostics() {

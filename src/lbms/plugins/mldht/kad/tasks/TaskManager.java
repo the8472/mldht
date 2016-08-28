@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
@@ -44,8 +45,8 @@ public class TaskManager {
 	private AtomicInteger		next_id = new AtomicInteger();
 	private TaskListener		finishListener 	= t -> {
 		dht.getStats().taskFinished(t);
-		dequeue(t.getRPC().getDerivedID());
 		tasks.remove(t);
+		dequeue(t.getRPC().getDerivedID());
 	};
 
 	public TaskManager (DHT dht) {
@@ -71,7 +72,7 @@ public class TaskManager {
 				if(t.isFinished())
 					continue;
 				tasks.add(t);
-				t.start();
+				dht.getScheduler().execute(t::start);
 			}
 		}
 	}
@@ -141,11 +142,34 @@ public class TaskManager {
 	}
 	
 	public boolean canStartTask (Task toCheck) {
+		RPCServer srv = toCheck.getRPC();
+		
+		return canStartTask(srv);
+
+	}
+	
+	public boolean canStartTask(RPCServer srv) {
 		// we can start a task if we have less then  7 runnning per server and
 		// there are at least 16 RPC slots available
-		RPCServer srv = toCheck.getRPC();
-		int perServer = (int) tasks.stream().filter(t -> t.getRPC().equals(srv)).count();
-		return perServer < DHTConstants.MAX_ACTIVE_TASKS && srv.getNumActiveRPCCalls() + 16 < DHTConstants.MAX_ACTIVE_CALLS;
+
+		List<Task> currentServerTasks = tasks.stream().filter(t -> t.getRPC().equals(srv)).collect(Collectors.toList());
+		int perServer = currentServerTasks.size();
+		int activeCalls = srv.getNumActiveRPCCalls();
+		if(activeCalls + 16 >= DHTConstants.MAX_ACTIVE_CALLS)
+			return false;
+		
+		if(perServer < DHTConstants.MAX_ACTIVE_TASKS)
+			return true;
+		
+		// if all their tasks have sent at least their initial volley and we still have enough head room we can allow more tasks.
+		return activeCalls < (DHTConstants.MAX_ACTIVE_CALLS * 2) / 3 && currentServerTasks.stream().allMatch(t -> t.requestConcurrency() < t.getSentReqs());
+	}
+	
+	public int queuedCount(RPCServer srv) {
+		Deque<Task> q = queued.get(srv.getDerivedID());
+		synchronized (q) {
+			return q.size();
+		}
 	}
 	
 	@Override

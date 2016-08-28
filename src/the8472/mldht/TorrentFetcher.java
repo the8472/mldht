@@ -195,7 +195,7 @@ public class TorrentFetcher {
 		Instant startTime;
 		CompletableFuture<FetchTask> future = new CompletableFuture<>();
 		Set<InetSocketAddress> pinged = Collections.newSetFromMap(new ConcurrentHashMap<>()) ;
-		Set<InetSocketAddress> connectionAttempted = Collections.newSetFromMap(new ConcurrentHashMap<>());
+		Set<InetSocketAddress> connectionAttempted = new ConcurrentHashMap<InetSocketAddress, Boolean>().keySet(Boolean.TRUE);
 		Map<InetSocketAddress, PullMetaDataConnection.CONNECTION_STATE> closed = new ConcurrentHashMap<>();
 		ConcurrentHashMap<InetSocketAddress, Set<InetAddress>> candidates = new ConcurrentHashMap<>();
 		AtomicBoolean running = new AtomicBoolean(true);

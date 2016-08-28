@@ -124,7 +124,7 @@ public class BDecoder {
 		if(root instanceof Map) {
 			return (Map<String, Object>) root;
 		}
-		throw new RuntimeException("expected dictionary as root object");
+		throw new BDecodingException("expected dictionary as root object");
 	}
 	
 	public Object decodeAny(ByteBuffer buf) {

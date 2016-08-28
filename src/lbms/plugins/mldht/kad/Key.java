@@ -169,6 +169,10 @@ public class Key implements Radixable<Key> {
 		dst.put(hash);
 	}
 	
+	public int getByte(int offset) {
+		return hash[offset];
+	}
+	
 	public int getInt(int offset) {
 		byte[] hash = this.hash;
 		return Byte.toUnsignedInt(hash[offset]) << 24 | Byte.toUnsignedInt(hash[offset+1]) << 16 | Byte.toUnsignedInt(hash[offset+2]) << 8 | Byte.toUnsignedInt(hash[offset+3]);

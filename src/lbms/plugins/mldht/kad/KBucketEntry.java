@@ -22,6 +22,7 @@ import static the8472.utils.Functional.typedGet;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
 
+import java.lang.reflect.InvocationTargetException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.zip.Checksum;
 
 /**
  * Entry in a KBucket, it basically contains an ip_address of a node,
@@ -40,6 +42,22 @@ import java.util.TreeMap;
 public class KBucketEntry {
 	
 	private static final double RTT_EMA_WEIGHT = 0.3;
+	
+	
+	public static final Class<? extends Checksum> crc32c;
+	
+	static {
+		Class<? extends Checksum> clazz = null;
+		
+		try {
+			clazz = (Class<? extends Checksum>) Class.forName("java.util.zip.CRC32C");
+		} catch (ClassNotFoundException e) {
+			// not java 9, do nothing
+		}
+		
+		crc32c = clazz;
+	}
+	
 	
 	/**
 	 * ascending order for last seen, i.e. the last value will be the least recently seen one
@@ -390,6 +408,67 @@ public class KBucketEntry {
 	 */
 	public void signalRequestTimeout () {
 		failedQueries++;
+	}
+	
+	
+	byte[] v4_mask = { 0x03, 0x0f, 0x3f, (byte) 0xff };
+	byte[] v6_mask = { 0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, (byte) 0xff };
+	
+	public boolean hasSecureID() {
+		if(crc32c == null)
+			return false;
+		try {
+			Checksum c = crc32c.getConstructor().newInstance();
+			
+			byte[] ip = getAddress().getAddress().getAddress();
+			
+			byte[] mask = ip.length == 4 ? v4_mask : v6_mask;
+			
+			for(int i=0;i<mask.length;i++) {
+				ip[i] &= mask[i];
+			}
+			
+			int r = nodeID.getByte(19) & 0x7;
+			
+			ip[0] |= r << 5;
+			
+			c.reset();
+			c.update(ip, 0, ip.length);
+			int crc = (int) c.getValue();
+			
+			return ((nodeID.getInt(0) ^ crc) & 0xff_ff_f8_00) == 0;
+			 
+			
+			/*
+			uint8_t* ip; // our external IPv4 or IPv6 address (network byte order)
+			int num_octets; // the number of octets to consider in ip (4 or 8)
+			uint8_t node_id[20]; // resulting node ID
+
+
+			uint8_t* mask = num_octets == 4 ? v4_mask : v6_mask;
+
+			for (int i = 0; i < num_octets; ++i)
+			        ip[i] &= mask[i];
+
+			uint32_t rand = std::rand() & 0xff;
+			uint8_t r = rand & 0x7;
+			ip[0] |= r << 5;
+
+			uint32_t crc = 0;
+			crc = crc32c(crc, ip, num_octets);
+
+			// only take the top 21 bits from crc
+			node_id[0] = (crc >> 24) & 0xff;
+			node_id[1] = (crc >> 16) & 0xff;
+			node_id[2] = ((crc >> 8) & 0xf8) | (std::rand() & 0x7);
+			for (int i = 3; i < 19; ++i) node_id[i] = std::rand();
+			node_id[19] = rand;
+			*/
+			
+		} catch (InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException | NoSuchMethodException | SecurityException e) {
+			e.printStackTrace();
+			return false;
+		}
 	}
 	
 	

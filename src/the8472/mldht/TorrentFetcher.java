@@ -354,7 +354,9 @@ public class TorrentFetcher {
 				return;
 			}
 			
-			candidates.keySet().removeAll(connectionAttempted);
+			// workaround for JDK-8163353
+			if(!connectionAttempted.isEmpty())
+				candidates.keySet().removeAll(connectionAttempted);
 			
 			Comparator<Map.Entry<InetSocketAddress, Set<InetAddress>>> comp = Map.Entry.comparingByValue(Comparator.comparingInt(Set::size));
 			comp = comp.reversed();

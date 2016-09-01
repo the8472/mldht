@@ -137,7 +137,7 @@ public class PullMetaDataConnection implements Selectable {
 	int							maxRequests = 1;
 	
 	long						lastReceivedTime;
-	int							consecutiveKeepAlives;
+	long						lastUsefulMessage;
 	
 	AtomicReference<CONNECTION_STATE> 			state = new AtomicReference<>(STATE_INITIAL) ;
 	
@@ -331,6 +331,8 @@ public class PullMetaDataConnection implements Selectable {
 
 		if(isState(STATE_BASIC_HANDSHAKING))
 		{
+			lastUsefulMessage = System.currentTimeMillis();
+			
 			boolean connectionMatches = true;
 			byte[] temp = new byte[20];
 			byte[] otherBitfield = new byte[8];
@@ -435,13 +437,9 @@ public class PullMetaDataConnection implements Selectable {
 			// keepalive... wait for next msg
 			if(msgLength == 0)
 			{
-				//terminate("we don't wait for keep-alives");
-				consecutiveKeepAlives++;
 				inputBuffer.flip();
 				return;
 			}
-
-			consecutiveKeepAlives = 0;
 
 			int newLength = BT_HEADER_LENGTH + msgLength;
 
@@ -474,6 +472,8 @@ public class PullMetaDataConnection implements Selectable {
 			if(isState(STATE_LTEP_HANDSHAKING) && ltepMsgID == LTEP_HANDSHAKE_ID)
 			{
 				//System.out.println("got ltep handshake");
+				
+				lastUsefulMessage = System.currentTimeMillis();
 				
 				BDecoder decoder = new BDecoder();
 				Map<String,Object> remoteHandshake = decoder.decode(inputBuffer);
@@ -540,6 +540,8 @@ public class PullMetaDataConnection implements Selectable {
 				
 				pexConsumer.accept(AddressUtils.unpackCompact((byte[])params.get("added"), Inet4Address.class));
 				pexConsumer.accept(AddressUtils.unpackCompact((byte[])params.get("added6"), Inet6Address.class));
+				if(isState(STATE_PEX_ONLY))
+					terminate("got 1 pex, this peer is not useful for anything else", CloseReason.OTHER);
 			}
 
 			if(isState(STATE_GETTING_METADATA) && ltepMsgID == LTEP_LOCAL_META_ID)
@@ -557,6 +559,8 @@ public class PullMetaDataConnection implements Selectable {
 					ByteBuffer chunk = ByteBuffer.allocate(inputBuffer.remaining());
 					chunk.put(inputBuffer);
 					pool.addBuffer(idx.intValue(), chunk);
+					
+					lastUsefulMessage = System.currentTimeMillis();
 					
 					doMetaRequests();
 					checkMetaRequests();
@@ -582,8 +586,7 @@ public class PullMetaDataConnection implements Selectable {
 				canWriteEvent();
 			}
 		*/
-
-
+		
 		// parse next BT header
 		inputBuffer.position(0);
 		inputBuffer.limit(BT_HEADER_LENGTH);
@@ -698,7 +701,9 @@ public class PullMetaDataConnection implements Selectable {
 		// hash check may have finished or failed due to other pool members
 		checkMetaRequests();
 		
-		if(now - lastReceivedTime > RCV_TIMEOUT || consecutiveKeepAlives >= 2) {
+		long timeSinceUsefulMessage = now - lastUsefulMessage;
+		
+		if(now - lastReceivedTime > RCV_TIMEOUT || (lastUsefulMessage > 0 && timeSinceUsefulMessage > 2 * RCV_TIMEOUT)) {
 			terminate("closing idle connection "+state+" "+outstandingRequests+" "+outputBuffers.size()+" "+inputBuffer);
 		}
 			

@@ -27,7 +27,7 @@ public class UselessPeerFilter {
 			throw new IllegalArgumentException("peer connection not closed yet");
 		}
 		
-		ByteBuffer data = ByteBuffer.wrap(AddressUtils.packAddress(toAdd.destination));
+		ByteBuffer data = ByteBuffer.wrap(AddressUtils.packAddress(toAdd.remoteAddress));
 
 		synchronized (this) {
 			switch(toAdd.closeReason) {

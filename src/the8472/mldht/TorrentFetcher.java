@@ -1,8 +1,10 @@
 package the8472.mldht;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -38,22 +40,25 @@ import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.tasks.PeerLookupTask;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
-
 import the8472.bt.MetadataPool;
 import the8472.bt.MetadataPool.Completion;
 import the8472.bt.PullMetaDataConnection;
 import the8472.bt.PullMetaDataConnection.CONNECTION_STATE;
+import the8472.bt.PullMetaDataConnection.CloseReason;
 import the8472.bt.PullMetaDataConnection.MetaConnectionHandler;
 import the8472.bt.UselessPeerFilter;
 import the8472.utils.concurrent.LoggingScheduledThreadPoolExecutor;
+import the8472.utils.io.ConnectionAcceptor;
 
 public class TorrentFetcher {
 	
 	Collection<DHT> dhts;
 	ScheduledThreadPoolExecutor timer;
 	NIOConnectionManager conMan = new NIOConnectionManager("torrent fetcher");
+	ConnectionAcceptor serverSelector;
 	
 	AtomicInteger socketsIncludingHalfOpen = new AtomicInteger();
+	AtomicInteger incomingConnections = new AtomicInteger();
 	AtomicInteger openConnections = new AtomicInteger();
 	Map<RPCServer, Set<Key>> activeLookups = new HashMap<>();
 	
@@ -61,6 +66,8 @@ public class TorrentFetcher {
 	
 	int maxOpen = 10;
 	int maxSockets = 1000;
+	int maxIncoming = 0;
+			
 	
 	public TorrentFetcher(Collection<DHT> dhts) {
 		this.dhts = dhts;
@@ -73,12 +80,71 @@ public class TorrentFetcher {
 		this.maxSockets = maxHalfOpen;
 	}
 	
+	boolean incomingConnection(SocketChannel chan) {
+		PullMetaDataConnection con = new PullMetaDataConnection(chan);
+		
+		if(incomingConnections.get() > maxIncoming)
+			return false;
+		
+		incomingConnections.incrementAndGet();
+		
+		con.setListener(new MetaConnectionHandler() {
+			
+			@Override
+			public void onTerminate() {
+				incomingConnections.decrementAndGet();
+				
+			}
+			
+			@Override
+			public void onStateChange(CONNECTION_STATE oldState, CONNECTION_STATE newState) {
+				if(newState == CONNECTION_STATE.STATE_IH_RECEIVED) {
+					Key ih = con.getInfohash();
+					try {
+						Optional<FetchTask> ft;
+						
+						synchronized (TorrentFetcher.this) {
+							ft = tasks.stream()
+									.filter((t -> t.hash.equals(ih)))
+									.findAny();
+						}
+						
+						if (!ft.isPresent()) {
+							con.terminate("currently not servicing infohash " + ih.toString(false), CloseReason.OTHER);
+							return;
+						}
+
+						ft.get().registerIncomingConnection(con);
+					} catch (IOException e) {
+						DHT.log(e, LogLevel.Error);
+					}
+				}
+				
+			}
+			
+			@Override
+			public void onConnect() {
+				// TODO Auto-generated method stub
+				
+			}
+		});
+		conMan.register(con);
+		
+		return true;
+	}
+	
 	public void setMaxOpen(int maxOpen) {
 		this.maxOpen = maxOpen;
 	}
 	
 	public int openConnections() {
 		return openConnections.get();
+	}
+	
+	public void maxIncoming(int max) {
+		maxIncoming = max;
+		serverSelector = new ConnectionAcceptor(this::incomingConnection);
+		conMan.register(serverSelector);
 	}
 	
 	public int socketcount() {
@@ -202,7 +268,7 @@ public class TorrentFetcher {
 		ByteBuffer result;
 		AtomicInteger thingsBlockingCompletion = new AtomicInteger(1);
 		
-		Set<PullMetaDataConnection> connections = Collections.newSetFromMap(new ConcurrentHashMap<>());
+		Map<InetAddress, PullMetaDataConnection> connections = new ConcurrentHashMap<>();
 		Map<Integer, MetadataPool> pools = new ConcurrentHashMap<>();
 		
 		boolean dhtStarted;
@@ -226,7 +292,7 @@ public class TorrentFetcher {
 					"con tried:",
 					String.valueOf(connectionAttempted.size()),
 					"con active:",
-					connections.stream().collect(Collectors.groupingBy(PullMetaDataConnection::getState, Collectors.counting())).toString(),
+					connections.values().stream().collect(Collectors.groupingBy(PullMetaDataConnection::getState, Collectors.counting())).toString(),
 					"con closed:",
 					closeCounts().toString()
 			};
@@ -247,7 +313,7 @@ public class TorrentFetcher {
 				return;
 			if(state == FetchState.PENDING)
 				state = FetchState.FAILURE;
-			connections.forEach(c -> {
+			connections.values().forEach(c -> {
 				try {
 					c.terminate("fetch task finished");
 				} catch (Exception e) {
@@ -347,6 +413,81 @@ public class TorrentFetcher {
 			}
 		}
 		
+		void registerIncomingConnection(PullMetaDataConnection con) throws IOException {
+			if(closed.entrySet().stream().anyMatch(e -> e.getKey().getAddress().equals(con.remoteAddress().getAddress()) && !e.getValue().neverConnected())) {
+				con.terminate("already connected", CloseReason.OTHER);
+				return;
+			}
+			
+			PullMetaDataConnection existing = connections.putIfAbsent(con.remoteAddress().getAddress(),con);
+			
+			if(existing != null) {
+				if(existing.isState(CONNECTION_STATE.STATE_CONNECTING) && !existing.isIncoming()) {
+					existing.terminate("incoming connection takes precedence", CloseReason.OTHER);
+					connections.put(con.remoteAddress().getAddress(), con);
+				} else {
+					con.terminate("connection to remote address already established", CloseReason.OTHER);
+					return;
+				}
+					
+			}
+			
+			decorate(con);
+			openConnections.incrementAndGet();
+			thingsBlockingCompletion.incrementAndGet();
+			
+			con.setListener(new MetaConnectionHandler() {
+				
+				@Override
+				public void onTerminate() {
+					incomingConnections.decrementAndGet();
+				}
+				
+				@Override
+				public void onStateChange(CONNECTION_STATE oldState, CONNECTION_STATE newState) {
+					if(newState == CONNECTION_STATE.STATE_CLOSED) {
+						processPool(con.getMetaData());
+						openConnections.decrementAndGet();
+						thingsBlockingCompletion.decrementAndGet();
+						connections.remove(con.remoteAddress().getAddress(), con);
+						closed.put(con.remoteAddress(), oldState);
+					}
+
+				}
+				
+				@Override
+				public void onConnect() {
+					// TODO Auto-generated method stub
+					
+				}
+			});
+			
+		}
+		
+		void processPool(MetadataPool pool) {
+			if (pool == null)
+				return;
+			if (pool.status() == Completion.SUCCESS) {
+				result = pool.merge();
+				state = FetchState.SUCCESS;
+				stop();
+			}
+			if (pool.status() == Completion.FAILED) {
+				pools.remove(pool.bytes(), pool);
+			}
+		}
+		
+		void decorate(PullMetaDataConnection con) {
+			con.poolGenerator = this::getPool;
+			con.dhtPort = dhts.stream().mapToInt(d -> d.getConfig().getListeningPort()).findAny().getAsInt();
+			con.pexConsumer = (toAdd) -> {
+				toAdd.forEach(item -> {
+					this.addCandidate(con.remoteAddress().getAddress(), item);
+				});
+			};
+			
+		}
+		
 		void connections() {
 			checkCompletion();
 			
@@ -374,41 +515,49 @@ public class TorrentFetcher {
 				if(i++ > 5)
 					break;
 				
+				
+				PullMetaDataConnection con;
+						
+				try {
+					con = new PullMetaDataConnection(hash.getHash(), addr);
+				} catch (IOException e) {
+					DHT.log(e, LogLevel.Error);
+					break;
+				}
+
+
+				if(connections.putIfAbsent(addr.getAddress(), con) != null) {
+					try {
+						con.terminate("connection to that socket address already open", CloseReason.OTHER);
+					} catch (IOException e) {
+						DHT.log(e, LogLevel.Error);
+					}
+					i--;
+					continue;
+				}
+
 				connectionAttempted.add(addr);
 				candidates.remove(addr);
 
-				PullMetaDataConnection con = new PullMetaDataConnection(hash.getHash(), addr);
+
+
+				
+				if(serverSelector != null && serverSelector.getPort() > 0)
+					con.ourListeningPort = serverSelector.getPort();
 				
 				con.keepPexOnlyOpen(cands.length < 20);
 				
-				con.poolGenerator = this::getPool;
-				con.dhtPort = dhts.stream().mapToInt(d -> d.getConfig().getListeningPort()).findAny().getAsInt();
-				con.pexConsumer = (toAdd) -> {
-					toAdd.forEach(item -> {
-						this.addCandidate(addr.getAddress(), item);
-					});
-				};
-				
-				connections.add(con);
-				
+				decorate(con);
+			
 				con.setListener(new MetaConnectionHandler() {
 
 					@Override
 					public void onTerminate() {
-						connections.remove(con);
+						connections.remove(con.remoteAddress().getAddress(), con);
 						
 						MetadataPool pool = con.getMetaData();
-						
-						if(pool != null) {
-							if(pool.status() == Completion.SUCCESS) {
-								result = pool.merge();
-								state = FetchState.SUCCESS;
-								stop();
-							}
-							if(pool.status() == Completion.FAILED) {
-								pools.remove(pool.bytes(), pool);
-							}
-						}
+						processPool(pool);
+
 							
 						thingsBlockingCompletion.decrementAndGet();
 						if(pf != null)

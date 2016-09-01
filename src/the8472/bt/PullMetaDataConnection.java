@@ -43,23 +43,20 @@ import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
+import java.util.function.Predicate;
 
 public class PullMetaDataConnection implements Selectable {
-	
-	public static interface InfohashChecker {
-		boolean isInfohashAcceptable(byte[] hash);
-	}
 	
 	public static interface MetaConnectionHandler {
 		
@@ -85,10 +82,17 @@ public class PullMetaDataConnection implements Selectable {
 		STATE_INITIAL,
 		STATE_CONNECTING,
 		STATE_BASIC_HANDSHAKING,
+		STATE_IH_RECEIVED,
 		STATE_LTEP_HANDSHAKING,
 		STATE_PEX_ONLY,
 		STATE_GETTING_METADATA,
-		STATE_CLOSED,
+		STATE_CLOSED;
+		
+		public boolean neverConnected() {
+			return this != STATE_INITIAL && this != STATE_CONNECTING;
+		}
+		
+		
 	}
 	
 	public enum CloseReason {
@@ -119,7 +123,7 @@ public class PullMetaDataConnection implements Selectable {
 	NIOConnectionManager		connManager;
 	boolean						incoming;
 	
-	Deque<ByteBuffer>			outputBuffers			= new LinkedList<>();
+	Deque<ByteBuffer>			outputBuffers			= new ArrayDeque<>();
 	ByteBuffer					inputBuffer;
 
 	boolean						remoteSupportsFastExtension;
@@ -127,10 +131,11 @@ public class PullMetaDataConnection implements Selectable {
 	int							ltepRemoteMetadataExchangeMessageId;
 	int							ltepRemotePexId = -1;
 	public int					dhtPort = -1;
+	public int					ourListeningPort = -1;
 	
 	
 	MetadataPool				pool;
-	InfohashChecker				checker;
+	Predicate<Key>				checker;
 	byte[]						infoHash;
 
 	int							outstandingRequests;
@@ -144,7 +149,7 @@ public class PullMetaDataConnection implements Selectable {
 	BDecoder					decoder = new BDecoder();
 	MetaConnectionHandler		metaHandler;
 	
-	InetSocketAddress			destination;
+	InetSocketAddress			remoteAddress;
 	String 						remoteClient;
 	
 	CloseReason					closeReason;
@@ -188,8 +193,18 @@ public class PullMetaDataConnection implements Selectable {
 	
 	public boolean isState(CONNECTION_STATE toTest) {return state.get() == toTest; }
 	
+	public boolean isIncoming() {return incoming;}
+	
 	public CONNECTION_STATE getState() {
 		return state.get();
+	}
+	
+	public Key getInfohash() {
+		return new Key(infoHash);
+	}
+	
+	public InetSocketAddress remoteAddress() {
+		return remoteAddress;
 	}
 	
 	public void setListener(MetaConnectionHandler handler) {
@@ -210,31 +225,22 @@ public class PullMetaDataConnection implements Selectable {
 			DHT.log(e, LogLevel.Error);
 		}
 		
-		destination = (InetSocketAddress) chan.socket().getRemoteSocketAddress();
+		remoteAddress = (InetSocketAddress) chan.socket().getRemoteSocketAddress();
 		setState(STATE_INITIAL, STATE_BASIC_HANDSHAKING);
 	}
 	
 	
 	// outgoing
-	public PullMetaDataConnection(byte[] infoHash, InetSocketAddress dest) {
+	public PullMetaDataConnection(byte[] infoHash, InetSocketAddress dest) throws IOException {
 		this.infoHash = infoHash;
-		this.destination = dest;
+		this.remoteAddress = dest;
 
-		try
-		{
-			channel = SocketChannel.open();
-			//channel.socket().setReuseAddress(true);
-			channel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
-			channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
-			channel.configureBlocking(false);
-			//channel.bind(new InetSocketAddress(49002));
-
-
-
-		} catch (IOException e)
-		{
-			DHT.log(e, LogLevel.Error);
-		}
+		channel = SocketChannel.open();
+		//channel.socket().setReuseAddress(true);
+		channel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
+		channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
+		channel.configureBlocking(false);
+		//channel.bind(new InetSocketAddress(49002));
 		
 		setState(STATE_INITIAL, STATE_CONNECTING);
 		sendBTHandshake();
@@ -266,7 +272,7 @@ public class PullMetaDataConnection implements Selectable {
 		if(isState(STATE_CONNECTING))
 		{
 			try {
-				if(channel.connect(destination))
+				if(channel.connect(remoteAddress))
 					connectEvent();
 			} catch (IOException e) {
 				terminate("connect failed " + e.getMessage(), CloseReason.CONNECT_FAILED);
@@ -356,18 +362,17 @@ public class PullMetaDataConnection implements Selectable {
 				connectionMatches &= Arrays.equals(temp, infoHash);
 			} else {
 				infoHash = temp.clone();
-				if(!checker.isInfohashAcceptable(infoHash))
-				{
-					terminate("currently not handling this infohash");
+				setState(STATE_BASIC_HANDSHAKING, STATE_IH_RECEIVED);
+				// state callback may terminate
+				if(isState(STATE_CLOSED))
 					return;
-				}
 			}
 
 
 			// check peer ID
 			inputBuffer.get(temp);
 			// log
-			idWriter.append(System.currentTimeMillis()+ " " + new Key(temp).toString(false) + " " + destination.getAddress().getHostAddress()+ " \n");
+			idWriter.append(System.currentTimeMillis()+ " " + new Key(temp).toString(false) + " " + remoteAddress.getAddress().getHostAddress()+ " \n");
 			if(temp[0] == '-' && temp[1] == 'S' && temp[2] == 'D' && temp[3] == '0' && temp[4] == '1' && temp[5] == '0' &&  temp[6] == '0' && temp[7] == '-') {
 				terminate("xunlei doesn't support ltep", CloseReason.NO_LTEP);
 			}
@@ -386,6 +391,8 @@ public class PullMetaDataConnection implements Selectable {
 
 			Map<String,Object> ltepHandshake = new HashMap<>();
 			Map<String,Object> messages = new HashMap<>();
+			if(ourListeningPort > 0)
+				ltepHandshake.put("p", ourListeningPort);
 			ltepHandshake.put("m", messages);
 			ltepHandshake.put("v","mlDHT metadata fetcher");
 			ltepHandshake.put("metadata_size", 0);
@@ -425,7 +432,7 @@ public class PullMetaDataConnection implements Selectable {
 
 			inputBuffer.position(0);
 			inputBuffer.limit(BT_HEADER_LENGTH);
-			setState(STATE_BASIC_HANDSHAKING,STATE_LTEP_HANDSHAKING);
+			setState(EnumSet.of(STATE_BASIC_HANDSHAKING, STATE_IH_RECEIVED),STATE_LTEP_HANDSHAKING);
 			return;
 		}
 
@@ -669,19 +676,19 @@ public class PullMetaDataConnection implements Selectable {
 
 
 	public void canWriteEvent() throws IOException {
-		ByteBuffer outBuf = outputBuffers.pollFirst();
 		try
 		{
-			while(outBuf != null)
+			while(!outputBuffers.isEmpty())
 			{
-				channel.write(outBuf);
-				if(outBuf.hasRemaining()) {
-					outputBuffers.addFirst(outBuf);
+				if(!outputBuffers.peekFirst().hasRemaining()) {
+					outputBuffers.removeFirst();
+					continue;
+				}
+				long written = channel.write(outputBuffers.toArray(new ByteBuffer[outputBuffers.size()]));
+				if(written == 0) {
 					// socket buffer full, update selector
 					connManager.interestOpsChanged(this);
-					outBuf = null;
-				} else {
-					outBuf = outputBuffers.pollFirst();
+					break;
 				}
 			}
 		} catch (IOException e)
@@ -691,7 +698,7 @@ public class PullMetaDataConnection implements Selectable {
 		}
 		
 		// drained queue -> update selector
-		if(outputBuffers.size() == 0)
+		if(outputBuffers.isEmpty())
 			connManager.interestOpsChanged(this);
 	}
 	
@@ -702,9 +709,10 @@ public class PullMetaDataConnection implements Selectable {
 		checkMetaRequests();
 		
 		long timeSinceUsefulMessage = now - lastUsefulMessage;
+		long age = now - lastReceivedTime;
 		
-		if(now - lastReceivedTime > RCV_TIMEOUT || (lastUsefulMessage > 0 && timeSinceUsefulMessage > 2 * RCV_TIMEOUT)) {
-			terminate("closing idle connection "+state+" "+outstandingRequests+" "+outputBuffers.size()+" "+inputBuffer);
+		if(age > RCV_TIMEOUT || (lastUsefulMessage > 0 && timeSinceUsefulMessage > 2 * RCV_TIMEOUT)) {
+			terminate("closing idle connection "+age+" "+state+" "+outstandingRequests+" "+outputBuffers.size()+" "+inputBuffer);
 		}
 			
 		else if(!channel.isOpen())
@@ -713,6 +721,7 @@ public class PullMetaDataConnection implements Selectable {
 	
 	public void terminate(String reasonStr, CloseReason reason)  throws IOException  {
 		synchronized (this) {
+			CONNECTION_STATE oldState = state.get();
 			if(!setState(EnumSet.complementOf(EnumSet.of(STATE_CLOSED)), STATE_CLOSED))
 				return;
 			//if(!isState(STATE_CONNECTING))
@@ -721,8 +730,15 @@ public class PullMetaDataConnection implements Selectable {
 				pool.deRegister(this);
 
 			closeReason = reason;
-			metaHandler.onTerminate();
+			if(metaHandler != null)
+				metaHandler.onTerminate();
+			
 			channel.close();
+			
+			if(incoming)
+				DHT.log("closing incoming " + reasonStr + " " + reason + " " + oldState , LogLevel.Info);
+			
+			
 		}
 	}
 	

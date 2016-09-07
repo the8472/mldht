@@ -126,7 +126,6 @@ public class NIOConnectionManager {
 		Selectable toRegister = null;
 		while((toRegister = registrations.poll()) != null)
 		{
-			connections.add(toRegister);
 			SelectableChannel ch = toRegister.getChannel();
 			SelectionKey key;
 			try {
@@ -136,6 +135,7 @@ public class NIOConnectionManager {
 				continue;
 			}
 			
+			connections.add(toRegister);
 			toRegister.registrationEvent(NIOConnectionManager.this,key);
 		}
 	}

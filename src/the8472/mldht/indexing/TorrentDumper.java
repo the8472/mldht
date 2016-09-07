@@ -211,6 +211,7 @@ public class TorrentDumper implements Component {
 		fetcher = new TorrentFetcher(dhts);
 		
 		fetcher.setMaxOpen(40);
+		fetcher.maxIncoming(50);
 
 		dhts.forEach(d -> d.addIncomingMessageListener(this::incomingMessage));
 		pf = new UselessPeerFilter();

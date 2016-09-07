@@ -1,5 +1,7 @@
 package the8472.mldht.cli.commands;
 
+import static the8472.bencode.Utils.hex2ary;
+
 import the8472.bencode.Utils;
 import the8472.mldht.cli.CommandProcessor;
 
@@ -9,6 +11,7 @@ import lbms.plugins.mldht.kad.RPCCallListener;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.messages.MessageBase;
 import lbms.plugins.mldht.kad.messages.PingRequest;
+import lbms.plugins.mldht.kad.utils.AddressUtils;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -16,6 +19,8 @@ import java.util.Optional;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Ping extends CommandProcessor {
 	
@@ -38,9 +43,20 @@ public class Ping extends CommandProcessor {
 		
 		try {
 			String ip = arguments.get(0);
-			port = Integer.valueOf(arguments.get(1));
 			
-			addr = InetAddress.getByName(ip);
+			Matcher m = Pattern.compile("^(?:0x)?(\\p{XDigit}+)$").matcher(ip);
+			
+			if(m.matches()) {
+				String hex = m.group(1);
+				byte[] raw = hex2ary(hex);
+				InetSocketAddress sockaddr = AddressUtils.unpackAddress(raw);
+				addr = sockaddr.getAddress();
+				port = sockaddr.getPort();
+			} else {
+				port = Integer.valueOf(arguments.get(1));
+				addr = InetAddress.getByName(ip);
+			}
+			
 		} catch (Exception e) {
 			handleException(e);
 			return;

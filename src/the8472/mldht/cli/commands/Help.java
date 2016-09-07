@@ -7,7 +7,7 @@ public class Help extends CommandProcessor {
 	@Override
 	protected void process() {
 		println("HELP                                                 - prints this help");
-		println("PING ip port                                         - continuously pings a DHT node with a 1 second interval");
+		println("PING ip port | hex                                   - continuously pings a DHT node with a 1 second interval");
 		println("GET hash [salt]                                      - perform a BEP44 get");
 		println("PUT -f <input-path> [-keyfile <path>] [-salt <salt>]");
 		println("PUT <input> [-keyfile <path>] [-salt <salt>]         - perform a BEP44 put, specifying a salt or keyfile implies a mutable put, immutable otherwise. data will be read from file or as single argument");

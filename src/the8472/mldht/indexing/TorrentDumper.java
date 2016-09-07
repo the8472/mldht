@@ -173,7 +173,7 @@ public class TorrentDumper implements Component {
 			fetchCount += other.fetchCount;
 			recentSources.addAll(other.recentSources);
 			if(recentSources.size() > max_entries) {
-				recentSources.sort(Comparator.comparingLong((KBucketEntry e) -> e.getLastSeen()));
+				recentSources.sort(KBucketEntry.LAST_SEEN_ORDER);
 				recentSources.subList(0, recentSources.size() - max_entries).clear();
 			}
 			

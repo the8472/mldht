@@ -62,17 +62,17 @@ public class KBucketEntry {
 	/**
 	 * ascending order for last seen, i.e. the last value will be the least recently seen one
 	 */
-	public static final Comparator<KBucketEntry> LAST_SEEN_ORDER = (o1, o2) -> Long.signum(o1.lastSeen - o2.lastSeen);
+	public static final Comparator<KBucketEntry> LAST_SEEN_ORDER = Comparator.comparingLong(KBucketEntry::getLastSeen);
 
 	/**
 	 * ascending order for timeCreated, i.e. the first value will be the oldest
 	 */
-	public static final Comparator<KBucketEntry> AGE_ORDER = (o1, o2) -> Long.signum(o1.timeCreated - o2.timeCreated);
+	public static final Comparator<KBucketEntry> AGE_ORDER = Comparator.comparingLong(KBucketEntry::getCreationTime);
 
 	/**
 	 * same order as the Key class, based on the Entrie's nodeID
 	 */
-	public static final Comparator<KBucketEntry> KEY_ORDER = (o1, o2) -> o1.nodeID.compareTo(o2.nodeID);
+	public static final Comparator<KBucketEntry> KEY_ORDER = Comparator.comparing(KBucketEntry::getID);
 
 	
 	public static final class DistanceOrder implements Comparator<KBucketEntry> {

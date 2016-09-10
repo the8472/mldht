@@ -117,7 +117,7 @@ public class PullMetaDataConnection implements Selectable {
 	private static final int BT_MSG_ID_OFFSET = 4; // 0-3 length, 4 id
 	private static final int BT_LTEP_HEADER_OFFSET =  5; // 5 ltep id
 	
-	boolean						keepPexOnlyOpen = true;
+	boolean						keepPexOnlyOpen;
 	
 	SocketChannel				channel;
 	NIOConnectionManager		connManager;

@@ -735,8 +735,7 @@ public class PullMetaDataConnection implements Selectable {
 			
 			channel.close();
 			
-			if(incoming)
-				DHT.log("closing incoming " + reasonStr + " " + reason + " " + oldState , LogLevel.Info);
+			DHT.log(String.format("closing pull connection inc: %b reason: %s flag: %s state: %s ", incoming, reasonStr, reason, oldState), LogLevel.Debug);
 			
 			
 		}

@@ -477,14 +477,10 @@ public class TorrentFetcher {
 			}
 		}
 		
-		int pexCount = 0;
-		
 		void decorate(PullMetaDataConnection con) {
 			con.poolGenerator = this::getPool;
 			con.dhtPort = dhts.stream().mapToInt(d -> d.getConfig().getListeningPort()).findAny().getAsInt();
 			con.pexConsumer = (toAdd) -> {
-				if(!toAdd.isEmpty())
-					pexCount++;
 				toAdd.forEach(item -> {
 					this.addCandidate(con.remoteAddress().getAddress(), item);
 				});
@@ -549,7 +545,7 @@ public class TorrentFetcher {
 				if(serverSelector != null && serverSelector.getPort() > 0)
 					con.ourListeningPort = serverSelector.getPort();
 				
-				con.keepPexOnlyOpen(pexCount < 20);
+				con.keepPexOnlyOpen(closed.values().stream().filter(CONNECTION_STATE.STATE_PEX_ONLY::equals).count() < 20);
 				
 				decorate(con);
 			

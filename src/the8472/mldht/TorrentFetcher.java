@@ -261,7 +261,6 @@ public class TorrentFetcher {
 		Instant startTime;
 		CompletableFuture<FetchTask> future = new CompletableFuture<>();
 		Set<InetSocketAddress> pinged = Collections.newSetFromMap(new ConcurrentHashMap<>()) ;
-		Set<InetSocketAddress> connectionAttempted = new ConcurrentHashMap<InetSocketAddress, Boolean>().keySet(Boolean.TRUE);
 		Map<InetSocketAddress, PullMetaDataConnection.CONNECTION_STATE> closed = new ConcurrentHashMap<>();
 		ConcurrentHashMap<InetSocketAddress, Set<InetAddress>> candidates = new ConcurrentHashMap<>();
 		AtomicBoolean running = new AtomicBoolean(true);
@@ -289,8 +288,8 @@ public class TorrentFetcher {
 					hash.toString(false),
 					"age:",
 					Duration.between(startTime, Instant.now()).toString(),
-					"con tried:",
-					String.valueOf(connectionAttempted.size()),
+					"cand:",
+					String.valueOf(candidates.size()),
 					"con active:",
 					connections.values().stream().collect(Collectors.groupingBy(PullMetaDataConnection::getState, Collectors.counting())).toString(),
 					"con closed:",
@@ -330,7 +329,7 @@ public class TorrentFetcher {
 		}
 		
 		public int attemptedCount() {
-			return connectionAttempted.size();
+			return connections.size() + closed.size();
 		}
 
 		void start() {
@@ -496,8 +495,8 @@ public class TorrentFetcher {
 			}
 			
 			// workaround for JDK-8163353
-			if(!connectionAttempted.isEmpty())
-				candidates.keySet().removeAll(connectionAttempted);
+			if(!closed.isEmpty())
+				candidates.keySet().removeAll(closed.keySet());
 			
 			Comparator<Map.Entry<InetSocketAddress, Set<InetAddress>>> comp = Map.Entry.comparingByValue(Comparator.comparingInt(Set::size));
 			comp = comp.reversed();
@@ -509,6 +508,9 @@ public class TorrentFetcher {
 			int i = 0;
 			
 			for(InetSocketAddress addr : cands) {
+				
+				if(connections.containsKey(addr.getAddress()))
+					continue;
 				
 				if(socketLimitsReached())
 					break;
@@ -536,7 +538,6 @@ public class TorrentFetcher {
 					continue;
 				}
 
-				connectionAttempted.add(addr);
 				candidates.remove(addr);
 
 

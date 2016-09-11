@@ -27,6 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
+import static java.lang.Math.min;
+
 import lbms.plugins.mldht.kad.AnnounceNodeCache;
 import lbms.plugins.mldht.kad.DBItem;
 import lbms.plugins.mldht.kad.DHT;
@@ -110,8 +112,8 @@ public class PeerLookupTask extends IteratingTask {
 		todo.allowRetransmits(!fastTerminate);
 		if(fastTerminate)
 			setNoAnnounce(true);
-		}
-			
+	}
+	
 	public void filterKnownUnreachableNodes(boolean toggle) {
 		if(toggle)
 			todo.setNonReachableCache(node.getDHT().getUnreachableCache());
@@ -241,11 +243,17 @@ public class PeerLookupTask extends IteratingTask {
 					if(useCache)
 						call.addListener(cache.getRPCListener());
 					call.builtFromEntry(e);
-					// the measured RTT is a mean and not the 90th percentile unlike the RPCServer's timeout filter
-					// -> add some safety margin to account for variance
-					long rtt = e.getRTT() * 2;
-					if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX && rtt < rpc.getTimeoutFilter().getStallTimeout())
-						call.setExpectedRTT(rtt); // only set a node-specific timeout if it's better than what the server would apply anyway
+
+					long rtt = e.getRTT();
+					long defaultTimeout = rpc.getTimeoutFilter().getStallTimeout();
+					
+					if(rtt < DHTConstants.RPC_CALL_TIMEOUT_MAX) {
+						// the measured RTT is a mean and not the 90th percentile unlike the RPCServer's timeout filter
+						// -> add some safety margin to account for variance
+						rtt = (long) (rtt * (rtt < defaultTimeout ? 2 : 1.5));
+						
+						call.setExpectedRTT(min(rtt, DHTConstants.RPC_CALL_TIMEOUT_MAX));
+					}
 					
 					if(DHT.isLogLevelEnabled(LogLevel.Verbose)) {
 						List<InetSocketAddress> sources = todo.getSources(e).stream().map(KBucketEntry::getAddress).collect(Collectors.toList());

@@ -65,7 +65,7 @@ public class NodeLookup extends IteratingTask {
 			if(e == null)
 				return;
 			
-			if(!new RequestCandidateEvaluator(this, closest, todo, e, inFlight.values()).goodForRequest(p))
+			if(!new RequestCandidateEvaluator(this, closest, todo, e, inFlight).goodForRequest(p))
 				return;
 				
 			// send a findNode to the node
@@ -99,7 +99,7 @@ public class NodeLookup extends IteratingTask {
 		if(next == null)
 			return true;
 		
-		return new RequestCandidateEvaluator(this, closest, todo, next, inFlight.values()).terminationPrecondition();
+		return new RequestCandidateEvaluator(this, closest, todo, next, inFlight).terminationPrecondition();
 	}
 
 	@Override

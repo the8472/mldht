@@ -75,7 +75,7 @@ public class GetLookupTask extends IteratingTask {
 			if(e == null)
 				return;
 			
-			if(!new RequestCandidateEvaluator(this, closest, todo, e, inFlight.values()).goodForRequest(p))
+			if(!new RequestCandidateEvaluator(this, closest, todo, e, inFlight).goodForRequest(p))
 				return;
 				
 			GetRequest r = new GetRequest(targetKey);
@@ -181,7 +181,7 @@ public class GetLookupTask extends IteratingTask {
 			return true;
 		
 		
-		return new RequestCandidateEvaluator(this, closest, todo, next, inFlight.values()).terminationPrecondition();
+		return new RequestCandidateEvaluator(this, closest, todo, next, inFlight).terminationPrecondition();
 	}
 
 }

@@ -221,7 +221,7 @@ public class PeerLookupTask extends IteratingTask {
 				if(e == null)
 					break;
 
-				RequestCandidateEvaluator eval = new RequestCandidateEvaluator(this, closest, todo, e, inFlight.values());
+				RequestCandidateEvaluator eval = new RequestCandidateEvaluator(this, closest, todo, e, inFlight);
 				
 				
 				if(!eval.goodForRequest(p))
@@ -275,7 +275,7 @@ public class PeerLookupTask extends IteratingTask {
 		}
 		
 				
-		RequestCandidateEvaluator eval = new RequestCandidateEvaluator(this, this.closest, todo, closest, inFlight.values());
+		RequestCandidateEvaluator eval = new RequestCandidateEvaluator(this, this.closest, todo, closest, inFlight);
 
 		return eval.terminationPrecondition();
 	}

@@ -191,7 +191,7 @@ public abstract class Task implements Comparable<Task> {
 					case TIMEOUT:
 					case STALLED:
 					case ERROR:
-						runStuff();
+						serializedUpdate.run();
 						break;
 					default:
 						break;
@@ -209,7 +209,7 @@ public abstract class Task implements Comparable<Task> {
 			startTime = System.currentTimeMillis();
 			try
 			{
-				runStuff();
+				serializedUpdate.run();
 			} catch (Exception e)
 			{
 				DHT.log(e, LogLevel.Error);
@@ -222,7 +222,7 @@ public abstract class Task implements Comparable<Task> {
 			finish();
 		
 		if (canDoRequest() && !isFinished()) {
-			serializedUpdate.run();
+			update();
 
 			// check again in case todo-queue has been drained by update()
 			if(isDone())
@@ -232,7 +232,7 @@ public abstract class Task implements Comparable<Task> {
 
 	}
 	
-	private final Runnable serializedUpdate = SerializedTaskExecutor.onceMore(this::update);
+	private final Runnable serializedUpdate = SerializedTaskExecutor.onceMore(this::runStuff);
 
 	/**
 	 * Will continue the task, this will be called every time we have
@@ -261,7 +261,7 @@ public abstract class Task implements Comparable<Task> {
 	boolean rpcCall (MessageBase req, Key expectedID, Consumer<RPCCall> modifyCallBeforeSubmit) {
 		if (!canDoRequest()) {
 			// if we reject a request we need something to wakeup the task later
-			rpc.onDeclog(this::runStuff);
+			rpc.onDeclog(serializedUpdate);
 			return false;
 		}
 		

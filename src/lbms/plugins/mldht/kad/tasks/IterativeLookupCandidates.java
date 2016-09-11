@@ -261,11 +261,13 @@ public class IterativeLookupCandidates {
 				dups++;
 			}
 			// log2 scale
-			int sources = 31 - Integer.numberOfLeadingZeros(max(me.getValue().sources.size(), 1));
-			sources -= node.previouslyFailedCount;
+			int sources = max(1, me.getValue().sources.size() + (node.root ? 1 : 0));
+			int scaledSources = 31 - Integer.numberOfLeadingZeros(sources);
 			//System.out.println("sd:" + sources + " " + dups);
 			
-			return sources >= dups;
+			scaledSources -= max(0, node.previouslyFailedCount - 1);
+			
+			return scaledSources >= dups;
 		});
 	}
 	

@@ -3,11 +3,12 @@ package lbms.plugins.mldht.kad;
 import java.net.InetAddress;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class SpamThrottle {
 	
-	private HashMap<InetAddress, Integer> hitcounter = new HashMap<>();
+	private Map<InetAddress, Integer> hitcounter = new ConcurrentHashMap();
 	
 	private Instant lastDecayTime = Instant.now();
 	
@@ -25,6 +26,10 @@ public class SpamThrottle {
 		return false;
 	}
 	
+	public void remove(InetAddress addr) {
+		hitcounter.remove(addr);
+	}
+		
 	public void decay() {
 		Instant now = Instant.now();
 		long delta = Duration.between(lastDecayTime, now).getSeconds();

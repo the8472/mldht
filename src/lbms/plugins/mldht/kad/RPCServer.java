@@ -712,8 +712,12 @@ public class RPCServer {
 							DHT.logVerbose("sent: " + prettyPrint(es.toSend.getBase())+ " to " + es.toSend.getDestination());
 						}
 						
-						if(es.associatedCall != null)
+						if(es.associatedCall != null) {
 							es.associatedCall.sent(RPCServer.this);
+							// when we send requests to a node we don't want their replies to get stuck in the filter
+							throttle.remove(es.toSend.getDestination().getAddress());
+						}
+							
 						
 						stats.addSentMessageToCount(es.toSend);
 						stats.addSentBytes(bytesSent + dh_table.getType().HEADER_LENGTH);

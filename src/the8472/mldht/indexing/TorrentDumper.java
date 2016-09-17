@@ -225,7 +225,6 @@ public class TorrentDumper implements Component {
 		}
 		
 		fetcher.setPeerFilter(pf);
-		String foo;
 		
 		scheduler.scheduleWithFixedDelay(this::dumpStats, 10, 10, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this.singleThreadedFetches::run, 10, 1, TimeUnit.SECONDS);

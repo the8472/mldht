@@ -15,10 +15,10 @@ public class SpamThrottle {
 	private static final int BURST = 10;
 	private static final int PER_SECOND = 2;
 	
-	public boolean isSpam(InetAddress addr) {
+	public boolean addAndTest(InetAddress addr) {
 		decay();
 		
-		int updated = hitcounter.compute(addr, (key, old) -> old == null ? 1 : Math.min(old + 1, BURST));
+		int updated = add(addr);
 		
 		if(updated >= BURST)
 			return true;
@@ -29,13 +29,24 @@ public class SpamThrottle {
 	public void remove(InetAddress addr) {
 		hitcounter.remove(addr);
 	}
-		
+	
+	public boolean test(InetAddress addr) {
+		return hitcounter.getOrDefault(addr, 0) >= BURST;
+	}
+	
+	public int add(InetAddress addr) {
+		return hitcounter.compute(addr, (key, old) -> old == null ? 1 : Math.min(old + 1, BURST));
+	}
+	
 	public void decay() {
 		Instant now = Instant.now();
-		long delta = Duration.between(lastDecayTime, now).getSeconds();
-		if(delta < 1)
-			return;
-		lastDecayTime = lastDecayTime.plusSeconds(delta);
+		long delta;
+		synchronized (this) {
+			delta = Duration.between(lastDecayTime, now).getSeconds();
+			if(delta < 1)
+				return;
+			lastDecayTime = lastDecayTime.plusSeconds(delta);
+		}
 		
 		hitcounter.replaceAll((k, v) -> (int) (v - delta * PER_SECOND));
 		hitcounter.entrySet().removeIf(entry -> entry.getValue() <= 0);

@@ -21,6 +21,7 @@ import static the8472.utils.Functional.typedGet;
 
 import the8472.bencode.Tokenizer.BDecodingException;
 import the8472.bencode.Utils;
+import the8472.utils.concurrent.SerializedTaskExecutor;
 
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.messages.ErrorMessage;
@@ -61,6 +62,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -97,6 +99,7 @@ public class RPCServer {
 	private Key										derivedId;
 	private InetSocketAddress						consensusExternalAddress;
 	private SpamThrottle 							throttle = new SpamThrottle();
+	private SpamThrottle 							requestThrottle = new SpamThrottle();
 	private ExponentialWeightendMovingAverage		unverifiedLossrate = new ExponentialWeightendMovingAverage().setWeight(0.01).setValue(0.5);
 	private ExponentialWeightendMovingAverage		verifiedEntryLossrate = new ExponentialWeightendMovingAverage().setWeight(0.01).setValue(0.5);
 	
@@ -204,7 +207,7 @@ public class RPCServer {
 	/* (non-Javadoc)
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#doCall(lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
-	public void doCall (RPCCall c) {
+	public void doCall(RPCCall c) {
 		
 		MessageBase req = c.getRequest();
 		if(req.getServer() == null)
@@ -212,21 +215,53 @@ public class RPCServer {
 		
 		enqueueEventConsumers.forEach(callback -> callback.accept(c));
 		
-		while(true)
-		{
+		call_queue.add(c);
+		
+		drainTrigger.run();
+	}
+	
+	Runnable drainTrigger = SerializedTaskExecutor.onceMore(this::drainQueue);
+	
+	private void drainQueue() {
+		
+		int capacity = DHTConstants.MAX_ACTIVE_CALLS  - calls.size();
+		
+		requestThrottle.decay();
+		
+		while(capacity > 0) {
 			
-			if(calls.size() >= DHTConstants.MAX_ACTIVE_CALLS)
-			{
-				DHT.logInfo("Queueing RPC call, no slots available at the moment");
-				call_queue.add(c);
+			RPCCall c = call_queue.poll();
+
+			if(c == null) {
+				Runnable r = awaitingDeclog.poll();
+				if(r != null) {
+					r.run();
+					continue;
+				}
 				break;
 			}
+
+
+			if(requestThrottle.test(c.getRequest().getDestination().getAddress())) {
+				DHT.logInfo("Queueing RPCCall, would be spamming remote peer");
+				dh_table.getScheduler().schedule(() -> {
+					call_queue.add(c);
+					drainTrigger.run();
+				}, 1500, TimeUnit.MILLISECONDS);
+				continue;
+			}
+			
 			byte[] mtid = new byte[MTID_LENGTH];
 			ThreadLocalUtils.getThreadLocalRandom().nextBytes(mtid);
+
 			if(calls.putIfAbsent(new ByteWrapper(mtid),c) == null)
 			{
+				capacity--;
+				requestThrottle.add(c.getRequest().getDestination().getAddress());
 				dispatchCall(c, mtid);
-				break;
+			} else {
+				// this is very unlikely to happen
+				call_queue.add(c);
 			}
 		}
 	}
@@ -246,7 +281,7 @@ public class RPCServer {
 				unverifiedLossrate.updateAverage(1.0);
 			calls.remove(w, c);
 			dh_table.timeout(c);
-			doQueuedCalls();
+			drainTrigger.run();
 		}
 		
 		public void onStall(RPCCall c) {}
@@ -419,7 +454,7 @@ public class RPCServer {
 					msg.setAssociatedCall(c);
 					c.response(msg);
 
-					doQueuedCalls();
+					drainTrigger.run();
 					// apply after checking for a proper response
 					handleMessage(msg);
 				}
@@ -559,23 +594,6 @@ public class RPCServer {
 		}
 	}*/
 
-	private void doQueuedCalls () {
-		while (call_queue.peek() != null && calls.size() < DHTConstants.MAX_ACTIVE_CALLS) {
-			RPCCall c;
-
-			if((c = call_queue.poll()) == null)
-				return;
-			
-			doCall(c);
-		}
-		
-		Runnable r;
-		
-		while(calls.size() < DHTConstants.MAX_ACTIVE_CALLS && (r = awaitingDeclog.poll()) != null) {
-			r.run();
-		}
-	}
-	
 	@Override
 	public String toString() {
 		Formatter f = new Formatter();
@@ -658,7 +676,7 @@ public class RPCServer {
 				// -> immediately discard junk on the read loop, don't even allocate a buffer for it
 				if(readBuffer.position() < 10 || readBuffer.get(0) != 'd' || soa.getPort() == 0)
 					continue;
-				if(throttle.isSpam(soa.getAddress()))
+				if(throttle.addAndTest(soa.getAddress()))
 					continue;
 				
 				// copy from the read buffer since we hand off to another thread

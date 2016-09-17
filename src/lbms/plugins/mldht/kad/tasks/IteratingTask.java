@@ -43,15 +43,15 @@ public abstract class IteratingTask extends TargetedTask {
 				"Task "+ getTaskID() +"  done " + counts + " " + closest + "\n" + targetKey + "\n" + closestDebug()  + "\n" +
 				
 
-				todo.allCand().sorted(todo.comp()).filter(me -> {
-					return targetKey.threeWayDistance(me.getKey().getID(), farthest) <= 0;
-				}).<String>map(e -> {
-					LookupGraphNode node = e.getValue();
+				todo.allCand().sorted(todo.comp()).filter(node -> {
+					return targetKey.threeWayDistance(node.toKbe().getID(), farthest) <= 0;
+				}).<String>map(node -> {
+
 					
 					return String.format("%s %s %s %s%s%s src:%d-%d call:%d rsp:%d acc:%d %s",
-							e.getKey().getID(),
-							targetKey.distance(e.getKey().getID()),
-							AddressUtils.toString(e.getKey().getAddress()),
+							node.toKbe().getID(),
+							targetKey.distance(node.toKbe().getID()),
+							AddressUtils.toString(node.toKbe().getAddress()),
 							node.toKbe().hasSecureID() ? "🔒" : " ",
 							node.root ? "🌲" : " ",
 							node.tainted ? "!" : " ",
@@ -60,7 +60,7 @@ public abstract class IteratingTask extends TargetedTask {
 							node.calls.size(),
 							node.calls.stream().filter(c -> c.state() == RPCState.RESPONDED).count(),
 							node.acceptedResponse ? 1 : 0,
-							e.getValue().sources.stream().map(LookupGraphNode::toKbe).collect(Collectors.toList())
+							node.sources.stream().map(LookupGraphNode::toKbe).collect(Collectors.toList())
 						);
 
 				}).collect(Collectors.joining("\n"))

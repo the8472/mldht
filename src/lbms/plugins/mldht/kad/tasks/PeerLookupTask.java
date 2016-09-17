@@ -220,15 +220,12 @@ public class PeerLookupTask extends IteratingTask {
 				if(p == RequestPermit.NONE_ALLOWED)
 					break;
 				
-				KBucketEntry e = todo.next().orElse(null);
+				KBucketEntry e = todo.next2(kbe -> {
+					RequestCandidateEvaluator eval = new RequestCandidateEvaluator(this, closest, todo, kbe, inFlight);
+					return eval.goodForRequest(p);
+				}).orElse(null);
 				
 				if(e == null)
-					break;
-
-				RequestCandidateEvaluator eval = new RequestCandidateEvaluator(this, closest, todo, e, inFlight);
-				
-				
-				if(!eval.goodForRequest(p))
 					break;
 				
 				GetPeersRequest gpr = new GetPeersRequest(targetKey);

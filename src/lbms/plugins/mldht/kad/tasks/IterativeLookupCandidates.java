@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -209,22 +210,45 @@ public class IterativeLookupCandidates {
 		return candidates.get(e).sources.stream().map(LookupGraphNode::toKbe).collect(Collectors.toSet());
 	}
 	
-	Comparator<Map.Entry<KBucketEntry, LookupGraphNode>> comp() {
+	Comparator<LookupGraphNode> comp() {
 		Comparator<KBucketEntry> d = new KBucketEntry.DistanceOrder(target);
-		Comparator<LookupGraphNode> s = (a, b) -> b.returnedNodes.size() - a.returnedNodes.size();
-		return Map.Entry.<KBucketEntry, LookupGraphNode>comparingByKey(d).thenComparing(Map.Entry.comparingByValue(s));
+		Comparator<LookupGraphNode> s = (a, b) -> b.sources.size() - a.sources.size();
+		return Comparator.comparing(n -> n.e, d);
 	}
 	
 	Optional<KBucketEntry> next() {
 		synchronized (this) {
-			return cand().min(comp()).map(Map.Entry::getKey);
+			return cand().min(comp()).map(LookupGraphNode::toKbe);
 		}
 	}
 	
-	Stream<Map.Entry<KBucketEntry, LookupGraphNode>> cand() {
-		return candidates.entrySet().stream().filter(me -> {
-			KBucketEntry kbe = me.getKey();
-			LookupGraphNode node = me.getValue();
+	Optional<KBucketEntry> next2(Predicate<KBucketEntry> postFilter) {
+		synchronized (this) {
+			
+			Optional<KBucketEntry> kbe = cand().filter(retransmitFilter(false)).min(comp()).map(node -> node.e).filter(postFilter);
+			
+			if(!kbe.isPresent() && allowRetransmits)
+				kbe = cand().filter(retransmitFilter(true)).min(comp()).map(node -> node.e).filter(postFilter);
+			
+			return kbe;
+		}
+	}
+	
+	static Predicate<LookupGraphNode> retransmitFilter(boolean retransmits) {
+		
+		return (node) -> {
+
+			if (node.calls.size() > 0 && !retransmits)
+				return false;
+			return true;
+		};
+		
+	}
+	
+	
+	Stream<LookupGraphNode> cand() {
+		return candidates.values().stream().filter(node -> {
+			KBucketEntry kbe = node.e;
 			
 			if(node.tainted)
 				return false;
@@ -253,7 +277,7 @@ public class IterativeLookupCandidates {
 					return false;
 				
 				// already got a response from that addr that does not match what we would expect from this candidate anyway
-				if(c.state() == RPCState.RESPONDED && !c.getResponse().getID().equals(me.getKey().getID()))
+				if(c.state() == RPCState.RESPONDED && !c.getResponse().getID().equals(kbe.getID()))
 					return false;
 				// we don't strictly check the presence of IDs in error messages, so we can't compare those here
 				if(c.state() == RPCState.ERROR)
@@ -261,7 +285,7 @@ public class IterativeLookupCandidates {
 				dups++;
 			}
 			// log2 scale
-			int sources = max(1, me.getValue().sources.size() + (node.root ? 1 : 0));
+			int sources = max(1, node.sources.size() + (node.root ? 1 : 0));
 			int scaledSources = 31 - Integer.numberOfLeadingZeros(sources);
 			//System.out.println("sd:" + sources + " " + dups);
 			
@@ -271,8 +295,8 @@ public class IterativeLookupCandidates {
 		});
 	}
 	
-	Stream<Map.Entry<KBucketEntry, LookupGraphNode>> allCand() {
-		return candidates.entrySet().stream();
+	Stream<LookupGraphNode> allCand() {
+		return candidates.values().stream();
 	}
 	
 	LookupGraphNode nodeForEntry(KBucketEntry e) {

@@ -7,6 +7,8 @@ matrix:
       dist: trusty
       group: edge
       jdk: oraclejdk9
+  allow_failures:
+    - jdk: oraclejdk9
 
 before_install:
   - export MAVEN_SKIP_RC=true

@@ -224,7 +224,7 @@ public class TorrentDumper implements Component {
 			throw new RuntimeException(e);
 		}
 		
-		fetcher.setPeerFilter(pf);
+		// XXX: fetcher.setPeerFilter(pf); // filter seems overly aggressive. investigate if we still need it or can improve it
 		
 		scheduler.scheduleWithFixedDelay(this::dumpStats, 10, 10, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this.singleThreadedFetches::run, 10, 1, TimeUnit.SECONDS);

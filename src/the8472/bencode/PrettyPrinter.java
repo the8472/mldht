@@ -34,12 +34,23 @@ public class PrettyPrinter {
 		guessHuman = value;
 	}
 	
-	private void linebreak() {
+	enum LinebreakOmit {
+		NONE, NEXT, TRY
+	}
+	
+	LinebreakOmit previousState = LinebreakOmit.NONE;
+	
+	private void linebreak(LinebreakOmit state) {
 		if(indent == null)
 			return;
+		if(state == LinebreakOmit.TRY && previousState == LinebreakOmit.NEXT) {
+			previousState = LinebreakOmit.NONE;
+			return;
+		}
 		builder.append('\n');
 		for(int i=0;i<nesting;i++)
 			builder.append(indent);
+		previousState = state;
 	}
 	
 	public PrettyPrinter append(Object o) {
@@ -61,7 +72,8 @@ public class PrettyPrinter {
 			
 			builder.append("{");
 			nesting++;
-			linebreak();
+			if(m.size() > 0)
+				linebreak(LinebreakOmit.NONE);
 			Iterator<Entry<Object,Object>> it = m.entrySet().iterator();
 			while(it.hasNext()) {
 				Map.Entry<?,?> e = it.next();
@@ -70,11 +82,12 @@ public class PrettyPrinter {
 				prettyPrintInternal(e.getValue());
 				if(it.hasNext()) {
 					builder.append(", ");
-					linebreak();
+					linebreak(LinebreakOmit.NONE);
 				}
 			}
 			nesting--;
-			linebreak();
+			if(m.size() > 0)
+				linebreak(LinebreakOmit.NEXT);
 			builder.append("}");
 			return;
 		}
@@ -83,19 +96,25 @@ public class PrettyPrinter {
 			List<?> l = (List<?>) o;
 			builder.append("[");
 			nesting++;
-			if(l.size() > 1);
-				linebreak();
+			if(l.size() > 1)
+				linebreak(LinebreakOmit.NONE);
 			Iterator<?> it = l.iterator();
+			
+			Object prev = null;
+			
 			while(it.hasNext()) {
 				Object e = it.next();
-				prettyPrintInternal(e);
-				if(it.hasNext()) {
+				if(prev != null) {
 					builder.append(", ");
-					linebreak();
+					boolean omit = (prev instanceof List || prev instanceof Map) && (e instanceof List || e instanceof Map);
+					linebreak(omit ? LinebreakOmit.TRY : LinebreakOmit.NONE);
 				}
+				prettyPrintInternal(e);
+				prev = e;
 			}
 			nesting--;
-			linebreak();
+			if(l.size() > 1)
+				linebreak(LinebreakOmit.NEXT);
 			builder.append("]");
 			return;
 		}
@@ -147,14 +166,6 @@ public class PrettyPrinter {
 				
 			}
 			
-			
-			
-				
-			
-			if(bytes.length < 10) {
-				builder.append(Utils.stripToAscii(bytes));
-				builder.append('/');
-			}
 			builder.append("0x");
 			Utils.toHex(bytes, builder, 20);
 			
@@ -164,6 +175,12 @@ public class PrettyPrinter {
 				builder.append(bytes.length);
 				builder.append(')');
 			}
+			
+			if(bytes.length < 10) {
+				builder.append('/');
+				builder.append(Utils.stripToAscii(bytes));
+			}
+			
 			return;
 		}
 		

@@ -177,10 +177,11 @@ public class RPCServer {
 	public void start() {
 		if(state != State.INITIAL)
 			throw new IllegalStateException("already initialized");
+		startTime = Instant.now();
 		state = State.RUNNING;
 		DHT.logInfo("Starting RPC Server");
 		sel.start();
-		startTime = Instant.now();
+		
 	}
 	
 	public void stop() {
@@ -599,10 +600,17 @@ public class RPCServer {
 		Formatter f = new Formatter();
 		f.format("%s\tbind: %s consensus: %s%n", getDerivedID(), getBindAddress(), consensusExternalAddress);
 		f.format("rx: %d tx: %d active: %d baseRTT: %d loss: %f  loss (verified): %f uptime: %s%n",
-				numReceived, numSent, getNumActiveRPCCalls(), timeoutFilter.getStallTimeout(), unverifiedLossrate.getAverage(), verifiedEntryLossrate.getAverage() , Duration.between(startTime, Instant.now()));
+				numReceived, numSent, getNumActiveRPCCalls(), timeoutFilter.getStallTimeout(), unverifiedLossrate.getAverage(), verifiedEntryLossrate.getAverage() , age());
 		f.format("RTT stats (%dsamples) %s", timeoutFilter.getSampleCount(), timeoutFilter.getCurrentStats());
 
 		return f.toString();
+	}
+	
+	Duration age() {
+		Instant start = startTime;
+		if(start == null)
+			return Duration.ZERO;
+		return Duration.between(start, Instant.now());
 	}
 	
 	static final ThreadLocal<ByteBuffer> writeBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(1500));

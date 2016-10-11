@@ -54,6 +54,7 @@ public class IterativeLookupCandidates {
 	Map<KBucketEntry, LookupGraphNode> candidates = new ConcurrentHashMap<>();
 	// maybe split out call tracking
 	Map<RPCCall, KBucketEntry> calls;
+	Map<InetAddress, Set<RPCCall>> callsByIp;
 	Collection<Object> accepted;
 	boolean allowRetransmits = true;
 	IDMismatchDetector detector;
@@ -128,6 +129,7 @@ public class IterativeLookupCandidates {
 	public IterativeLookupCandidates(Key target, IDMismatchDetector detector) {
 		this.target = target;
 		calls = new ConcurrentHashMap<>();
+		callsByIp = new ConcurrentHashMap<>();
 		candidates = new ConcurrentHashMap<>();
 		accepted = new HashSet<>();
 		this.detector = detector;
@@ -142,9 +144,13 @@ public class IterativeLookupCandidates {
 	}
 	
 	void addCall(RPCCall c, KBucketEntry kbe) {
-		synchronized (this) {
-			calls.put(c, kbe);
+		calls.put(c, kbe);
+		Set<RPCCall> byIp = callsByIp.computeIfAbsent(c.getRequest().getDestination().getAddress(), k -> new HashSet<>());
+		
+		synchronized (byIp) {
+			byIp.add(c);
 		}
+		
 		
 		candidates.get(kbe).addCall(c);
 	}
@@ -218,17 +224,18 @@ public class IterativeLookupCandidates {
 	
 	Optional<KBucketEntry> next() {
 		synchronized (this) {
-			return cand().min(comp()).map(LookupGraphNode::toKbe);
+			return allCand().sorted(comp()).filter(lookupFilter).findFirst().map(LookupGraphNode::toKbe);
 		}
 	}
 	
 	Optional<KBucketEntry> next2(Predicate<KBucketEntry> postFilter) {
 		synchronized (this) {
 			
-			Optional<KBucketEntry> kbe = cand().filter(retransmitFilter(false)).min(comp()).map(node -> node.e).filter(postFilter);
+			// sort + filter + findAny should be faster than filter + min in this case since findAny reduces the invocations of the filter, and that is more expensive than the sorting
+			Optional<KBucketEntry> kbe = allCand().sorted(comp()).filter(retransmitFilter(false)).filter(lookupFilter).findFirst().map(node -> node.e).filter(postFilter);
 			
 			if(!kbe.isPresent() && allowRetransmits)
-				kbe = cand().filter(retransmitFilter(true)).min(comp()).map(node -> node.e).filter(postFilter);
+				kbe = allCand().sorted(comp()).filter(lookupFilter).filter(retransmitFilter(true)).findFirst().map(node -> node.e).filter(postFilter);
 			
 			return kbe;
 		}
@@ -245,60 +252,61 @@ public class IterativeLookupCandidates {
 		
 	}
 	
-	
-	Stream<LookupGraphNode> cand() {
-		return candidates.values().stream().filter(node -> {
-			KBucketEntry kbe = node.e;
-			
-			if(node.tainted)
-				return false;
-			
+	Predicate<LookupGraphNode> lookupFilter = node -> {
+		KBucketEntry kbe = node.e;
+		
+		if(node.tainted)
+			return false;
+		
 		// check if we can do retransmits
 		if(!allowRetransmits && !node.calls.isEmpty())
 			return false;
 
 		// skip retransmits if we previously got a response but from the wrong socket address
 		if(node.calls.stream().anyMatch(RPCCall::hasSocketMismatch))
-				return false;
-			
-			InetAddress addr = kbe.getAddress().getAddress();
-			
-			if(accepted.contains(addr) || accepted.contains(kbe.getID()))
-				return false;
+			return false;
+		
+		
+		InetAddress addr = kbe.getAddress().getAddress();
+		
+		if(accepted.contains(addr) || accepted.contains(kbe.getID()))
+			return false;
 
-			// only do requests to nodes which have at least one source where the source has not given us lots of bogus candidates
-			if(node.sources.size() > 0 && node.sources.stream().noneMatch(source -> source.nonSuccessfulDescendantCalls() < 3))
-				return false;
-			
-			int dups = 0;
-			
-			// also check other calls based on matching IP instead of strictly matching ip+port+id
-			for(RPCCall c : calls.keySet()) {
-				if(!addr.equals(c.getRequest().getDestination().getAddress()))
-					continue;
-				
-				// in flight, not stalled
-				if(c.state() == RPCState.SENT || c.state() == RPCState.UNSENT)
-					return false;
-				
-				// already got a response from that addr that does not match what we would expect from this candidate anyway
-				if(c.state() == RPCState.RESPONDED && !c.getResponse().getID().equals(kbe.getID()))
-					return false;
-				// we don't strictly check the presence of IDs in error messages, so we can't compare those here
-				if(c.state() == RPCState.ERROR)
-					return false;
-				dups++;
+		// only do requests to nodes which have at least one source where the source has not given us lots of bogus candidates
+		if(node.sources.size() > 0 && node.sources.stream().noneMatch(source -> source.nonSuccessfulDescendantCalls() < 3))
+			return false;
+		
+		int dups = 0;
+		
+		// also check other calls based on matching IP instead of strictly matching ip+port+id
+		Set<RPCCall> byIp = callsByIp.get(addr);
+		if(byIp != null) {
+			synchronized(byIp) {
+				for(RPCCall c : byIp) {
+					// in flight, not stalled
+					if(c.state() == RPCState.SENT || c.state() == RPCState.UNSENT)
+						return false;
+					
+					// already got a response from that addr that does not match what we would expect from this candidate anyway
+					if(c.state() == RPCState.RESPONDED && !c.getResponse().getID().equals(kbe.getID()))
+						return false;
+					// we don't strictly check the presence of IDs in error messages, so we can't compare those here
+					if(c.state() == RPCState.ERROR)
+						return false;
+					dups++;
+				}
 			}
-			// log2 scale
-			int sources = max(1, node.sources.size() + (node.root ? 1 : 0));
-			int scaledSources = 31 - Integer.numberOfLeadingZeros(sources);
-			//System.out.println("sd:" + sources + " " + dups);
-			
-			scaledSources -= max(0, node.previouslyFailedCount - 1);
-			
-			return scaledSources >= dups;
-		});
-	}
+		}
+		// log2 scale
+		int sources = max(1, node.sources.size() + (node.root ? 1 : 0));
+		int scaledSources = 31 - Integer.numberOfLeadingZeros(sources);
+		//System.out.println("sd:" + sources + " " + dups);
+		
+		scaledSources -= max(0, node.previouslyFailedCount - 1);
+		
+		return scaledSources >= dups;
+	};
+	
 	
 	Stream<LookupGraphNode> allCand() {
 		return candidates.values().stream();

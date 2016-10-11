@@ -25,7 +25,7 @@ public abstract class IteratingTask extends TargetedTask {
 	
 	@Override
 	public int getTodoCount() {
-		return (int) todo.cand().count();
+		return (int) todo.allCand().filter(todo.lookupFilter).count();
 	}
 	
 	public String closestDebug() {

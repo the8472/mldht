@@ -91,10 +91,11 @@ public class NodeLookup extends IteratingTask {
 	@Override
 	protected boolean isDone() {
 		int waitingFor = getNumOutstandingRequests();
-		KBucketEntry next = todo.next().orElse(null);
-		
+
 		if(waitingFor != 0)
 			return false;
+		
+		KBucketEntry next = todo.next().orElse(null);
 		
 		if(next == null)
 			return true;

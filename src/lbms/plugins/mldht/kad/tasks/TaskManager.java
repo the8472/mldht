@@ -16,10 +16,10 @@
  */
 package lbms.plugins.mldht.kad.tasks;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -104,7 +104,7 @@ public class TaskManager {
 		
 		Key rpcId = task.getRPC().getDerivedID();
 		
-		Deque<Task> q = queued.computeIfAbsent(rpcId, k -> new LinkedList<>());;
+		Deque<Task> q = queued.computeIfAbsent(rpcId, k -> new ArrayDeque<>());;
 			
 		synchronized (q)
 		{
@@ -152,11 +152,12 @@ public class TaskManager {
 		// we can start a task if we have less then  7 runnning per server and
 		// there are at least 16 RPC slots available
 
-		List<Task> currentServerTasks = tasks.stream().filter(t -> t.getRPC().equals(srv)).collect(Collectors.toList());
-		int perServer = currentServerTasks.size();
 		int activeCalls = srv.getNumActiveRPCCalls();
 		if(activeCalls + 16 >= DHTConstants.MAX_ACTIVE_CALLS)
 			return false;
+		
+		List<Task> currentServerTasks = tasks.stream().filter(t -> t.getRPC().equals(srv)).collect(Collectors.toList());
+		int perServer = currentServerTasks.size();
 		
 		if(perServer < DHTConstants.MAX_ACTIVE_TASKS)
 			return true;

@@ -253,7 +253,12 @@ public class IterativeLookupCandidates {
 			if(node.tainted)
 				return false;
 			
-			if(node.calls.size() > 0 && !allowRetransmits)
+		// check if we can do retransmits
+		if(!allowRetransmits && !node.calls.isEmpty())
+			return false;
+
+		// skip retransmits if we previously got a response but from the wrong socket address
+		if(node.calls.stream().anyMatch(RPCCall::hasSocketMismatch))
 				return false;
 			
 			InetAddress addr = kbe.getAddress().getAddress();

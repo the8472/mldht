@@ -475,6 +475,7 @@ public class RPCServer {
 			DHT.logError("mtid matched, socket address did not, ignoring message, request: " + c.getRequest().getDestination() + " -> response: " + msg.getOrigin() + " v:"+ msg.getVersion().map(Utils::prettyPrint).orElse(""));
 			
 			// but expect an upcoming timeout if it's really just a misbehaving node
+			c.setSocketMismatch();
 			c.injectStall();
 			
 			return;
@@ -598,6 +599,7 @@ public class RPCServer {
 	@Override
 	public String toString() {
 		Formatter f = new Formatter();
+		
 		f.format("%s\tbind: %s consensus: %s%n", getDerivedID(), getBindAddress(), consensusExternalAddress);
 		f.format("rx: %d tx: %d active: %d baseRTT: %d loss: %f  loss (verified): %f uptime: %s%n",
 				numReceived, numSent, getNumActiveRPCCalls(), timeoutFilter.getStallTimeout(), unverifiedLossrate.getAverage(), verifiedEntryLossrate.getAverage() , age());

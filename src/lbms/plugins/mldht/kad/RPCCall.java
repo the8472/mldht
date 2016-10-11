@@ -39,6 +39,7 @@ public class RPCCall {
 	private MessageBase				reqMsg;
 	private MessageBase				rspMsg;
 	private boolean					sourceWasKnownReachable;
+	private boolean					socketMismatch;
 	private List<RPCCallListener>	listeners		= new ArrayList<>(3);
 	private ScheduledFuture<?>		timeoutTimer;
 	long					sentTime		= -1;
@@ -85,6 +86,14 @@ public class RPCCall {
 	
 	public Key getExpectedID() {
 		return expectedID;
+	}
+	
+	public void setSocketMismatch() {
+		socketMismatch = true;
+	}
+	
+	public boolean hasSocketMismatch() {
+		return socketMismatch;
 	}
 	
 	/**

@@ -663,6 +663,8 @@ public class RPCServer {
 		
 		private void readEvent() throws IOException {
 			
+			throttle.decay();
+			
 			while(true)
 			{
 				readBuffer.clear();

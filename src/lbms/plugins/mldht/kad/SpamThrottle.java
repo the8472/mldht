@@ -16,8 +16,6 @@ public class SpamThrottle {
 	private static final int PER_SECOND = 2;
 	
 	public boolean addAndTest(InetAddress addr) {
-		decay();
-		
 		int updated = add(addr);
 		
 		if(updated >= BURST)

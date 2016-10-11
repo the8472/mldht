@@ -99,7 +99,7 @@ public class RPCServer {
 	private Key										derivedId;
 	private InetSocketAddress						consensusExternalAddress;
 	private SpamThrottle 							throttle = new SpamThrottle();
-	private SpamThrottle 							requestThrottle = new SpamThrottle();
+	private SpamThrottle 							requestThrottle;
 	private ExponentialWeightendMovingAverage		unverifiedLossrate = new ExponentialWeightendMovingAverage().setWeight(0.01).setValue(0.5);
 	private ExponentialWeightendMovingAverage		verifiedEntryLossrate = new ExponentialWeightendMovingAverage().setWeight(0.01).setValue(0.5);
 	
@@ -125,7 +125,7 @@ public class RPCServer {
 		this.dh_table = manager.dht;
 		timeoutFilter = new ResponseTimeoutFilter();
 		pipeline = new ConcurrentLinkedQueue<>();
-		calls = new ConcurrentHashMap<>(80,0.75f,3);
+		calls = new ConcurrentHashMap<>(DHTConstants.MAX_ACTIVE_CALLS);
 		call_queue = new ConcurrentLinkedQueue<>();
 		this.stats = stats;
 		this.addr = addr;
@@ -167,6 +167,10 @@ public class RPCServer {
 	
 	public Key getDerivedID() {
 		return derivedId;
+	}
+	
+	void setOutgoingThrottle(SpamThrottle throttle) {
+		this.requestThrottle = throttle;
 	}
 
 	/*

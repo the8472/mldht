@@ -29,6 +29,7 @@ public class RPCServerManager {
 	private ConcurrentHashMap<InetAddress,RPCServer> interfacesInUse = new ConcurrentHashMap<>();
 	private List<InetAddress> validBindAddresses = Collections.emptyList();
 	private volatile RPCServer[] activeServers = new RPCServer[0];
+	private SpamThrottle outgoingThrottle = new SpamThrottle();
 	
 	public void refresh(long now) {
 		if(destroyed)
@@ -133,6 +134,7 @@ public class RPCServerManager {
 	private void newServer(InetAddress addr) {
 		RPCServer srv = new RPCServer(this,addr,dht.config.getListeningPort(), dht.serverStats);
 		// doing the socket setup takes time, do it in the background
+		srv.setOutgoingThrottle(outgoingThrottle);
 		onServerRegistration.forEach(c -> c.accept(srv));
 		dht.getScheduler().execute(srv::start);
 		interfacesInUse.put(addr, srv);

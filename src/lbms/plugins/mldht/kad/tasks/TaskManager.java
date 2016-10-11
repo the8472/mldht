@@ -66,6 +66,8 @@ public class TaskManager {
 	{
 		Task t = null;
 		Deque<Task> q = queued.get(k);
+		if(q == null)
+			return;
 		synchronized (q) {
 			while ((t = q.peekFirst()) != null && canStartTask(t)) {
 				q.removeFirst();

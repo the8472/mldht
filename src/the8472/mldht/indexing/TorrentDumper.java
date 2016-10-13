@@ -83,10 +83,13 @@ public class TorrentDumper implements Component {
 	Path torrentDir = storageDir.resolve("torrents");
 	
 	private static final int MAX_STAT_FILE_SIZE = 8*1024;
+	private static final int QUOTA = 100_000;
 	
 	ScheduledThreadPoolExecutor scheduler;
 	
 	ConcurrentSkipListMap<Key, FetchStats> fromMessages;
+	AtomicInteger quota = new AtomicInteger(QUOTA);
+
 	ConcurrentMap<InetAddress, Long> blocklist = new ConcurrentHashMap<>();
 	
 	TorrentFetcher fetcher;
@@ -291,6 +294,9 @@ public class TorrentDumper implements Component {
 	}
 	
 	void process(Key targetId, Key sourceNodeId, InetSocketAddress src, String name) {
+		if(quota.get() < 1)
+			return;
+		
 		FetchStats f = new FetchStats(targetId, init -> {
 			init.recentSources = new ArrayList<>();
 			init.recentSources.add(new KBucketEntry(src, sourceNodeId));
@@ -299,7 +305,8 @@ public class TorrentDumper implements Component {
 		});
 		
 		// if there are bursts, only take the first one
-		fromMessages.putIfAbsent(targetId, f);
+		if(fromMessages.putIfAbsent(targetId, f) == null)
+			quota.decrementAndGet();
 	}
 	
 	Key cursor = Key.MIN_KEY;
@@ -393,7 +400,8 @@ public class TorrentDumper implements Component {
 			
 			
 		}
-				
+			
+		quota.set(QUOTA);
 	}
 	
 	void purgeStats() {

@@ -22,19 +22,22 @@ public class NonReachableCache {
 	void onCallFinished(RPCCall c) {
 		InetSocketAddress addr = c.getRequest().getDestination();
 		RPCState state = c.state();
-		if(state == RPCState.RESPONDED) {
-			map.remove(addr);
-			return;
-		}
 		
-		if(state != RPCState.TIMEOUT)
+		if(state != RPCState.TIMEOUT && state != RPCState.RESPONDED)
 			return;
 			
 		map.compute(addr, (k, oldEntry) -> {
 			if(oldEntry != null) {
 				CacheEntry updatedEntry = new CacheEntry();
 				updatedEntry.created = oldEntry.created;
-				updatedEntry.failures = oldEntry.failures + 1;
+				// AIMD
+				if(state == RPCState.TIMEOUT)
+					updatedEntry.failures = oldEntry.failures + 1;
+				else
+					updatedEntry.failures /= 2;
+				if(updatedEntry.failures == 0)
+					return null;
+					
 				return updatedEntry;
 			}
 			

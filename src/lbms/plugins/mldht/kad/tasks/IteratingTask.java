@@ -20,6 +20,8 @@ public abstract class IteratingTask extends TargetedTask {
 	public IteratingTask(Key target, RPCServer srv, Node node) {
 		super(target, srv, node);
 		todo = new IterativeLookupCandidates(target, node.getDHT().getMismatchDetector());
+		todo.setNonReachableCache(node.getDHT().getUnreachableCache());
+		todo.setSpamThrottle(node.getDHT().getServerManager().getOutgoingRequestThrottle());
 		closest = new ClosestSet(target, DHTConstants.MAX_ENTRIES_PER_BUCKET);
 	}
 	
@@ -48,15 +50,17 @@ public abstract class IteratingTask extends TargetedTask {
 				}).<String>map(node -> {
 
 					
-					return String.format("%s %s %s %s%s%s src:%d-%d call:%d rsp:%d acc:%d %s",
+					return String.format("%s %s %s %s%s%s%s%s fail:%d src:%d call:%d rsp:%d acc:%d %s",
 							node.toKbe().getID(),
 							targetKey.distance(node.toKbe().getID()),
 							AddressUtils.toString(node.toKbe().getAddress()),
 							node.toKbe().hasSecureID() ? "🔒" : " ",
 							node.root ? "🌲" : " ",
 							node.tainted ? "!" : " ",
+							node.throttled ? "⏳" : " ",
+							node.unreachable ? "⛔" : " ",
+							-node.previouslyFailedCount,
 							node.sources.size(),
-							node.previouslyFailedCount,
 							node.calls.size(),
 							node.calls.stream().filter(c -> c.state() == RPCState.RESPONDED).count(),
 							node.acceptedResponse ? 1 : 0,

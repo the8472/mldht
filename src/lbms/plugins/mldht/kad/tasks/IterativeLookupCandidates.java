@@ -8,6 +8,7 @@ import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.NonReachableCache;
 import lbms.plugins.mldht.kad.RPCCall;
 import lbms.plugins.mldht.kad.RPCState;
+import lbms.plugins.mldht.kad.SpamThrottle;
 
 import java.net.InetAddress;
 import java.util.Collection;
@@ -58,7 +59,9 @@ public class IterativeLookupCandidates {
 	Collection<Object> accepted;
 	boolean allowRetransmits = true;
 	IDMismatchDetector detector;
-	private NonReachableCache nonReachableCache;
+	NonReachableCache nonReachableCache;
+	SpamThrottle throttle;
+	
 	
 	class LookupGraphNode {
 		final KBucketEntry e;
@@ -69,6 +72,8 @@ public class IterativeLookupCandidates {
 		boolean acceptedResponse;
 		boolean root;
 		int previouslyFailedCount;
+		boolean unreachable;
+		boolean throttled;
 		
 		public LookupGraphNode(KBucketEntry kbe) {
 			e = kbe;
@@ -138,6 +143,10 @@ public class IterativeLookupCandidates {
 	public void setNonReachableCache(NonReachableCache nonReachableCache) {
 		this.nonReachableCache = nonReachableCache;
 	}
+	
+	public void setSpamThrottle(SpamThrottle throttle) {
+		this.throttle = throttle;
+	}
 
 	void allowRetransmits(boolean toggle) {
 		allowRetransmits = toggle;
@@ -194,8 +203,14 @@ public class IterativeLookupCandidates {
 					node.tainted = detector.isIdInconsistencyExpected(kbe.getAddress(), kbe.getID());
 					if(nonReachableCache != null) {
 						int failures = nonReachableCache.getFailures(kbe.getAddress());
-						// 5% chance we ignore failure counts;
-						node.previouslyFailedCount = ThreadLocalRandom.current().nextFloat() < 0.05 ? 0 : failures;
+						node.previouslyFailedCount = failures;
+						// 0-20
+						int rnd = ThreadLocalRandom.current().nextInt(21);
+						// -2 - 19 -> 5% chance to let even the worst stuff still through to keep the counters going up
+						node.unreachable = Math.min(failures - 2, 19) > rnd;
+					}
+					if(throttle != null) {
+						node.throttled = throttle.test(kbe.getAddress().getAddress());
 					}
 				}
 				if(sourceNode != null)
@@ -219,7 +234,7 @@ public class IterativeLookupCandidates {
 	Comparator<LookupGraphNode> comp() {
 		Comparator<KBucketEntry> d = new KBucketEntry.DistanceOrder(target);
 		Comparator<LookupGraphNode> s = (a, b) -> b.sources.size() - a.sources.size();
-		return Comparator.comparing(n -> n.e, d);
+		return Comparator.<LookupGraphNode, KBucketEntry>comparing(n -> n.e, d).thenComparing(s);
 	}
 	
 	Optional<KBucketEntry> next() {
@@ -255,7 +270,7 @@ public class IterativeLookupCandidates {
 	Predicate<LookupGraphNode> lookupFilter = node -> {
 		KBucketEntry kbe = node.e;
 		
-		if(node.tainted)
+		if(node.tainted || node.unreachable || node.throttled)
 			return false;
 		
 		// check if we can do retransmits
@@ -301,8 +316,6 @@ public class IterativeLookupCandidates {
 		int sources = max(1, node.sources.size() + (node.root ? 1 : 0));
 		int scaledSources = 31 - Integer.numberOfLeadingZeros(sources);
 		//System.out.println("sd:" + sources + " " + dups);
-		
-		scaledSources -= max(0, node.previouslyFailedCount - 1);
 		
 		return scaledSources >= dups;
 	};

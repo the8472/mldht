@@ -166,6 +166,10 @@ public class RPCServerManager {
 		return activeServers.length;
 	}
 	
+	public SpamThrottle getOutgoingRequestThrottle() {
+		return outgoingThrottle;
+	}
+	
 	/**
 	 * @param fallback tries to return an inactive server if no active one can be found
 	 * @return a random active server, or <code>null</code> if none can be found

@@ -230,7 +230,7 @@ public class TorrentFetcher {
 				break;
 			best.lookups(servers.stream());
 			// since we only schedule new tasks when the queues are empty we want the manager to start them immediately instead of waiting for timers
-			servers.stream().forEach(s -> s.getDHT().getTaskManager().dequeue(s.getDerivedID()));
+			servers.stream().forEach(s -> s.getDHT().getTaskManager().dequeue(s));
 		}
 	}
 

@@ -628,7 +628,7 @@ public class DHT implements DHTBase {
 			if(current == RPCState.RESPONDED || current == RPCState.TIMEOUT)
 				unreachableCache.onCallFinished(c);
 			if(current == RPCState.RESPONDED || current == RPCState.TIMEOUT || current == RPCState.STALLED)
-				tman.dequeue(c.getRequest().getServer().getDerivedID());
+				tman.dequeue(c.getRequest().getServer());
 		}
 	};
 	

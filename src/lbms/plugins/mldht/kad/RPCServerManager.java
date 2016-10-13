@@ -149,6 +149,7 @@ public class RPCServerManager {
 	void serverRemoved(RPCServer srv) {
 		interfacesInUse.remove(srv.getBindAddress(),srv);
 		refresh(System.currentTimeMillis());
+		dht.getTaskManager().removeServer(srv);
 	}
 	
 	public void destroy() {

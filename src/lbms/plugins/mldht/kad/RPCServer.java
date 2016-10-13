@@ -75,7 +75,7 @@ public class RPCServer {
 	
 	private static final int MTID_LENGTH = 6;
 	
-	enum State {
+	public enum State {
 		INITIAL,
 		RUNNING,
 		STOPPED
@@ -186,6 +186,10 @@ public class RPCServer {
 		DHT.logInfo("Starting RPC Server");
 		sel.start();
 		
+	}
+	
+	public State getState() {
+		return state;
 	}
 	
 	public void stop() {

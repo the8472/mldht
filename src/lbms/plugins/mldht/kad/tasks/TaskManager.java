@@ -19,16 +19,15 @@ package lbms.plugins.mldht.kad.tasks;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Deque;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHTConstants;
-import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.tasks.Task.TaskState;
 
@@ -39,20 +38,23 @@ import lbms.plugins.mldht.kad.tasks.Task.TaskState;
  */
 public class TaskManager {
 
-	private ConcurrentHashMap<Key, Deque<Task>> queued;
-	private ConcurrentSkipListSet<Task>	tasks;
+	private ConcurrentHashMap<RPCServer, ServerSet> taskSets;
 	private DHT					dht;
 	private AtomicInteger		next_id = new AtomicInteger();
 	private TaskListener		finishListener 	= t -> {
 		dht.getStats().taskFinished(t);
-		tasks.remove(t);
-		dequeue(t.getRPC().getDerivedID());
+		setFor(t.getRPC()).ifPresent(s -> {
+			synchronized (s.active) {
+				s.active.remove(t);
+			}
+			s.dequeue();
+			
+		});;
 	};
 
 	public TaskManager (DHT dht) {
 		this.dht = dht;
-		tasks = new ConcurrentSkipListSet<>();
-		queued = new ConcurrentHashMap<>();
+		taskSets = new ConcurrentHashMap<>();
 		next_id.set(1);
 	}
 	
@@ -61,28 +63,86 @@ public class TaskManager {
 		addTask(task, false);
 	}
 	
-	// dequeue tasks for a specific server
-	public void dequeue(Key k)
-	{
-		Task t = null;
-		Deque<Task> q = queued.get(k);
-		if(q == null)
-			return;
-		synchronized (q) {
-			while ((t = q.peekFirst()) != null && canStartTask(t)) {
-				q.removeFirst();
-				if(t.isFinished())
+	class ServerSet {
+		RPCServer server;
+		Deque<Task> queued = new ArrayDeque<>();
+		List<Task> active = new ArrayList<>();
+
+		void dequeue() {
+			while (true) {
+				Task t;
+				synchronized (queued) {
+					t = queued.peekFirst();
+					if (t == null)
+						break;
+					if (!canStartTask(t.getRPC()))
+						break;
+					queued.removeFirst();
+				}
+				if (t.isFinished())
 					continue;
-				tasks.add(t);
+				
+				synchronized(active) {
+					active.add(t);
+				}
 				dht.getScheduler().execute(t::start);
 			}
 		}
+		
+		boolean canStartTask(RPCServer srv) {
+			// we can start a task if we have less then  7 runnning per server and
+			// there are at least 16 RPC slots available
+
+			int activeCalls = srv.getNumActiveRPCCalls();
+			if(activeCalls + 16 >= DHTConstants.MAX_ACTIVE_CALLS)
+				return false;
+			
+			int perServer = active.size();
+			
+			if(perServer < DHTConstants.MAX_ACTIVE_TASKS)
+				return true;
+			
+			if(activeCalls >= (DHTConstants.MAX_ACTIVE_CALLS * 2) / 3)
+				return false;
+			// if all their tasks have sent at least their initial volley and we still have enough head room we can allow more tasks.
+			synchronized(active) {
+				return active.stream().allMatch(t -> t.requestConcurrency() < t.getSentReqs());
+			}
+		}
+		
+		Collection<Task> snapshotActive() {
+			synchronized (active) {
+				return new ArrayList<>(active);
+			}
+		}
+		
+		Collection<Task> snapshotQueued() {
+			synchronized (queued) {
+				return new ArrayList<>(queued);
+			}
+		}
+		
+	}
+	
+	Optional<ServerSet> setFor(RPCServer srv) {
+		if(srv.getState() != RPCServer.State.RUNNING)
+			return Optional.empty();
+		return Optional.ofNullable(taskSets.computeIfAbsent(srv, k -> {
+			ServerSet ss = new ServerSet();
+			ss.server = k;
+			return ss;
+		}));
+	}
+	
+	public void dequeue(RPCServer k)
+	{
+		setFor(k).ifPresent(ServerSet::dequeue);
 	}
 	
 	
 	public void dequeue() {
-		for(Key k : queued.keySet())
-			dequeue(k);
+		for(RPCServer srv : taskSets.keySet())
+			setFor(srv).ifPresent(ServerSet::dequeue);
 	}
 
 	/**
@@ -93,54 +153,64 @@ public class TaskManager {
 		int id = next_id.incrementAndGet();
 		task.addListener(finishListener);
 		task.setTaskID(id);
+		Optional<ServerSet> s = setFor(task.getRPC());
+		if(!s.isPresent()) {
+			task.kill();
+			return;
+		}
 		if (task.state.get() == TaskState.RUNNING)
 		{
-			tasks.add(task);
+			synchronized (s.get().active) {
+				s.get().active.add(task);
+			}
 			return;
 		}
 		
 		if(!task.setState(TaskState.INITIAL, TaskState.QUEUED))
 			return;
 		
-		
-		
-		Key rpcId = task.getRPC().getDerivedID();
-		
-		Deque<Task> q = queued.computeIfAbsent(rpcId, k -> new ArrayDeque<>());;
-			
-		synchronized (q)
+		synchronized (s.get().queued)
 		{
 			if (isPriority)
-				q.addFirst(task);
+				s.get().queued.addFirst(task);
 			else
-				q.addLast(task);
+				s.get().queued.addLast(task);
+		}
+	}
+	
+	public void removeServer(RPCServer srv) {
+		ServerSet set = taskSets.get(srv);
+		if(set == null)
+			return;
+		taskSets.remove(srv);
+
+		synchronized (set.active) {
+			set.active.forEach(Task::kill);
+		}
+		
+		synchronized (set.queued) {
+			set.queued.forEach(Task::kill);
 		}
 	}
 
 	/// Get the number of running tasks
 	public int getNumTasks () {
-		return tasks.size();
+		return taskSets.values().stream().mapToInt(s -> s.active.size()).sum();
 	}
 
 	/// Get the number of queued tasks
 	public int getNumQueuedTasks () {
-		return queued.size();
+		return taskSets.values().stream().mapToInt(s -> s.queued.size()).sum();
 	}
 
 	public Task[] getActiveTasks () {
-		Task[] t = tasks.toArray(new Task[tasks.size()]);
+		Task[] t = taskSets.values().stream().flatMap(s -> s.snapshotActive().stream()).toArray(Task[]::new);
 		Arrays.sort(t);
 		return t;
 	}
 
 	public Task[] getQueuedTasks () {
-		List<Task> temp = new ArrayList<>();
-		for(Deque<Task> q : queued.values())
-			synchronized (q)
-			{
-				temp.addAll(q);
-			}
-		return temp.toArray(new Task[temp.size()]);
+		return taskSets.values().stream().flatMap(s -> s.snapshotQueued().stream()).toArray(Task[]::new);
 	}
 	
 	public boolean canStartTask (Task toCheck) {
@@ -151,25 +221,14 @@ public class TaskManager {
 	}
 	
 	public boolean canStartTask(RPCServer srv) {
-		// we can start a task if we have less then  7 runnning per server and
-		// there are at least 16 RPC slots available
-
-		int activeCalls = srv.getNumActiveRPCCalls();
-		if(activeCalls + 16 >= DHTConstants.MAX_ACTIVE_CALLS)
-			return false;
-		
-		List<Task> currentServerTasks = tasks.stream().filter(t -> t.getRPC().equals(srv)).collect(Collectors.toList());
-		int perServer = currentServerTasks.size();
-		
-		if(perServer < DHTConstants.MAX_ACTIVE_TASKS)
-			return true;
-		
-		// if all their tasks have sent at least their initial volley and we still have enough head room we can allow more tasks.
-		return activeCalls < (DHTConstants.MAX_ACTIVE_CALLS * 2) / 3 && currentServerTasks.stream().allMatch(t -> t.requestConcurrency() < t.getSentReqs());
+		return setFor(srv).map(s -> s.canStartTask(srv)).orElse(false);
 	}
 	
 	public int queuedCount(RPCServer srv) {
-		Deque<Task> q = queued.get(srv.getDerivedID());
+		Optional<ServerSet> set = setFor(srv);
+		if(!set.isPresent())
+			return 0;
+		Collection<Task> q = set.get().queued;
 		synchronized (q) {
 			return q.size();
 		}
@@ -181,7 +240,7 @@ public class TaskManager {
 		b.append("next id: ").append(next_id).append('\n');
 		b.append("#### active: \n");
 		
-		for(Task t : tasks)
+		for(Task t : getActiveTasks())
 			b.append(t.toString()).append('\n');
 		
 		b.append("#### queued: \n");

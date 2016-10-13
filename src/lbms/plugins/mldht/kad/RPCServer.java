@@ -252,7 +252,7 @@ public class RPCServer {
 
 
 			if(requestThrottle.test(c.getRequest().getDestination().getAddress())) {
-				DHT.logInfo("Queueing RPCCall, would be spamming remote peer");
+				DHT.logInfo("Queueing RPCCall, would be spamming remote peer " + c.getExpectedID() + " " + c.knownReachableAtCreationTime() + " " +  AddressUtils.toString(c.getRequest().getDestination()) + " " + c.getRequest().toString());
 				dh_table.getScheduler().schedule(() -> {
 					call_queue.add(c);
 					drainTrigger.run();

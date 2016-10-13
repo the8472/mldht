@@ -281,12 +281,18 @@ public class Node {
 		num_receives = 0;
 		num_entries = 0;
 	}
+	
+	void recieved(MessageBase msg) {
+		sequentialReceived.accept(msg);
+	}
+	
+	Consumer<MessageBase> sequentialReceived = SerializedTaskExecutor.runSerialized(this::recievedConcurrent);
 
 	/**
 	 * An RPC message was received, the node must now update the right bucket.
 	 * @param msg The message
 	 */
-	void recieved(MessageBase msg) {
+	void recievedConcurrent(MessageBase msg) {
 		InetAddress ip = msg.getOrigin().getAddress();
 		Key id = msg.getID();
 		
@@ -454,15 +460,17 @@ public class Node {
 		
 		Key nodeID = toInsert.getID();
 		
-		RoutingTableEntry tableEntry = routingTableCOW.entryForId(nodeID);
+		RoutingTable currentTable = routingTableCOW;
+		RoutingTableEntry tableEntry = currentTable.entryForId(nodeID);
 
 		while(!opts.contains(NEVER_SPLIT) && tableEntry.bucket.isFull() && (opts.contains(FORCE_INTO_MAIN_BUCKET) || toInsert.verifiedReachable()) && tableEntry.prefix.getDepth() < Key.KEY_BITS - 1)
 		{
 			if(!opts.contains(ALWAYS_SPLIT_IF_FULL) && !canSplit(tableEntry, toInsert, opts.contains(RELAXED_SPLIT)))
 				break;
 			
-			splitEntry(tableEntry);
-			tableEntry = routingTableCOW.entryForId(nodeID);
+			splitEntry(currentTable, tableEntry);
+			currentTable = routingTableCOW;
+			tableEntry = currentTable.entryForId(nodeID);
 		}
 		
 		int oldSize = tableEntry.bucket.getNumEntries();
@@ -509,12 +517,11 @@ public class Node {
 		return closestLocalId.threeWayDistance(max.getID(), toInsert.getID()) > 0;
 	}
 	
-	private void splitEntry(RoutingTableEntry entry) {
+	private void splitEntry(RoutingTable expect, RoutingTableEntry entry) {
 		synchronized (CoWLock)
 		{
 			RoutingTable current = routingTableCOW;
-			// check if we haven't entered the sync block after some other thread that did the same split operation
-			if(current.stream().noneMatch(e -> e == entry))
+			if(current != expect)
 				return;
 			
 			RoutingTableEntry a = new RoutingTableEntry(entry.prefix.splitPrefixBranch(false), new KBucket(), this::isLocalBucket);

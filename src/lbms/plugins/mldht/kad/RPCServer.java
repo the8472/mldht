@@ -620,6 +620,7 @@ public class RPCServer {
 	}
 	
 	static final ThreadLocal<ByteBuffer> writeBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(1500));
+	static final ThreadLocal<ByteBuffer> readBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(DHTConstants.RECEIVE_BUFFER_SIZE));
 	
 	private class SocketHandler implements Selectable {
 		DatagramChannel channel;
@@ -673,11 +674,11 @@ public class RPCServer {
 				
 		}
 		
-		private final ByteBuffer readBuffer = ByteBuffer.allocateDirect(DHTConstants.RECEIVE_BUFFER_SIZE);
-		
 		private void readEvent() throws IOException {
 			
 			throttle.decay();
+			
+			ByteBuffer readBuffer = RPCServer.readBuffer.get();
 			
 			while(true)
 			{

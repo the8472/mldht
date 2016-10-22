@@ -2,10 +2,9 @@ package the8472.mldht.cli;
 
 import static the8472.utils.Functional.typedGet;
 
-import the8472.bencode.PathMatcher;
 import the8472.bencode.PrettyPrinter;
-import the8472.bencode.Tokenizer;
 import the8472.bencode.Tokenizer.BDecodingException;
+import the8472.bt.TorrentUtils;
 import the8472.utils.concurrent.SerializedTaskExecutor;
 
 import lbms.plugins.mldht.kad.Key;
@@ -23,7 +22,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -75,17 +73,7 @@ public class TorrentInfo {
 	}
 	
 	Key infoHash() {
-		
-		Tokenizer t = new Tokenizer();
-		PathMatcher m = new PathMatcher("info");
-		m.tokenizer(t);
-		
-		ByteBuffer rawInfo = m.match(raw.duplicate());
-		
-		MessageDigest dig = ThreadLocalUtils.getThreadLocalSHA1();
-		dig.reset();
-		dig.update(rawInfo);
-		return new Key(dig.digest());
+		return TorrentUtils.infohash(raw);
 	}
 	
 	String name() {

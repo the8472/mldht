@@ -39,7 +39,7 @@ Additional:
 ## build
 
     git clone --recursive https://github.com/the8472/mldht.git .
-    mvn package appassembly:assemble
+    mvn package appassembler:assemble
     # install symlink scripts to ~/bin/ 
     mvn antrun:run@link
 

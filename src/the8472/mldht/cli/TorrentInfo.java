@@ -89,8 +89,9 @@ public class TorrentInfo {
 	}
 	
 	List<Map<String, Object>> files() {
-		List<?> files = typedGet(info, "files", List.class).orElse(Collections.emptyList());
-		return (List<Map<String, Object>>) files.stream().filter(e -> e instanceof Map).collect(Collectors.toList());
+		return typedGet(info, "files", List.class).map((List l) -> {
+			return (List<Map<String, Object>>)l.stream().filter(Map.class::isInstance).collect(Collectors.toList());
+		}).orElse(Collections.emptyList());
 	}
 	
 	String raw() {

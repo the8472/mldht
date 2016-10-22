@@ -314,6 +314,8 @@ public class TorrentDumper implements Component {
 	void dumpStats() {
 		long now = System.currentTimeMillis();
 		
+		ByteBuffer buf = ByteBuffer.allocateDirect(MAX_STAT_FILE_SIZE);
+		
 		for(;;) {
 			Entry<Key, FetchStats> entry = fromMessages.ceilingEntry(cursor);
 			if(entry == null) {
@@ -348,8 +350,11 @@ public class TorrentDumper implements Component {
 				
 				if(existing.isPresent()) {
 					Path p = existing.get();
-					try {
-						FetchStats old = FetchStats.fromBencoded(new BDecoder().decode(ByteBuffer.wrap(Files.readAllBytes(p))));
+					try(FileChannel ch = FileChannel.open(p, StandardOpenOption.READ)) {
+						buf.clear();
+						while(ch.read(buf) != -1);
+						buf.flip();
+						FetchStats old = FetchStats.fromBencoded(new BDecoder().decode(buf));
 						
 						
 						Collection<InetAddress> oldAddrs = old.recentSources.stream().map(e -> e.getAddress().getAddress()).collect(Collectors.toList());
@@ -381,7 +386,8 @@ public class TorrentDumper implements Component {
 				Path tempFile = Files.createTempFile(statsDir, statsFile.getFileName().toString(), ".stats");
 				
 				try(FileChannel ch = FileChannel.open(tempFile, StandardOpenOption.WRITE)) {
-					ByteBuffer buf = new BEncoder().encode(toStore.forBencoding(), MAX_STAT_FILE_SIZE);
+					buf.clear();
+					new BEncoder().encodeInto(toStore.forBencoding(), buf);
 					while(buf.hasRemaining())
 						ch.write(buf);
 					ch.close();

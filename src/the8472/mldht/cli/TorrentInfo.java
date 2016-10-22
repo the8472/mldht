@@ -24,6 +24,8 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -76,27 +78,19 @@ public class TorrentInfo {
 		return TorrentUtils.infohash(raw);
 	}
 	
-	String name() {
+	Optional<String> name() {
 		decode();
-		String name = typedGet(info, "name.utf-8", byte[].class).map(b -> new String(b, StandardCharsets.UTF_8)).orElse(null);
-		if(name == null) {
-			name = typedGet(info, "name", byte[].class).map(b -> new String(b, encoding)).orElseThrow(() -> new IllegalArgumentException("no name found"));
+		Optional<String> name = typedGet(info, "name.utf-8", byte[].class).map(b -> new String(b, StandardCharsets.UTF_8));
+		if(!name.isPresent()) {
+			name = typedGet(info, "name", byte[].class).map(b -> new String(b, encoding));
 		}
 		
 		return name;
 	}
 	
-	Stream<String> files() {
-		Optional<List<?>> files = typedGet(info, "files", List.class);
-		/*
-					List<?> files = l;
-					files.stream().filter(Map.class::isInstance).map(f -> (Map<String, Object>)f).forEachOrdered(file -> {
-						typedGet(file, "path", List.class).map(p -> (List<?>)p).ifPresent(path -> {
-							System.out.println(path.stream().filter(byte[].class::isInstance).map(b -> (byte[])b).map(b -> new String(b, e2)).collect(Collectors.joining(File.pathSeparator)));
-						});
-					});
-		 */
-		return Stream.empty();
+	List<Map<String, Object>> files() {
+		List<?> files = typedGet(info, "files", List.class).orElse(Collections.emptyList());
+		return (List<Map<String, Object>>) files.stream().filter(e -> e instanceof Map).collect(Collectors.toList());
 	}
 	
 	String raw() {
@@ -107,45 +101,104 @@ public class TorrentInfo {
 		p.append(root);
 		return p.toString();
 	}
-
-
+	
+	
 	public static void main(String[] argsAry) throws IOException, InterruptedException {
 		List<String> args = new ArrayList<>(Arrays.asList(argsAry));
 		
 		boolean printRaw = ParseArgs.extractBool(args, "-raw");
+		boolean recursive = ParseArgs.extractBool(args, "-r");
+		boolean printLargest = ParseArgs.extractBool(args, "-largest");
 		
 		
-		Stream<Path> files = args.parallelStream().unordered().map(Paths::get).filter(Files::exists).flatMap(p -> {
+		Stream<Path> torrents = args.parallelStream().unordered().map(Paths::get).filter(Files::exists).flatMap(p -> {
 			try {
-				return Files.find(p, 1, (f, attr) -> {
+				return Files.find(p, recursive ? Integer.MAX_VALUE :  1 , (f, attr) -> {
 					return attr.isRegularFile() && attr.size() > 0;
 				},  FileVisitOption.FOLLOW_LINKS);
 			} catch (IOException e) {
 				throw new UncheckedIOException(e);
 			}
-		}).collect(Collectors.toSet()).parallelStream().unordered();
+		}); //.collect(Collectors.toSet()).parallelStream().unordered();
 
 		
 		Consumer<String> printer = SerializedTaskExecutor.runSerialized((String s) -> {
 			System.out.println(s);
 		});
 		
-		files.map(p -> {
+		String newline = "\\u000a|\\u000b|\\u000c|\\u000d|\\u0085|\\u2028|\\u2029";
+		
+		torrents.map(p -> {
 			TorrentInfo ti = new TorrentInfo(p);
 			try {
 				ti.decode();
 			} catch(BDecodingException ex) {
 				return p.toString() + " does not appear to be a bencoded file: " + ex.getMessage();
 			}
-			
-			
-			String st = p.toString();
-			
+
 			if(printRaw)
-				return st + "\n" + ti.raw() + '\n';
+				return p.toString() + "\n" + ti.raw() + '\n';
+			
+			if(ti.info == null)
+				return p.toString() + " does not contain an info dictionary";
+			
+			long length = typedGet(ti.info, "length", Long.class).orElse(0L);
+			long largestSize = length;
+			int numFiles = 1;
+			
+			StringBuilder result = new StringBuilder();
+			Optional<String> name = ti.name();
+			
+			if(!name.isPresent()) {
+				return p.toString() + " does not contain a name field";
+			}
+			
+			String largestFile = "";
+			
+			List<Map<String, Object>> files = ti.files();
+			
+			if(!files.isEmpty()) {
+				length = files.stream().mapToLong(e -> typedGet(e, "length", Long.class).orElse(0L)).sum();
+				numFiles = files.size();
+				Map<String, Object> largest = files.stream().max(Comparator.comparing(e -> typedGet(e, "length", Long.class).orElse(0L))).get();
+				largestSize = typedGet(largest, "length", Long.class).orElse(0L);
+				
+				List<?> path = typedGet(largest, "path.utf-8", List.class).orElse(null);
+				if(path == null)
+					path = typedGet(largest, "path", List.class).orElse(null);
+				
+				largestFile = path.stream().filter(byte[].class::isInstance).map(b -> new String((byte[]) b, StandardCharsets.UTF_8)).collect(Collectors.joining("/"));
+				largestFile = largestFile.replaceAll(newline, " ");
+			}
 			
 			
-			return st + " " + ti.name();
+			result.append(p.toString());
+			result.append(" ");
+			ti.name().map(s -> s.replaceAll(newline, " ")).ifPresent(result::append);
+			
+			if(printLargest) {
+				if(numFiles > 1) {
+					result.append('/');
+					result.append(largestFile);
+				}
+
+				result.append(" size:");
+				result.append(largestSize);
+				result.append('/');
+				result.append(length);
+				result.append(" files:");
+				result.append(numFiles);
+			} else {
+				result.append(" size:");
+				result.append(length);
+				result.append(" files:");
+				result.append(numFiles);
+			}
+			
+			
+			
+			
+			return result.toString();
 		}).forEach(printer::accept);
 		
 

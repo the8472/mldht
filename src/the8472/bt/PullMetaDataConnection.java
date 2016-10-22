@@ -18,6 +18,7 @@ package the8472.bt;
 
 import the8472.bencode.BDecoder;
 import the8472.bencode.BEncoder;
+import the8472.bencode.Tokenizer.BDecodingException;
 import the8472.bt.MetadataPool.Completion;
 
 import lbms.plugins.mldht.kad.DHT;
@@ -483,7 +484,14 @@ public class PullMetaDataConnection implements Selectable {
 				lastUsefulMessage = System.currentTimeMillis();
 				
 				BDecoder decoder = new BDecoder();
-				Map<String,Object> remoteHandshake = decoder.decode(inputBuffer);
+				Map<String,Object> remoteHandshake;
+				try {
+					remoteHandshake = decoder.decode(inputBuffer);
+				} catch (BDecodingException ex) {
+					terminate("invalid bencoding in ltep handshake", CloseReason.OTHER);
+					return;
+				}
+				
 				Map<String,Object> messages = (Map<String, Object>) remoteHandshake.get("m");
 				if(messages == null)
 				{

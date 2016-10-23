@@ -650,9 +650,9 @@ public class TorrentDumper implements Component {
 		activeCount.incrementAndGet();
 		activeTasks.put(k, t);
 		
-		t.awaitCompletion().thenRun(() -> {
+		t.awaitCompletion().thenRunAsync(() -> {
 				taskFinished(stats, t);
-		});
+		}, scheduler);
 	}
 	
 	void taskFinished(FetchStats stats, FetchTask t) {

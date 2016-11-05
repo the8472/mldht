@@ -20,6 +20,7 @@ import the8472.bencode.BDecoder;
 import the8472.bencode.BEncoder;
 import the8472.bencode.Tokenizer.BDecodingException;
 import the8472.bt.MetadataPool.Completion;
+import the8472.utils.AnonAllocator;
 
 import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
@@ -571,7 +572,7 @@ public class PullMetaDataConnection implements Selectable {
 				{ // piece
 					outstandingRequests--;
 					
-					ByteBuffer chunk = ByteBuffer.allocate(inputBuffer.remaining());
+					ByteBuffer chunk = AnonAllocator.allocate(inputBuffer.remaining());
 					chunk.put(inputBuffer);
 					pool.addBuffer(idx.intValue(), chunk);
 					

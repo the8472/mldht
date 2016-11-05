@@ -407,7 +407,7 @@ public class MessageDecoder {
 					put.pubkey = Functional.typedGet(args, "k", byte[].class).orElse(null);
 					put.sequenceNumber = Functional.typedGet(args, "seq", Long.class).orElse(-1L);
 					put.expectedSequenceNumber = Functional.typedGet(args, "cas", Long.class).orElse(-1L);
-					put.salt = Functional.typedGet(args, "salt", byte[].class).orElse(null);
+					put.salt = Functional.typedGet(args, "salt", byte[].class).filter(b -> b.length > 0).orElse(null);
 					put.signature = Functional.typedGet(args, "sig", byte[].class).orElse(null);
 					put.token = Functional.typedGet(args, "token", byte[].class).filter(b -> b.length > 0).orElseThrow(() -> new MessageException("missing or invalid token in PUT request"));
 					put.validate();

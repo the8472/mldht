@@ -16,6 +16,7 @@ import the8472.mldht.TorrentFetcher;
 import the8472.mldht.TorrentFetcher.FetchTask;
 import the8472.mldht.indexing.TorrentDumper.FetchStats.State;
 import the8472.utils.ConfigReader;
+import the8472.utils.ShufflingBag;
 import the8472.utils.concurrent.LoggingScheduledThreadPoolExecutor;
 import the8472.utils.concurrent.SerializedTaskExecutor;
 import the8472.utils.io.FileIO;
@@ -25,7 +26,6 @@ import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.RPCServer;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
-import lbms.plugins.mldht.kad.DHTConstants;
 import lbms.plugins.mldht.kad.messages.AnnounceRequest;
 import lbms.plugins.mldht.kad.messages.GetPeersRequest;
 import lbms.plugins.mldht.kad.messages.MessageBase;
@@ -47,17 +47,16 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.AbstractMap;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.Map.Entry;
 import java.util.TreeMap;
@@ -209,7 +208,8 @@ public class TorrentDumper implements Component {
 	public void start(Collection<DHT> dhts, ConfigReader config) {
 		this.dhts = dhts;
 		fromMessages = new ConcurrentSkipListMap<>();
-		scheduler = new LoggingScheduledThreadPoolExecutor(3, new LoggingScheduledThreadPoolExecutor.NamedDaemonThreadFactory("torrent dumper"), this::log);
+		// purge + dump + prefetch + short-running tasks -> 4
+		scheduler = new LoggingScheduledThreadPoolExecutor(4, new LoggingScheduledThreadPoolExecutor.NamedDaemonThreadFactory("torrent dumper"), this::log);
 		
 		fetcher = new TorrentFetcher(dhts);
 		
@@ -230,6 +230,7 @@ public class TorrentDumper implements Component {
 		// XXX: fetcher.setPeerFilter(pf); // filter seems overly aggressive. investigate if we still need it or can improve it
 		
 		scheduler.scheduleWithFixedDelay(this::dumpStats, 10, 10, TimeUnit.SECONDS);
+		scheduler.scheduleWithFixedDelay(singleThreadedPrefetch, 30, 2, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this.singleThreadedFetches::run, 10, 1, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::cleanBlocklist, 1, 1, TimeUnit.MINUTES);
 		scheduler.scheduleWithFixedDelay(this::diagnostics, 30, 30, TimeUnit.SECONDS);
@@ -553,44 +554,47 @@ public class TorrentDumper implements Component {
 		
 	}
 	
+	// avoids that adjacent tasks are started at the same time. interleaving them with other tasks allows for better cache-priming
+	Queue<FetchStats> toFetchNext = new ShufflingBag<>();
 	
-	static final int PREFETCH_LOW_WATERMARK = 16;
-	
-	Deque<FetchStats> toFetchNext = new ArrayDeque<>();
+	Runnable singleThreadedPrefetch = SerializedTaskExecutor.onceMore(this::prefetch);
 	
 	
 	void prefetch() {
+		synchronized (toFetchNext) {
+			if(toFetchNext.size() >=  maxFetches() / 2)
+				return;
+		}
+
 		
 		Set<Key> dedup = new HashSet<>();
 		
 		dedup.addAll(activeTasks.keySet());
-		toFetchNext.stream().map(FetchStats::getK).forEach(dedup::add);
+		synchronized (toFetchNext) {
+			toFetchNext.stream().map(FetchStats::getK).forEach(dedup::add);
+		}
+		
 		
 		try {
 			Path prio = FetchStats.State.PRIORITY.stateDir(statsDir);
 			Path normal = FetchStats.State.INITIAL.stateDir(statsDir);
 			
-			List<FetchStats> batch = new ArrayList<>();
 
-			// max_tasks strides of 8. should be >= low watermark
-			// TODO: scale with # of rpcservers
-			for(int i = 0;i< DHTConstants.MAX_ACTIVE_TASKS ;i++) {
+			// strides of 8 * maxtasks/4. should be >= low watermark
+			int max = maxFetches() / 4;
+			for(int i = 0;i< max ;i++) {
 				try(Stream<FetchStats> st = filesToFetchers(fetchStatsStream(Stream.of(prio, normal)))) {
-					List<FetchStats> l = st.limit(200).filter(stats -> !dedup.contains(stats.k)).limit(8).collect(Collectors.toList());
+					st.limit(200).filter(stats -> !dedup.contains(stats.k)).limit(8).forEach(e -> {
+						dedup.add(e.getK());
+						synchronized (toFetchNext) {
+							toFetchNext.add(e);
+						}
+					});
 					
-					l.stream().map(FetchStats::getK).forEach(dedup::add);
 					
-					batch.addAll(l);
+					
 				};
 			}
-			
-			// avoids that adjacent tasks are started at the same time. interleaving them with other tasks allows for better cache-priming
-			Collections.shuffle(batch);
-			
-			
-			
-			toFetchNext.addAll(batch);
-			
 		} catch (Exception e) {
 			log(e);
 		}
@@ -600,11 +604,15 @@ public class TorrentDumper implements Component {
 	Runnable singleThreadedFetches = SerializedTaskExecutor.onceMore(this::startFetches);
 	
 	void startFetches() {
-		if(toFetchNext.size() < PREFETCH_LOW_WATERMARK)
-			prefetch();
+		scheduler.execute(singleThreadedPrefetch);
+
+		int max = maxFetches();
 		
-		while(activeCount.get() < 100) {
-			FetchStats st = toFetchNext.poll();
+		while(activeCount.get() < max) {
+			FetchStats st;
+			synchronized (toFetchNext) {
+				st = toFetchNext.poll();
+			}
 			if(st == null)
 				return;
 			fetch(st);
@@ -614,13 +622,19 @@ public class TorrentDumper implements Component {
 	AtomicInteger activeCount = new AtomicInteger();
 	ConcurrentHashMap<Key, FetchTask> activeTasks = new ConcurrentHashMap<>();
 	
+	int maxFetches() {
+		// we need enough tasks to keep many RPC servers busy
+		int minServers = dhts.stream().mapToInt(d -> d.getServerManager().getActiveServerCount()).min().orElse(0);
+		return minServers  * 2 + 100;
+	}
+	
 	void scrubActive() {
 		
 		// as long as there are young connections it means some fraction of the fetch tasks dies quickly
 		// we're fine with other ones taking longer as long as that's the case
 		long youngConnections = activeTasks.values().stream().filter(t -> t.attemptedCount() < 5).count();
 		
-		if(youngConnections > 15 || activeCount.get() < 90)
+		if(youngConnections > 15 || activeCount.get() < maxFetches() * 0.9)
 			return;
 		
 		

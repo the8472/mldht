@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.security.InvalidKeyException;
 import java.security.SignatureException;
 import java.util.Map;
+import java.util.TreeMap;
 
 import org.junit.Test;
 
@@ -86,7 +87,6 @@ public class Bep44 {
 		
 		StorageItem item = roundTripPut(it);
 
-		
 		assertTrue(item.validateSig());
 		assertEquals(item.fingerprint(), expectedTarget);
 		assertEquals(item.getRawValue(), ByteBuffer.wrap(expectedRawValue));
@@ -110,6 +110,19 @@ public class Bep44 {
 		req.populateFromStorage(item);
 		
 		assertEquals(req.deriveTargetKey(), expectedKey);
+	}
+	
+	@Test
+	public void testStructuredValue() throws InvalidKeyException, SignatureException, IOException, MessageException {
+		Map<String, Object> data = new TreeMap<>();
+		data.put("v", new byte[20]);
+		
+		StorageItem in = GenericStorage.buildMutable(data, buildPk(), new byte[]{0,13,127,0}, 1);
+		StorageItem out = roundTripPut(in);
+		assertTrue(out.validateSig());
+		assertTrue(out.getDecodedValue() instanceof Map);
+		Map<String, Object> outVal = (Map<String, Object>) out.getDecodedValue();
+		assertTrue(outVal.containsKey("v"));
 	}
 	
 	

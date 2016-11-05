@@ -16,7 +16,7 @@ public class SpamThrottle {
 	private static final int PER_SECOND = 2;
 	
 	public boolean addAndTest(InetAddress addr) {
-		int updated = add(addr);
+		int updated = saturatingAdd(addr);
 		
 		if(updated >= BURST)
 			return true;
@@ -32,7 +32,17 @@ public class SpamThrottle {
 		return hitcounter.getOrDefault(addr, 0) >= BURST;
 	}
 	
-	public int add(InetAddress addr) {
+	public int calculateDelayAndAdd(InetAddress addr) {
+		int counter = hitcounter.compute(addr, (key, old) -> old == null ? 1 : old + 1);
+		int diff = counter - BURST;
+		return Math.max(diff, 0)*1000/PER_SECOND;
+	}
+	
+	public void saturatingDec(InetAddress addr) {
+		hitcounter.compute(addr, (key, old) -> old == null || old == 1 ? null : old - 1);
+	}
+	
+	public int saturatingAdd(InetAddress addr) {
 		return hitcounter.compute(addr, (key, old) -> old == null ? 1 : Math.min(old + 1, BURST));
 	}
 	

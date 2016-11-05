@@ -62,6 +62,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -249,14 +250,18 @@ public class RPCServer {
 				}
 				break;
 			}
+			
+			int delay = requestThrottle.calculateDelayAndAdd(c.getRequest().getDestination().getAddress());
 
 
-			if(requestThrottle.test(c.getRequest().getDestination().getAddress())) {
-				DHT.logInfo("Queueing RPCCall, would be spamming remote peer " + c.getExpectedID() + " " + c.knownReachableAtCreationTime() + " " +  AddressUtils.toString(c.getRequest().getDestination()) + " " + c.getRequest().toString());
+			if(delay > 0) {
+				delay += ThreadLocalRandom.current().nextInt(30, 50);
+				DHT.logInfo("Queueing RPCCall (+"+delay+"ms), would be spamming remote peer " + c.getExpectedID() + " " + c.knownReachableAtCreationTime() + " " +  AddressUtils.toString(c.getRequest().getDestination()) + " " + c.getRequest().toString());
 				dh_table.getScheduler().schedule(() -> {
 					call_queue.add(c);
 					drainTrigger.run();
-				}, 1500, TimeUnit.MILLISECONDS);
+					requestThrottle.saturatingDec(c.getRequest().getDestination().getAddress());
+				}, delay, TimeUnit.MILLISECONDS);
 				continue;
 			}
 			
@@ -266,7 +271,6 @@ public class RPCServer {
 			if(calls.putIfAbsent(new ByteWrapper(mtid),c) == null)
 			{
 				capacity--;
-				requestThrottle.add(c.getRequest().getDestination().getAddress());
 				dispatchCall(c, mtid);
 			} else {
 				// this is very unlikely to happen

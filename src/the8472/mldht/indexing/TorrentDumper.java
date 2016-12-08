@@ -680,7 +680,9 @@ public class TorrentDumper implements Component {
 				Files.deleteIfExists(stats.statsName(statsDir, st));
 			}
 			
-			if(!t.getResult().isPresent()) {
+			Optional<ByteBuffer> result = t.getResult();
+			
+			if(!result.isPresent()) {
 				stats.setState(FetchStats.State.FAILED);
 				stats.fetchCount++;
 				stats.lastFetchTime = System.currentTimeMillis();
@@ -693,7 +695,7 @@ public class TorrentDumper implements Component {
 				}
 				return;
 			}
-			ByteBuffer infoDict = t.getResult().get();
+			ByteBuffer infoDict = result.get();
 			
 			Path torrentFile = stats.name(torrentDir, ".torrent");
 			Files.createDirectories(torrentFile.getParent());

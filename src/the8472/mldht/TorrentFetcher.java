@@ -264,7 +264,7 @@ public class TorrentFetcher {
 		Map<InetSocketAddress, PullMetaDataConnection.CONNECTION_STATE> closed = new ConcurrentHashMap<>();
 		ConcurrentHashMap<InetSocketAddress, Set<InetAddress>> candidates = new ConcurrentHashMap<>();
 		AtomicBoolean running = new AtomicBoolean(true);
-		ByteBuffer result;
+		MetadataPool result;
 		AtomicInteger thingsBlockingCompletion = new AtomicInteger(1);
 		
 		Map<InetAddress, PullMetaDataConnection> connections = new ConcurrentHashMap<>();
@@ -304,7 +304,7 @@ public class TorrentFetcher {
 		}
 		
 		public Optional<ByteBuffer> getResult() {
-			return Optional.ofNullable(result);
+			return Optional.ofNullable(result).map(MetadataPool::merge);
 		}
 		
 		public void stop() {
@@ -467,7 +467,7 @@ public class TorrentFetcher {
 			if (pool == null)
 				return;
 			if (pool.status() == Completion.SUCCESS) {
-				result = pool.merge();
+				result = pool;
 				state = FetchState.SUCCESS;
 				stop();
 			}

@@ -30,12 +30,7 @@ import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 import lbms.plugins.mldht.utils.NIOConnectionManager;
 import lbms.plugins.mldht.utils.Selectable;
 import static the8472.bt.PullMetaDataConnection.CONNECTION_STATE.*;
-import java.io.BufferedWriter;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetSocketAddress;
@@ -158,19 +153,6 @@ public class PullMetaDataConnection implements Selectable {
 	
 	public Consumer<List<InetSocketAddress>> pexConsumer = (x) -> {};
 	public IntFunction<MetadataPool> 	poolGenerator = (i) -> new MetadataPool(i);
-	
-	static PrintWriter idWriter;
-	
-	static {
-		try
-		{
-			idWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream("./peer_ids.log",true))),true);
-		} catch (FileNotFoundException e)
-		{
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-	}
 	
 	public void keepPexOnlyOpen(boolean toggle) {
 		keepPexOnlyOpen = toggle;
@@ -373,8 +355,6 @@ public class PullMetaDataConnection implements Selectable {
 
 			// check peer ID
 			inputBuffer.get(temp);
-			// log
-			idWriter.append(System.currentTimeMillis()+ " " + new Key(temp).toString(false) + " " + remoteAddress.getAddress().getHostAddress()+ " \n");
 			if(temp[0] == '-' && temp[1] == 'S' && temp[2] == 'D' && temp[3] == '0' && temp[4] == '1' && temp[5] == '0' &&  temp[6] == '0' && temp[7] == '-') {
 				terminate("xunlei doesn't support ltep", CloseReason.NO_LTEP);
 			}

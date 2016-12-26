@@ -56,23 +56,23 @@ public class RPCStats {
 		Formatter f = new Formatter(b);
 		
 		f.format("### local RPCs%n");
-		f.format("%15s %19s | %19s %19s %19s %n%n", "Method", "REQ", "RSP", "Error", "Timeout");
+		f.format("%18s %19s | %19s %19s %19s %n%n", "Method", "REQ", "RSP", "Error", "Timeout");
 		for(Method m : Method.values())
 		{
 			long sent = sentMessages[m.ordinal()][Type.REQ_MSG.ordinal()];
 			long received = receivedMessages[m.ordinal()][Type.RSP_MSG.ordinal()];
 			long error = receivedMessages[m.ordinal()][Type.ERR_MSG.ordinal()];
 			long timeouts = timeoutMessages[m.ordinal()];
-			f.format("%15s %19d | %19d %19d %19d %n", m, sent, received, error, timeouts);
+			f.format("%18s %19d | %19d %19d %19d %n", m, sent, received, error, timeouts);
 		}
 		f.format("%n### remote RPCs%n");
-		f.format("%15s %19s | %19s %19s %n%n", "Method","REQ", "RSP", "Errors");
+		f.format("%18s %19s | %19s %19s %n%n", "Method","REQ", "RSP", "Errors");
 		for(Method m : Method.values())
 		{
 			long received = receivedMessages[m.ordinal()][Type.REQ_MSG.ordinal()];
 			long sent = sentMessages[m.ordinal()][Type.RSP_MSG.ordinal()];
 			long errors = sentMessages[m.ordinal()][Type.ERR_MSG.ordinal()];
-			f.format("%15s %19d | %19d %19d %n", m, received, sent, errors);
+			f.format("%18s %19d | %19d %19d %n", m, received, sent, errors);
 		}
 		
 		return b.toString();

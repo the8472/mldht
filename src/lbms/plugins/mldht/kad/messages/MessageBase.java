@@ -88,7 +88,7 @@ public abstract class MessageBase {
 	
 	public Map<String, Object> getBase()
 	{
-		Map<String, Object> base = new TreeMap<String, Object>();
+		Map<String, Object> base = new TreeMap<>();
 		Map<String, Object> inner = getInnerMap();
 		if(inner != null)
 			base.put(getType().innerKey(), inner);
@@ -238,7 +238,7 @@ public abstract class MessageBase {
 	};
 
 	public static enum Method {
-		PING, FIND_NODE, GET_PEERS, ANNOUNCE_PEER, GET, PUT, UNKNOWN;
+		PING, FIND_NODE, GET_PEERS, ANNOUNCE_PEER, GET, PUT, SAMPLE_INFOHASHES, UNKNOWN;
 		
 		String getRPCName()	{
 			return name().toLowerCase();

@@ -114,6 +114,11 @@ public class GenericBloomFilter implements Cloneable {
 		return log1p(-1.0/m);
 	}
 	
+	@Override
+	public String toString() {
+		return String.format("bits: %d/%d pop: %d/%d k: %d", filter.bitcount(), filter.size(), populationEstimate(), n, k);
+	}
+	
 	public static void main(String[] args) throws Exception {
 
 	}

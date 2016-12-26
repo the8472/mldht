@@ -96,6 +96,10 @@ public class Key implements Radixable<Key> {
 	        hash[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4) + Character.digit(hex.charAt(i+1), 16));
 
 	}
+	
+	public Key(ByteBuffer buf) {
+		buf.get(hash);
+	}
 
 	/**
 	 * Creates a Key with this hash

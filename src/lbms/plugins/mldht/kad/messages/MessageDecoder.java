@@ -209,6 +209,26 @@ public class MessageDecoder {
 				extractNodes(args, "nodes6", DHTtype.IPV6_DHT).ifPresent(n -> m.setNodes(n));
 			});
 			break;
+		case SAMPLE_INFOHASHES:
+			if(!args.containsKey("nodes") && !args.containsKey("nodes6") && !args.containsKey("samples"))
+				throw new MessageException("Expected at least one of the following keys to be present: nodes, nodes6, samples", ErrorCode.ProtocolError);
+			
+			byte[] samples = typedGet(args, "samples", byte[].class).orElse(null);
+			
+			if(samples != null && samples.length % 20 != 0)
+				throw new MessageException("samples length must be a multiple of 20", ErrorCode.ProtocolError);
+			
+			SampleResponse smp = new SampleResponse(mtid);
+			
+			if(samples != null)
+				smp.samples = ByteBuffer.wrap(samples);
+
+			extractNodes(args, "nodes", DHTtype.IPV4_DHT).ifPresent(smp::setNodes);
+			extractNodes(args, "nodes6", DHTtype.IPV6_DHT).ifPresent(smp::setNodes);
+			
+			msg = smp;
+			
+			break;
 		case GET:
 			
 			GetResponse get = new GetResponse(mtid);
@@ -336,6 +356,7 @@ public class MessageDecoder {
 			case FIND_NODE:
 			case GET_PEERS:
 			case GET:
+			case SAMPLE_INFOHASHES:
 			case UNKNOWN:
 				
 				hash = Stream.of(args.get("target"), args.get("info_hash")).filter(byte[].class::isInstance).findFirst().map(byte[].class::cast).orElseThrow(() -> {
@@ -361,6 +382,9 @@ public class MessageDecoder {
 						break;
 					case GET:
 						req = new GetRequest(target);
+						break;
+					case SAMPLE_INFOHASHES:
+						req = new SampleRequest(target);
 						break;
 					default:
 						req = new UnknownTypeRequest(target);

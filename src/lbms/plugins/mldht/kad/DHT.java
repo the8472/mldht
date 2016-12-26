@@ -40,6 +40,8 @@ import lbms.plugins.mldht.kad.messages.PingRequest;
 import lbms.plugins.mldht.kad.messages.PingResponse;
 import lbms.plugins.mldht.kad.messages.PutRequest;
 import lbms.plugins.mldht.kad.messages.PutResponse;
+import lbms.plugins.mldht.kad.messages.SampleRequest;
+import lbms.plugins.mldht.kad.messages.SampleResponse;
 import lbms.plugins.mldht.kad.messages.UnknownTypeResponse;
 import lbms.plugins.mldht.kad.tasks.AnnounceTask;
 import lbms.plugins.mldht.kad.tasks.NodeLookup;
@@ -481,6 +483,20 @@ public class DHT implements DHTBase {
 		rsp.setDestination(r.getOrigin());
 		r.getServer().sendMessage(rsp);
 
+		node.recieved(r);
+	}
+	
+	public void sample(SampleRequest r) {
+		if(!isRunning())
+			return;
+		
+		SampleResponse rsp = new SampleResponse(r.getMTID());
+		rsp.setSamples(db.samples());
+		rsp.setDestination(r.getOrigin());
+		populateResponse(r.getTarget(), rsp, r.doesWant4() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0, r.doesWant6() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0);
+		
+		r.getServer().sendMessage(rsp);
+		
 		node.recieved(r);
 	}
 

@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import lbms.plugins.mldht.kad.DHT.DHTtype;
@@ -43,6 +44,9 @@ public class Database {
 	private ConcurrentMap<Key, PeersSeeds>	items;
 	private AtomicLong timestampCurrent = new AtomicLong();
 	private volatile long timestampPrevious;
+	private volatile byte[] samples = new byte[0];
+	
+	public static final int MAX_SAMPLE_COUNT = 20;
 	
 	private static byte[] sessionSecret = new byte[20];
 	
@@ -51,7 +55,7 @@ public class Database {
 	}
 
 	Database() {
-		items = new ConcurrentHashMap<Key, PeersSeeds>(3000);
+		items = new ConcurrentHashMap<>(3000);
 	}
 	
 	
@@ -283,7 +287,7 @@ public class Database {
 		if(lengthSum == 0)
 			return null;
 		
-		List<DBItem> peerlist = new ArrayList<DBItem>(Math.min(max_entries, lengthSum));
+		List<DBItem> peerlist = new ArrayList<>(Math.min(max_entries, lengthSum));
 		
 		preferPeers &= lengthSum > max_entries;
 		
@@ -355,6 +359,35 @@ public class Database {
 		
 		items.entrySet().removeIf(e -> e.getValue().size() == 0);
 		
+		samples = null;
+		
+	}
+	
+	ByteBuffer samples() {
+		byte[] currentSamples = samples;
+		
+		if(currentSamples != null)
+			return ByteBuffer.wrap(currentSamples);
+		
+		List<Key> fullSet = items.keySet().stream().collect(Collectors.toCollection(ArrayList::new));
+		
+		Collections.shuffle(fullSet);
+		
+		int size = Math.min(MAX_SAMPLE_COUNT, fullSet.size());
+		
+		byte[] newSamples = new byte[size * 20];
+		
+		ByteBuffer buf = ByteBuffer.wrap(newSamples);
+		
+		fullSet.stream().limit(size).forEach(k -> {
+			k.toBuffer(buf);
+		});
+		buf.flip();
+
+		if(size >= MAX_SAMPLE_COUNT)
+			samples = newSamples;
+		
+		return buf;
 	}
 	
 	

@@ -11,6 +11,7 @@ import the8472.mldht.cli.commands.GetTorrent;
 import the8472.mldht.cli.commands.Help;
 import the8472.mldht.cli.commands.Ping;
 import the8472.mldht.cli.commands.Put;
+import the8472.mldht.cli.commands.Sampling;
 
 import lbms.plugins.mldht.kad.DHT;
 
@@ -49,6 +50,7 @@ public abstract class CommandProcessor {
 		m.put("GETPEERS", GetPeers.class);
 		m.put("GET", Get.class);
 		m.put("PUT", Put.class);
+		m.put("SAMPLE", Sampling.class);
 	});
 	
 	public static CommandProcessor from(List<byte[]> rawArgs, Consumer<ByteBuffer> writer, Collection<DHT> dhts) {

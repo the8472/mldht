@@ -40,6 +40,7 @@ public class TorrentInfo {
 	Map<String, Object> root;
 	Map<String, Object> info;
 	Charset encoding = StandardCharsets.UTF_8;
+	boolean truncate = true;
 	
 	
 	public TorrentInfo(Path source) {
@@ -99,6 +100,7 @@ public class TorrentInfo {
 		PrettyPrinter p = new PrettyPrinter();
 		p.indent("  ");
 		p.guessHumanReadableStringValues(true);
+		p.truncateHex(truncate);
 		p.append(root);
 		return p.toString();
 	}
@@ -108,6 +110,7 @@ public class TorrentInfo {
 		List<String> args = new ArrayList<>(Arrays.asList(argsAry));
 		
 		boolean printRaw = ParseArgs.extractBool(args, "-raw");
+		boolean noTrunc = ParseArgs.extractBool(args, "-notrunc");
 		boolean recursive = ParseArgs.extractBool(args, "-r");
 		boolean printLargest = ParseArgs.extractBool(args, "-largest");
 		
@@ -137,8 +140,11 @@ public class TorrentInfo {
 				return p.toString() + " does not appear to be a bencoded file: " + ex.getMessage();
 			}
 
-			if(printRaw)
+			if(printRaw) {
+				ti.truncate = !noTrunc;
 				return p.toString() + "\n" + ti.raw() + '\n';
+			}
+				
 			
 			if(ti.info == null)
 				return p.toString() + " does not contain an info dictionary";

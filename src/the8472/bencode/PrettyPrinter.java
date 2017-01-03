@@ -16,6 +16,7 @@ public class PrettyPrinter {
 	
 	int nesting;
 	boolean guessHuman;
+	boolean truncate;
 	CharSequence indent;
 	
 	public PrettyPrinter() {
@@ -32,6 +33,10 @@ public class PrettyPrinter {
 	
 	public void guessHumanReadableStringValues(boolean value) {
 		guessHuman = value;
+	}
+	
+	public void truncateHex(boolean value) {
+		truncate = value;
 	}
 	
 	enum LinebreakOmit {
@@ -167,14 +172,19 @@ public class PrettyPrinter {
 			}
 			
 			builder.append("0x");
-			Utils.toHex(bytes, builder, 20);
-			
-			if(bytes.length > 20) {
-				builder.append('…');
-				builder.append('(');
-				builder.append(bytes.length);
-				builder.append(')');
+			if(truncate) {
+				Utils.toHex(bytes, builder, 20);
+				
+				if(bytes.length > 20) {
+					builder.append('…');
+					builder.append('(');
+					builder.append(bytes.length);
+					builder.append(')');
+				}
+			} else {
+				Utils.toHex(bytes, builder, Integer.MAX_VALUE);
 			}
+			 
 			
 			if(bytes.length < 10) {
 				builder.append('/');

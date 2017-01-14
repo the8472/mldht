@@ -1,5 +1,8 @@
 package lbms.plugins.mldht.kad.messages;
 
+import static java.lang.Math.max;
+import static java.lang.Math.min;
+
 import lbms.plugins.mldht.kad.Key;
 
 import java.nio.ByteBuffer;
@@ -12,6 +15,10 @@ import java.util.Map;
 public class SampleResponse extends AbstractLookupResponse {
 	
 	ByteBuffer samples;
+	int num;
+	int interval;
+	
+	public static int MAX_INTERVAL = 6 * 3600;
 
 	public SampleResponse(byte[] mtid) {
 		super(mtid, Method.SAMPLE_INFOHASHES, Type.RSP_MSG);
@@ -19,6 +26,14 @@ public class SampleResponse extends AbstractLookupResponse {
 	
 	public void setSamples(ByteBuffer buf) {
 		this.samples = buf;
+	}
+	
+	public void setNum(int num) {
+		this.num = num;
+	}
+	
+	public void setInterval(int interval) {
+		this.interval = max(0, min(interval, MAX_INTERVAL));
 	}
 	
 	public boolean remoteSupportsSampling() {

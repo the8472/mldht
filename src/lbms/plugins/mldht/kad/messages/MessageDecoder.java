@@ -222,6 +222,9 @@ public class MessageDecoder {
 			
 			if(samples != null)
 				smp.samples = ByteBuffer.wrap(samples);
+			
+			typedGet(args, "num", Long.class).ifPresent(l -> smp.setNum(l.intValue()));
+			typedGet(args, "interval", Long.class).ifPresent(l -> smp.setInterval(l.intValue()));
 
 			extractNodes(args, "nodes", DHTtype.IPV4_DHT).ifPresent(smp::setNodes);
 			extractNodes(args, "nodes6", DHTtype.IPV6_DHT).ifPresent(smp::setNodes);

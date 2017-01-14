@@ -58,6 +58,10 @@ public class Prefix extends Key {
 		return bitsEqual(this, k, depth);
 	}
 	
+	public boolean splittable() {
+		return getDepth() < Key.KEY_BITS - 1;
+	}
+	
 	public Prefix splitPrefixBranch(boolean highBranch) {
 		Prefix branch = new Prefix(this);
 		int branchDepth = ++branch.depth;

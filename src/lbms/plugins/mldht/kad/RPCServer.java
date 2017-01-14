@@ -173,6 +173,10 @@ public class RPCServer {
 	void setOutgoingThrottle(SpamThrottle throttle) {
 		this.requestThrottle = throttle;
 	}
+	
+	public SpamThrottle getRequestThrottle() {
+		return this.requestThrottle;
+	}
 
 	/*
 	 * (non-Javadoc)

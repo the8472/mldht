@@ -23,30 +23,40 @@ public class NonReachableCache {
 		InetSocketAddress addr = c.getRequest().getDestination();
 		RPCState state = c.state();
 		
-		if(state != RPCState.TIMEOUT && state != RPCState.RESPONDED)
-			return;
-			
-		map.compute(addr, (k, oldEntry) -> {
-			if(oldEntry != null) {
-				CacheEntry updatedEntry = new CacheEntry();
-				updatedEntry.created = oldEntry.created;
-				// AIMD
-				if(state == RPCState.TIMEOUT)
+		switch (state) {
+			case RESPONDED:
+				
+				map.computeIfPresent(addr, (k, oldEntry) -> {
+					if(oldEntry.failures <= 1)
+						return null;
+
+					CacheEntry updatedEntry = new CacheEntry();
+					updatedEntry.created = oldEntry.created;
+					// multiplicative decrease
+					updatedEntry.failures >>= 1;
+					return updatedEntry;
+				});
+				
+				break;
+			case TIMEOUT:
+				
+				CacheEntry newEntry = new CacheEntry();
+				newEntry.created = System.currentTimeMillis();
+				newEntry.failures = 1;
+
+				map.merge(addr, newEntry, (k, oldEntry) -> {
+					CacheEntry updatedEntry = new CacheEntry();
+					updatedEntry.created = oldEntry.created;
+					// additive increase
 					updatedEntry.failures = oldEntry.failures + 1;
-				else
-					updatedEntry.failures /= 2;
-				if(updatedEntry.failures == 0)
-					return null;
-					
-				return updatedEntry;
-			}
-			
-			CacheEntry newEntry = new CacheEntry();
-			newEntry.created = System.currentTimeMillis();
-			newEntry.failures = 1;
-			
-			return newEntry;
-		});
+					return updatedEntry;
+				});
+				
+				break;
+			default:
+				break;
+		}
+		
 	}
 	
 	public int getFailures(InetSocketAddress addr) {

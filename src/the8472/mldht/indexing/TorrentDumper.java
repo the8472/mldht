@@ -25,6 +25,7 @@ import lbms.plugins.mldht.kad.DHT;
 import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.RPCServer;
+import lbms.plugins.mldht.kad.TaskBuilder;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.messages.AnnounceRequest;
 import lbms.plugins.mldht.kad.messages.GetPeersRequest;
@@ -236,6 +237,7 @@ public class TorrentDumper implements Component {
 		scheduler.scheduleWithFixedDelay(this::diagnostics, 30, 30, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::scrubActive, 10, 20, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(pf::clean, 10, 10, TimeUnit.MINUTES);
+		scheduler.schedule(this::sampling, 2, TimeUnit.MINUTES);
 		
 		scheduler.scheduleWithFixedDelay(() -> {
 			// long-running things working on the filesystem go here to avoid blocking all threads in the pool
@@ -250,6 +252,18 @@ public class TorrentDumper implements Component {
 	
 	void log(Throwable t) {
 		DHT.log(t, LogLevel.Error);
+	}
+	
+	void sampling() {
+		TaskBuilder.fromInstances(dhts).sampleInfoHashes(15, "Torrent Dumper Sampling", (k, addr, srcid) -> {
+			process(k, srcid, addr, null);
+		}).whenComplete((v, ex) -> {
+			if(ex != null) {
+				log(ex);
+			}
+			scheduler.schedule(this::sampling, 7, TimeUnit.HOURS);
+		});
+		
 	}
 	
 	void cleanBlocklist() {

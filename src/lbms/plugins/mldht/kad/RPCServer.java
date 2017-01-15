@@ -23,6 +23,7 @@ import the8472.bencode.Tokenizer.BDecodingException;
 import the8472.bencode.Utils;
 import the8472.utils.concurrent.SerializedTaskExecutor;
 
+import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.messages.ErrorMessage;
 import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
@@ -489,6 +490,13 @@ public class RPCServer {
 			// -> ignore response
 			
 			DHT.logError("mtid matched, socket address did not, ignoring message, request: " + c.getRequest().getDestination() + " -> response: " + msg.getOrigin() + " v:"+ msg.getVersion().map(Utils::prettyPrint).orElse(""));
+			if(msg.getType() != MessageBase.Type.ERR_MSG && dh_table.getType() == DHTtype.IPV6_DHT) {
+				// this is more likely due to incorrect binding implementation in ipv6. notify peers about that
+				// don't bother with ipv4, there are too many complications
+				MessageBase err = new ErrorMessage(msg.getMTID(), ErrorCode.GenericError.code, "A request was sent to " + c.getRequest().getDestination() + " and a response with matching transaction id was received from " + msg.getOrigin() + " . Multihomed nodes should ensure that sockets are properly bound and responses are sent with the correct source socket address. See BEPs 32 and 45.");
+				err.setDestination(msg.getOrigin());
+				sendMessage(err);
+			}
 			
 			// but expect an upcoming timeout if it's really just a misbehaving node
 			c.setSocketMismatch();

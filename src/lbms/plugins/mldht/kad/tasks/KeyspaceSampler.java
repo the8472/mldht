@@ -169,6 +169,7 @@ public class KeyspaceSampler extends Task {
 				req.setWant6(rpc.getDHT().getType() == DHTtype.IPV6_DHT);
 
 				rpcCall(req, kbe.getID(), (c) -> {
+					c.builtFromEntry(kbe);
 					b.candidates.remove(kbe);
 					b.visited.add(kbe);
 				});

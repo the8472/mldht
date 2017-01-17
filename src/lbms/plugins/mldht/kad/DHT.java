@@ -494,7 +494,7 @@ public class DHT implements DHTBase {
 		rsp.setSamples(db.samples());
 		rsp.setDestination(r.getOrigin());
 		rsp.setNum(db.getStats().getKeyCount());
-		rsp.setInterval(DHTConstants.CHECK_FOR_EXPIRED_ENTRIES);
+		rsp.setInterval((int) TimeUnit.MILLISECONDS.toSeconds(DHTConstants.CHECK_FOR_EXPIRED_ENTRIES));
 		populateResponse(r.getTarget(), rsp, r.doesWant4() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0, r.doesWant6() ? DHTConstants.MAX_ENTRIES_PER_BUCKET : 0);
 		
 		r.getServer().sendMessage(rsp);

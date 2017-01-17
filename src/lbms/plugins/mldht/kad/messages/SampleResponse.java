@@ -59,6 +59,8 @@ public class SampleResponse extends AbstractLookupResponse {
 	public Map<String, Object> getInnerMap() {
 		Map<String, Object> inner = super.getInnerMap();
 		
+		inner.put("num", num);
+		inner.put("interval", interval);
 		inner.put("samples", samples);
 		
 		return inner;

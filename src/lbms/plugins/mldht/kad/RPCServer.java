@@ -29,6 +29,7 @@ import lbms.plugins.mldht.kad.messages.ErrorMessage;
 import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
 import lbms.plugins.mldht.kad.messages.FindNodeResponse;
 import lbms.plugins.mldht.kad.messages.MessageBase;
+import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.messages.MessageDecoder;
 import lbms.plugins.mldht.kad.messages.MessageException;
@@ -51,6 +52,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
@@ -424,9 +426,11 @@ public class RPCServer {
 		} catch(MessageException e)
 		{
 			byte[] mtid = typedGet(bedata, MessageBase.TRANSACTION_KEY, byte[].class).orElse(new byte[MTID_LENGTH]);
+			Method m = typedGet(bedata, MessageBase.Type.TYPE_KEY, byte[].class).map(b -> new String(b, StandardCharsets.ISO_8859_1)).map(MessageBase.messageMethod::get).orElse(Method.UNKNOWN);
 			DHT.log(e.getMessage(), LogLevel.Debug);
-			MessageBase err = new ErrorMessage(mtid, e.errorCode.code,e.getMessage());
+			ErrorMessage err = new ErrorMessage(mtid, e.errorCode.code,e.getMessage());
 			err.setDestination(source);
+			err.setMethod(m);
 			sendMessage(err);
 			return;
 		} catch(IOException e) {

@@ -498,7 +498,7 @@ public class RPCServer {
 				// this is more likely due to incorrect binding implementation in ipv6. notify peers about that
 				// don't bother with ipv4, there are too many complications
 				MessageBase err = new ErrorMessage(msg.getMTID(), ErrorCode.GenericError.code, "A request was sent to " + c.getRequest().getDestination() + " and a response with matching transaction id was received from " + msg.getOrigin() + " . Multihomed nodes should ensure that sockets are properly bound and responses are sent with the correct source socket address. See BEPs 32 and 45.");
-				err.setDestination(c.getRequest().getOrigin());
+				err.setDestination(c.getRequest().getDestination());
 				sendMessage(err);
 			}
 			

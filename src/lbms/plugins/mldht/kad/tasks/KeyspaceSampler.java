@@ -34,6 +34,8 @@ public class KeyspaceSampler extends Task {
 	
 	final Prefix range;
 	volatile Key cursor;
+	int compatibleReplies = 0;
+	
 	
 	static class Bucket {
 		Prefix p;
@@ -239,7 +241,10 @@ public class KeyspaceSampler extends Task {
 			return;
 		
 		SampleResponse sam = (SampleResponse) rsp;
-	
+		
+		if(sam.remoteSupportsSampling())
+			compatibleReplies++;
+		
 		
 		for(KBucketEntry kbe :  (Iterable<KBucketEntry>) sam.getNodes(node.getDHT().getType()).entries()::iterator) {
 			if(AddressUtils.isBogon(kbe.getAddress()))
@@ -297,7 +302,7 @@ public class KeyspaceSampler extends Task {
 	
 	@Override
 	public String toString() {
-		return super.toString() + " prefix:" + range + " cursor:" + cursor + " buck:" + rt.size();
+		return super.toString() + " prefix:" + range + " cursor:" + cursor + " buck:" + rt.size() + " supported:" + compatibleReplies;
 	}
 	
 	

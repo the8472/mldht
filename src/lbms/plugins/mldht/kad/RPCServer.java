@@ -594,6 +594,8 @@ public class RPCServer {
 	 * @see lbms.plugins.mldht.kad.RPCServerBase#sendMessage(lbms.plugins.mldht.kad.messages.MessageBase)
 	 */
 	public void sendMessage (MessageBase msg) {
+		if(msg.getDestination() == null)
+			throw new IllegalArgumentException("message destination must not be null");
 		fillPipe(new EnqueuedSend(msg, null));
 	}
 	

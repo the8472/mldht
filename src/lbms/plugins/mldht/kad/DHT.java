@@ -704,7 +704,9 @@ public class DHT implements DHTBase {
 		stats.resetStartedTimestamp();
 
 		logInfo("Starting DHT on port " + getPort());
-		resolveBootstrapAddresses();
+
+		// we need the IPs to filter bootstrap nodes out from the routing table. but don't block startup on DNS resolution
+		scheduler.execute(this::resolveBootstrapAddresses);
 		
 		connectionManager = new NIOConnectionManager("mlDHT "+type.shortName+" NIO Selector");
 		
@@ -952,21 +954,21 @@ public class DHT implements DHTBase {
 	private void resolveBootstrapAddresses() {
 		List<InetSocketAddress> nodeAddresses =  new ArrayList<>();
 		
-		try {
-			for(InetSocketAddress unres : DHTConstants.UNRESOLVED_BOOTSTRAP_NODES) {
+		for(InetSocketAddress unres : DHTConstants.UNRESOLVED_BOOTSTRAP_NODES) {
+			try {
 				for(InetAddress addr : InetAddress.getAllByName(unres.getHostString())) {
 					if(type.canUseAddress(addr))
 						nodeAddresses.add(new InetSocketAddress(addr, unres.getPort()));
 				}
-				
+			} catch (Exception e) {
+				DHT.log("DNS lookupg for " + unres.getHostString() + "failed: " + e.getMessage(), LogLevel.Info);
 			}
-			
-		} catch(Exception e) {
-			DHT.log(e, LogLevel.Error);
-			return;
+
 		}
 		
-		bootstrapAddresses = nodeAddresses;
+		// don't overwrite old addresses if DNS fails
+		if(!nodeAddresses.isEmpty())
+			bootstrapAddresses = nodeAddresses;
 	}
 	
 	Collection<InetSocketAddress> getBootStrapNodes() {

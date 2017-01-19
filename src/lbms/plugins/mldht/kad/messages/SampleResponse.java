@@ -32,6 +32,14 @@ public class SampleResponse extends AbstractLookupResponse {
 		this.num = num;
 	}
 	
+	public int num() {
+		return num;
+	}
+	
+	public int interval() {
+		return interval;
+	}
+	
 	public void setInterval(int interval) {
 		this.interval = max(0, min(interval, MAX_INTERVAL));
 	}

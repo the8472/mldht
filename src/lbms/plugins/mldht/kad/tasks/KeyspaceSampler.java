@@ -185,11 +185,15 @@ public class KeyspaceSampler extends Task {
 		while(cursor.compareTo(range.last()) < 0) {
 			synchronized (rt) {
 				Entry<Key, Bucket> e = rt.floorEntry(cursor);
-				Bucket b = e.getValue();
-				if(!b.candidates.isEmpty())
+				Bucket bucket = e.getValue();
+				if(!bucket.candidates.isEmpty())
 					break;
-				if(inFlight.stream().anyMatch(c -> b.p.isPrefixOf(((SampleRequest)c.getRequest()).getTarget())))
+				if(inFlight.stream().anyMatch(c -> {
+					Prefix bucketPrefix = bucket.p;
+					return bucketPrefix.isPrefixOf(((SampleRequest)c.getRequest()).getTarget()) || bucketPrefix.isPrefixOf(c.getExpectedID());
+				})) {
 					break;
+				}
 				cursor = Optional.ofNullable(rt.higherKey(cursor)).orElse(range.last());
 				populate(cursor);
 			}

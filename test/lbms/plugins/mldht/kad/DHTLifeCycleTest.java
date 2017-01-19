@@ -60,7 +60,7 @@ public class DHTLifeCycleTest {
 			}
 		});
 		
-		DHT dhtInstance = new DHT(DHTtype.IPV6_DHT);
+		DHT dhtInstance = new DHT(DHTtype.IPV4_DHT);
 		
 		
 		

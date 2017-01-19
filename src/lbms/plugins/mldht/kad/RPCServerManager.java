@@ -8,8 +8,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -44,6 +47,13 @@ public class RPCServerManager {
 			srv.checkReachability(now);
 			if(srv.isReachable())
 				reachableServers.add(srv);
+		}
+		
+		if(reachableServers.size() > 0) {
+			CompletableFuture<RPCServer> cf = activeServerFuture.getAndSet(null);
+			if(cf != null) {
+				cf.complete(reachableServers.get(ThreadLocalRandom.current().nextInt(reachableServers.size())));
+			}
 		}
 		
 		activeServers = reachableServers.toArray(new RPCServer[reachableServers.size()]);
@@ -155,6 +165,12 @@ public class RPCServerManager {
 	public void destroy() {
 		destroyed = true;
 		new ArrayList<>(interfacesInUse.values()).parallelStream().forEach(RPCServer::stop);
+		
+		CompletableFuture<RPCServer> cf = activeServerFuture.getAndSet(null);
+		if(cf != null) {
+			cf.completeExceptionally(new DHTException("could not obtain active server, DHT was shut down"));
+		}
+		
 	}
 	
 	public int getServerCount() {
@@ -180,6 +196,16 @@ public class RPCServerManager {
 		if(srvs.length == 0)
 			return fallback ? getRandomServer() : null;
 		return srvs[ThreadLocalUtils.getThreadLocalRandom().nextInt(srvs.length)];
+	}
+	
+	AtomicReference<CompletableFuture<RPCServer>> activeServerFuture = new AtomicReference<>(null);
+	
+	public CompletableFuture<RPCServer> awaitActiveServer() {
+		return activeServerFuture.updateAndGet(existing -> {
+			if(existing != null)
+				return existing;
+			return new CompletableFuture<>();
+		});
 	}
 	
 	/**

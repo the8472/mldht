@@ -122,7 +122,7 @@ public class RPCServer {
 	private long	timeOfLastReceiveCountChange = 0;
 	
 
-	private SocketHandler sel;
+	SocketHandler sel;
 
 	public RPCServer (RPCServerManager manager, InetAddress addr, int port, RPCStats stats) {
 		this.port = port;
@@ -648,7 +648,7 @@ public class RPCServer {
 	static final ThreadLocal<ByteBuffer> writeBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(1500));
 	static final ThreadLocal<ByteBuffer> readBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(DHTConstants.RECEIVE_BUFFER_SIZE));
 	
-	private class SocketHandler implements Selectable {
+	class SocketHandler implements Selectable {
 		DatagramChannel channel;
 		
 		private static final int NOT_INITIALIZED = -1;
@@ -700,7 +700,7 @@ public class RPCServer {
 				
 		}
 		
-		private void readEvent() throws IOException {
+		void readEvent() throws IOException {
 			
 			throttle.decay();
 			

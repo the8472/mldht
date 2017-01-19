@@ -12,7 +12,10 @@ import lbms.plugins.mldht.kad.DHT.LogLevel;
 import lbms.plugins.mldht.kad.DHTStatus;
 
 import java.lang.Thread.UncaughtExceptionHandler;
+import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.nio.channels.DatagramChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -21,6 +24,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+
 import org.junit.Test;
 
 public class DHTLifeCycleTest {
@@ -56,7 +60,7 @@ public class DHTLifeCycleTest {
 			}
 		});
 		
-		DHT dhtInstance = new DHT(DHTtype.IPV4_DHT);
+		DHT dhtInstance = new DHT(DHTtype.IPV6_DHT);
 		
 		
 		
@@ -117,17 +121,42 @@ public class DHTLifeCycleTest {
 		
 		assertEquals(1, dhtInstance.getServerManager().getServerCount());
 		
+		RPCServer srv = dhtInstance.getServerManager().getRandomServer();
+		
+		scheduler.submit(() -> {
+			try {
+				assertEquals(RPCServer.State.RUNNING, srv.getState());
+				// fake a packet to trigger liveness update
+				DatagramChannel chan = DatagramChannel.open();
+				chan.connect(new InetSocketAddress(srv.getBindAddress(), srv.getPort()));
+				ByteBuffer packet = ByteBuffer.allocate(50);
+				packet.put(0, (byte) 'd');
+				chan.write(packet);
+				
+				srv.sel.readEvent();
+				
+				CompletableFuture<RPCServer> cf = dhtInstance.getServerManager().awaitActiveServer().toCompletableFuture();
+				
+				dhtInstance.getServerManager().refresh(System.currentTimeMillis());
+				
+				assertEquals(srv, cf.get(500, TimeUnit.MILLISECONDS));
+				
+			} catch(Exception e) {
+				exceptionCanary.completeExceptionally(e);
+			}
+		}).get();
+		
 		CompletableFuture<Boolean> wasEmpty = new CompletableFuture<>();
 		
 		// single-threaded executor -> we can let startup tasks complete and then stop the DHT from the pool itself
 		// thus there should be no pending tasks on the executor
-		scheduler.execute(() -> {
+		scheduler.submit(() -> {
 			dhtInstance.stop();
 
 			scheduler.purge();
 			
 			wasEmpty.complete(scheduler.getQueue().isEmpty());
-		});
+		}).get();
 		
 		assertTrue("no tasks should remain queued after stop()", wasEmpty.get());
 		

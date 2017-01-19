@@ -26,13 +26,6 @@ public class TaskBuilder {
 		return group;
 	}
 	
-	@SuppressWarnings("serial")
-	public static class DHTException extends Exception {
-		public DHTException(String message) {
-			super(message);
-		}
-	}
-	
 	@FunctionalInterface
 	public interface SamplingCallback {
 		void onResult(Key infohash, InetSocketAddress source, Key sourceNodeId);

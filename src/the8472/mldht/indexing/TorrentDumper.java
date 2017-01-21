@@ -230,9 +230,9 @@ public class TorrentDumper implements Component {
 		
 		// XXX: fetcher.setPeerFilter(pf); // filter seems overly aggressive. investigate if we still need it or can improve it
 		
-		scheduler.scheduleWithFixedDelay(this::dumpStats, 10, 10, TimeUnit.SECONDS);
+		scheduler.scheduleWithFixedDelay(singleThreadedDumpStats, 10, 10, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(singleThreadedPrefetch, 30, 2, TimeUnit.SECONDS);
-		scheduler.scheduleWithFixedDelay(this.singleThreadedFetches::run, 10, 1, TimeUnit.SECONDS);
+		scheduler.scheduleWithFixedDelay(singleThreadedFetches, 10, 1, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::cleanBlocklist, 1, 1, TimeUnit.MINUTES);
 		scheduler.scheduleWithFixedDelay(this::diagnostics, 30, 30, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(this::scrubActive, 10, 20, TimeUnit.SECONDS);
@@ -255,7 +255,7 @@ public class TorrentDumper implements Component {
 	}
 	
 	void sampling() {
-		TaskBuilder.fromInstances(dhts).sampleInfoHashes(15, "Torrent Dumper Sampling", (k, addr, srcid) -> {
+		TaskBuilder.fromInstances(dhts).sampleInfoHashes(16, "Torrent Dumper Sampling", (k, addr, srcid) -> {
 			process(k, srcid, addr, null);
 		}).whenComplete((v, ex) -> {
 			if(ex != null) {
@@ -320,11 +320,17 @@ public class TorrentDumper implements Component {
 		});
 		
 		// if there are bursts, only take the first one
-		if(fromMessages.putIfAbsent(targetId, f) == null)
-			quota.decrementAndGet();
+		if(fromMessages.putIfAbsent(targetId, f) == null) {
+			int newquota = quota.decrementAndGet();
+			if(newquota == QUOTA >> 1)
+				singleThreadedDumpStats.run();
+		}
+			
 	}
 	
 	Key cursor = Key.MIN_KEY;
+	
+	final Runnable singleThreadedDumpStats = SerializedTaskExecutor.onceMore(this::dumpStats);
 	
 	void dumpStats() {
 		long now = System.currentTimeMillis();

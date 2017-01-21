@@ -33,6 +33,8 @@ public class TaskBuilder {
 	
 	/**
 	 * This is an expensive, long-running operation causing considerable amounts of traffic, it should not be performed more frequently than once every 6 hours.
+	 * 
+	 * @param maxTasksPerDht use a power of 2 for optimal keyspace partitioning
 	 */
 	public CompletionStage<Void> sampleInfoHashes(int maxTasksPerDht, String taskName, SamplingCallback onResult) {
 		CompletableFuture<Void> finished = new CompletableFuture<>();

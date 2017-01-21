@@ -323,7 +323,7 @@ public class TorrentDumper implements Component {
 		if(fromMessages.putIfAbsent(targetId, f) == null) {
 			int newquota = quota.decrementAndGet();
 			if(newquota == QUOTA >> 1)
-				singleThreadedDumpStats.run();
+				scheduler.execute(singleThreadedDumpStats);
 		}
 			
 	}

@@ -19,7 +19,8 @@ Implemented specs:
 |[BEP9](http://bittorrent.org/beps/bep_0009.html)|Metadata exchange| Partial; only fetching is supported |
 |[libtorrent.org](http://www.libtorrent.org/dht_extensions.html)| Extended `get_peers` response<br> Forward compatibility<br> Client identification|Yes|
 |[BEP45](http://bittorrent.org/beps/bep_0045.html)|multi-homing/multi-address mode|Yes|
-|[BEP44](http://bittorrent.org/beps/bep_0044.html)|Arbitrary data storage|Yes| 
+|[BEP44](http://bittorrent.org/beps/bep_0044.html)|Arbitrary data storage|Yes|
+|[BEP51](http://bittorrent.org/beps/bep_0051.html)|DHT Infohash Indexing|Yes| 
 
 Additional:
 
@@ -28,7 +29,7 @@ Additional:
 - low latency lookups by using adaptive timeouts and a secondary routing table/cache tuned for RTT instead of stability
 - export of passively observed \<infohash, ip\> tuples to redis to survey torrent activity
 - remote CLI for common DHT operations
-- full automatic torrent indexing
+- full automatic torrent indexing (active and passive dht indexing + metadata exchange)
 
 ## Dependencies
 

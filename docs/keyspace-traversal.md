@@ -15,14 +15,14 @@ The following outlines the algorithm used by mldht for BEP 51 indexing. Other ap
 
 
 1. create a temporary routing table with the home ID of 00..., the home ID will be referred to as *cursor*
-1.1 the routing table should initially consist of 1 bucket spanning the whole keyspace
-1.2. have each bucket in that routing table track the following: up to 8 responded nodes, an unlimited amount of candidate nodes and an unlimited amount of queried nodes
+  1. the routing table should initially consist of 1 bucket spanning the whole keyspace
+  2. have each bucket in that routing table track the following: up to 8 responded nodes, an unlimited amount of candidate nodes and an unlimited amount of queried nodes
 2. seed the initial bucket's candidate list from the node's normal routing table and possibly from a lookup targeted at *cursor*
 3. query non-visited nodes within the current bucket's candidate list with a `target` ID set to a random ID within the bucket's range
 4. split buckets and redistribute nodes when the bucket covering the *cursor* would overflow the responded nodes list
 5. when the candidates list within the bucket is exhausted advance *cursor* to the lowest ID covered by the next in natural keyspace order, i.e. in the direction from 00... to 11...
-5.1. perform bucket merges below the new cursor.
-5.2. populate the new home bucket with additional candidates from the normal routing 
+  1. perform bucket merges below the new cursor.
+  2. populate the new home bucket with additional candidates from the normal routing 
 6. repeat queries, splitting and cursor-advancement until the advancement would point beyond the keyspace
 
 

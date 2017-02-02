@@ -71,7 +71,8 @@ I have not yet settled on a final strategy that I could recommend, but I have fo
 * generally avoid sending multiple requests to the same IP even if suggested ports or IDs differ. but use scoring system to decide otherwise in some circumstances. related to retransmit logic
 * ignore contacts that have been returned by a single node and N RPCs to other contacts supplied by it are already in flight or have failed. this reduces the impact of collusion or polluted routing tables (those two problems are nearly indistinguishable). For this it is necessary to keep a graph of which contacts have been suggested by which previously visited contacts.
 * filter contacts based on the mismatch oracle (see below)
-* filter contacts based on a recently observed non-reachability -> reduces packets wasted on nodes that inject themselves into many routing tables but stay silent on get_peers 
+* filter contacts based on a recently observed non-reachability -> reduces packets wasted on nodes that inject themselves into many routing tables but stay silent on get_peers
+* throttle outgoing requests on a per-ip basis, this serves the double purpose of limiting DoS amplification and avoiding repeatedly contacting nodes that insert themselves under many different IDs into other routing tables  
 * [todo] de-prioritize teredo addresses on ipv6?
 * [todo] factor BEP42 compliance into scoring system
 * [todo] Evaluate the disjoint path approach of S/Kademlia http://doc.tm.uka.de/SKademlia_2007.pdf

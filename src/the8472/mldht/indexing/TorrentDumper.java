@@ -53,6 +53,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -328,8 +329,6 @@ public class TorrentDumper implements Component {
 			
 	}
 	
-	Key cursor = Key.MIN_KEY;
-	
 	final Runnable singleThreadedDumpStats = SerializedTaskExecutor.onceMore(this::dumpStats);
 	
 	void dumpStats() {
@@ -337,27 +336,26 @@ public class TorrentDumper implements Component {
 		
 		ByteBuffer buf = ByteBuffer.allocateDirect(MAX_STAT_FILE_SIZE);
 		
-		for(;;) {
-			Entry<Key, FetchStats> entry = fromMessages.ceilingEntry(cursor);
-			if(entry == null) {
-				cursor = Key.MIN_KEY;
-				break;
+		List<Entry<Key, FetchStats>> workSet = new ArrayList<>();
+		
+		for(Iterator<Entry<Key, FetchStats>> it = fromMessages.entrySet().iterator(); it.hasNext();){
+			Entry<Key, FetchStats> e = it.next();
+			
+			FetchStats toStore = e.getValue();
+			if(Files.exists(toStore.name(torrentDir, ".torrent"))) {
+				it.remove();
+				continue;
 			}
+			
+			workSet.add(e);
+		}
+		
+		workSet.forEach((entry) -> {
 			
 			Key k = entry.getKey();
 			FetchStats toStore = entry.getValue();
 			
 			fromMessages.remove(k);
-			
-			cursor = k.add(Key.setBit(159));
-
-			
-			if(Files.exists(toStore.name(torrentDir, ".torrent"))) {
-				continue;
-			}
-			
-
-
 			
 			try {
 				
@@ -366,7 +364,7 @@ public class TorrentDumper implements Component {
 				if(!existing.isPresent()) {
 					// only throttle IPs for new hashes we don't already know about and wouldn't try anyway
 					if(activeCount.get() > 50 && blocklist.putIfAbsent(toStore.recentSources.get(0).getAddress().getAddress(), now) != null)
-						continue;
+						return;
 				}
 				
 				if(existing.isPresent()) {
@@ -383,7 +381,7 @@ public class TorrentDumper implements Component {
 						
 						// avoid double-taps promoting things to the priority list
 						if(oldAddrs.containsAll(newAddrs) && old.state == FetchStats.State.INITIAL)
-							continue;
+							return;
 						
 						toStore.merge(old);
 						
@@ -426,8 +424,8 @@ public class TorrentDumper implements Component {
 			
 			
 			
-		}
-			
+		});
+		
 		quota.set(QUOTA);
 	}
 	
@@ -603,8 +601,11 @@ public class TorrentDumper implements Component {
 			// strides of 8 * maxtasks/4. should be >= low watermark
 			int max = maxFetches() / 4;
 			for(int i = 0;i< max ;i++) {
-				try(Stream<FetchStats> st = filesToFetchers(fetchStatsStream(Stream.of(prio, normal)))) {
-					st.limit(200).filter(stats -> !dedup.contains(stats.k)).limit(8).forEach(e -> {
+				Stream<FetchStats> pst = filesToFetchers(fetchStatsStream(Stream.of(prio))).limit(200);
+				Stream<FetchStats> nst = filesToFetchers(fetchStatsStream(Stream.of(normal))).limit(200);
+				
+				try(Stream<FetchStats> st = Stream.concat(pst, nst)) {
+					st.filter(stats -> !dedup.contains(stats.k)).limit(8).forEach(e -> {
 						dedup.add(e.getK());
 						synchronized (toFetchNext) {
 							toFetchNext.add(e);

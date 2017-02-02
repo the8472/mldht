@@ -429,6 +429,11 @@ public class PullMetaDataConnection implements Selectable {
 				inputBuffer.flip();
 				return;
 			}
+			
+			if(msgLength < 0) {
+				terminate("invalid message size:" + Integer.toUnsignedLong(msgLength));
+				return;
+			}
 
 			int newLength = BT_HEADER_LENGTH + msgLength;
 

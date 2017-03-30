@@ -149,7 +149,6 @@ public class PullMetaDataConnection implements Selectable {
 	
 	AtomicReference<CONNECTION_STATE> 			state = new AtomicReference<>(STATE_INITIAL) ;
 	
-	BDecoder					decoder = new BDecoder();
 	MetaConnectionHandler		metaHandler;
 	
 	InetSocketAddress			remoteAddress;
@@ -490,10 +489,9 @@ public class PullMetaDataConnection implements Selectable {
 				
 				lastUsefulMessage = System.currentTimeMillis();
 				
-				BDecoder decoder = new BDecoder();
 				Map<String,Object> remoteHandshake;
 				try {
-					remoteHandshake = decoder.decode(inputBuffer);
+					remoteHandshake = ThreadLocalUtils.getDecoder().decode(inputBuffer);
 				} catch (BDecodingException ex) {
 					terminate("invalid bencoding in ltep handshake", CloseReason.OTHER);
 					return;
@@ -760,8 +758,10 @@ public class PullMetaDataConnection implements Selectable {
 			
 			channel.close();
 			
-			String closemsg = String.format("closing pull connection inc: %b reason: %s flag: %s state: %s pid: %s fast: %b age: %d", incoming, reasonStr, reason, oldState, stripToAscii(remotePeerId), remoteSupportsFastExtension, System.currentTimeMillis() - connectionOpenTime);
-			DHT.log(closemsg , LogLevel.Debug);
+			if(DHT.isLogLevelEnabled(LogLevel.Debug)) {
+				String closemsg = String.format("closing pull connection inc: %b reason: %s flag: %s state: %s pid: %s fast: %b age: %d", incoming, reasonStr, reason, oldState, stripToAscii(remotePeerId), remoteSupportsFastExtension, System.currentTimeMillis() - connectionOpenTime);
+				DHT.log(closemsg , LogLevel.Debug);
+			}
 		}
 	}
 	

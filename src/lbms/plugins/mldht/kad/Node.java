@@ -26,6 +26,7 @@ import static lbms.plugins.mldht.kad.Node.InsertOptions.REMOVE_IF_FULL;
 import static the8472.utils.Functional.typedGet;
 
 import the8472.bencode.BEncoder;
+import the8472.utils.AnonAllocator;
 import the8472.utils.CowSet;
 import the8472.utils.Pair;
 import the8472.utils.concurrent.SerializedTaskExecutor;
@@ -895,20 +896,15 @@ public class Node {
 		if(!Files.isDirectory(saveTo.getParent()))
 			return;
 		
-		ByteBuffer tableBuffer = ByteBuffer.allocateDirect(50*1024*1024);
+		ByteBuffer tableBuffer = AnonAllocator.allocate(50*1024*1024);
 		
 		
 		Map<String,Object> tableMap = new TreeMap<>();
 
 		RoutingTable table = routingTableCOW;
 		
-		List<Map<String, Object>> main = new ArrayList<>();
-		List<Map<String, Object>> replacements = new ArrayList<>();
-		
-		table.stream().map(RoutingTableEntry::getBucket).forEach(b -> {
-			b.entriesStream().map(KBucketEntry::toBencoded).collect(Collectors.toCollection(() -> main));
-			b.getReplacementEntries().stream().map(KBucketEntry::toBencoded).collect(Collectors.toCollection(() -> replacements));
-		});
+		Stream<Map<String, Object>> main = table.stream().map(RoutingTableEntry::getBucket).flatMap(b -> b.entriesStream().map(KBucketEntry::toBencoded));
+		Stream<Map<String, Object>> replacements = table.stream().map(RoutingTableEntry::getBucket).flatMap(b -> b.replacementsStream().map(KBucketEntry::toBencoded));
 		
 		tableMap.put("mainEntries", main);
 		tableMap.put("replacements", replacements);
@@ -924,7 +920,7 @@ public class Node {
 		
 		Path tempFile = Files.createTempFile(saveTo.getParent(), "saveTable", "tmp");
 		
-		try(SeekableByteChannel chan = Files.newByteChannel(tempFile, StandardOpenOption.WRITE, StandardOpenOption.SYNC)) {
+		try(SeekableByteChannel chan = Files.newByteChannel(tempFile, StandardOpenOption.WRITE)) {
 			chan.write(tableBuffer);
 			chan.close();
 			Files.move(tempFile, saveTo, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);

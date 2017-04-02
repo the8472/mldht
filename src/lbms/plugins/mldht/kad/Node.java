@@ -673,8 +673,6 @@ public class Node {
 		
 		int newEntryCount = 0;
 		
-		Map<InetAddress, KBucket> addressDedup = new HashMap<>(num_entries);
-		
 		for (RoutingTableEntry e : routingTableCOW.entries) {
 			KBucket b = e.bucket;
 
@@ -691,21 +689,20 @@ public class Node {
 					continue;
 				}
 				
-				// remove duplicate addresses. prefer to keep reachable entries
-				addressDedup.compute(entry.getAddress().getAddress(), (addr, oldBucket) -> {
-					if(oldBucket != null) {
-						KBucketEntry oldEntry = oldBucket.findByIPorID(addr, null).orElse(null);
-						if(oldEntry != null) {
-							if(oldEntry.verifiedReachable()) {
-								b.removeEntryIfBad(entry, true);
-								return oldBucket;
-							} else if(entry.verifiedReachable()) {
-								oldBucket.removeEntryIfBad(oldEntry, true);
-							}
+
+				// remove duplicate entries, keep the older one
+				RoutingTableEntry reverseMapping = knownNodes.get(entry.getAddress().getAddress());
+				if(reverseMapping != null && reverseMapping != e) {
+					KBucket otherBucket = reverseMapping.getBucket();
+					KBucketEntry other = otherBucket.findByIPorID(entry.getAddress().getAddress(), null).orElse(null);
+					if(other != null && !other.equals(entry)) {
+						if(other.getCreationTime() < entry.getCreationTime()) {
+							b.removeEntryIfBad(entry, true);
+						} else {
+							otherBucket.removeEntryIfBad(other, true);
 						}
 					}
-					return b;
-				});
+				}
 				
 			}
 			
@@ -1075,19 +1072,36 @@ public class Node {
 	@Override
 	public String toString() {
 		StringBuilder b = new StringBuilder(10000);
+
+		try {
+			buildDiagnistics(b);
+		} catch (IOException e) {
+			throw new Error("should not happen");
+		}
+			
+		return b.toString();
+	}
+	
+	public void buildDiagnistics(Appendable b) throws IOException {
 		RoutingTable table = routingTableCOW;
 		
 		Collection<Key> localIds = localIDs();
 		
-		b.append("buckets: ").append(table.size()).append(" / entries: ").append(num_entries).append('\n');
+		b.append("buckets: ");
+		b.append(String.valueOf(table.size()));
+		b.append(" / entries: ");
+		b.append(String.valueOf(num_entries));
+		b.append('\n');
 		for(RoutingTableEntry e : table.entries) {
-			b.append(e.prefix).append("   num:").append(e.bucket.getNumEntries()).append(" rep:").append(e.bucket.getNumReplacements());
+			b.append(e.prefix.toString());
+			b.append("   num:");
+			b.append(String.valueOf(e.bucket.getNumEntries()));
+			b.append(" rep:");
+			b.append(String.valueOf(e.bucket.getNumReplacements()));
 			if(localIds.stream().anyMatch(e.prefix::isPrefixOf))
 				b.append(" [Home]");
 			b.append('\n');
 		}
-			
-		return b.toString();
 	}
 
 }

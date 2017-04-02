@@ -735,7 +735,7 @@ public class TorrentDumper implements Component {
 	void diagnostics() {
 		try {
 			FileIO.writeAndAtomicMove(storageDir.resolve("dumper.log"), (p) -> {
-				p.format("Fetcher:%n established: %d%n sockets: %d %n%n", fetcher.openConnections(), fetcher.socketcount());
+				p.format("Fetcher:%n established: %d%n sockets: %d%n%n adaptive timeout:%n%s %n%n", fetcher.openConnections(), fetcher.socketcount(), fetcher.adaptiveConnectTimeoutHistogram());
 				
 				p.format("FetchTasks: %d %n", activeCount.get());
 				activeTasks.values().forEach(ft -> {

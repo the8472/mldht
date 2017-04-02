@@ -140,6 +140,7 @@ public class PullMetaDataConnection implements Selectable {
 
 	int							outstandingRequests;
 	int							maxRequests = 1;
+	int							chunksReceived = 0;
 	
 	long						connectionOpenTime;
 	long						connectTime;
@@ -206,6 +207,10 @@ public class PullMetaDataConnection implements Selectable {
 	
 	public long timeToConnect() {
 		return connectTime - connectionOpenTime;
+	}
+	
+	public int chunksReceived() {
+		return chunksReceived;
 	}
 	
 	// incoming
@@ -575,6 +580,7 @@ public class PullMetaDataConnection implements Selectable {
 				if(type == 1)
 				{ // piece
 					outstandingRequests--;
+					chunksReceived++;
 					
 					ByteBuffer chunk = AnonAllocator.allocate(inputBuffer.remaining());
 					chunk.put(inputBuffer);

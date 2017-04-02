@@ -564,6 +564,11 @@ public class TorrentFetcher {
 						MetadataPool pool = con.getMetaData();
 						processPool(pool);
 
+						if(con.chunksReceived() > 0) {
+							synchronized (tf) {
+								tf.updateAndRecalc(con.timeToConnect());
+							}
+						}
 							
 						thingsBlockingCompletion.decrementAndGet();
 						if(pf != null)
@@ -577,9 +582,6 @@ public class TorrentFetcher {
 						}
 							
 						if(oldState == CONNECTION_STATE.STATE_CONNECTING && newState != CONNECTION_STATE.STATE_CLOSED) {
-							synchronized (tf) {
-								tf.updateAndRecalc(con.timeToConnect());
-							}
 							openConnections.incrementAndGet();
 						}
 							

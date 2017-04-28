@@ -35,11 +35,15 @@ Additional:
 
 - java 8
 - maven 3.1 (building)
+
+installed via maven:
+
+- ed25519-java
 - junit 4.x (tests)
 
 ## build
 
-    git clone --recursive https://github.com/the8472/mldht.git .
+    git clone https://github.com/the8472/mldht.git .
     mvn package appassembler:assemble
     # install symlink scripts to ~/bin/ 
     mvn antrun:run@link

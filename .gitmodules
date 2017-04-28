@@ -1,3 +1,0 @@
-[submodule "ed25519-java"]
-	path = ed25519-java
-	url = https://github.com/the8472/ed25519-java.git

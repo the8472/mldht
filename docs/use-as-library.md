@@ -25,7 +25,8 @@ you can manually bootstrap by adding nodes via `lbms.plugins.mldht.kad.DHT.addDH
 
 ## Debugging
 
-The `the8472.mldht.Diagnostics` class can be used to write extensive debugging information to a log directory
+The `the8472.mldht.Diagnostics` class can be used to write out most of the DHT state to a log directory in a human-readable format.
+`DHT.setLogger(DHTLogger)` and `DHT.setLogLevel(LogLevel)` can log most events, down to individual messages.
 
 
 ## Multihoming, IPv4, IPv6

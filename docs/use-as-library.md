@@ -16,7 +16,7 @@ The necessary logic is encapsulated in `Task` subclasses. The most common action
 
 You can find examples how most Tasks, including BEP44 get and put, are used in the `the8472.mldht.cli.commands` package.
 
-The utility methods `DHT.createPeerLookup(byte[]) and `DHT.announce(PeerLookupTask, boolean, int)` can be used to avoid some boilerplate for simple uses.
+The utility methods `DHT.createPeerLookup(byte[])` and `DHT.announce(PeerLookupTask, boolean, int)` can be used to avoid some boilerplate for simple uses.
 
 ## Bootstrapping
 

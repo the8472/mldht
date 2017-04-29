@@ -47,8 +47,12 @@ installed via maven:
     mvn package appassembler:assemble
     # install symlink scripts to ~/bin/ 
     mvn antrun:run@link
+    
+## embedding as library
 
-## run DHT node in standalone mode
+See [docs/use-as-library.md](docs/use-as-library.md) for further information.
+
+## run in standalone mode
 
     mkdir -p work
     cd work
@@ -65,20 +69,6 @@ this will create various files in the current working directory
 - `.keys/`, default storage directory for BEP44 private keys. used by the CLI
 
 **Security note:** the shell script launches the JVM with a debug port bound to localhost for easier maintenance, thus allowing arbitrary code execution with the current user's permissions. In a multi-user environment a custom script with debugging disabled should be used    
-
-## embedding as library
-
-It is not necessary to use the standalone [<tt>Launcher</tt>](src/the8472/mldht/Launcher.java), instead you can create [<tt>DHT</tt>](src/lbms/plugins/mldht/kad/DHT.java) instances and control their configuration and lifecycle directly.
-
-Consider the Launcher as an example-case how to instantiate DHT nodes.
-
-### Hooking into stream of incoming messages
-
-After creating `DHT` instances, register a callback via `addIncomingMessageListener(DHT.IncomingMessageListener l)`. It will be called for most incoming messages. Some but not all bogus/invalid ones will be prefiltered.
-
-The callback is called from the message processing threads, so it should be non-blocking and thread-safe.
-
-Message objects and their contents should not be modified.   
 
 
 ## network configuration

@@ -58,7 +58,7 @@ See [docs/use-as-library.md](docs/use-as-library.md) for further information.
     cd work
     ../bin/mldht-daemon
     # or manually
-    # java -cp ../target/* the8472.mldht.Launcher &
+    # java -cp "../target/*:../target/dependency/*" the8472.mldht.Launcher &
     
 this will create various files in the current working directory
 - `config.xml`, change settings as needed, core settings will be picked up on file modification
@@ -109,7 +109,7 @@ run CLI client with
 ```
 bin/mldht-remote-cli help
 # or manually:
-# java -cp target/* the8472.mldht.cli.Client help
+# java -cp "target/*" the8472.mldht.cli.Client help
 ```
 
 available commands (subject to change):

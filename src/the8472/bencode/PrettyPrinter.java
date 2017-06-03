@@ -69,6 +69,10 @@ public class PrettyPrinter {
 	}
 	
 	
+	static boolean containsControls(String st) {
+		return st.codePoints().anyMatch(i -> i < 32 && i != '\r' && i != '\n');
+	}
+	
 	
 
 	void prettyPrintInternal(Object o) {
@@ -125,8 +129,14 @@ public class PrettyPrinter {
 		}
 		
 		if(o instanceof String) {
+			String str = (String) o;
+			if(containsControls(str)) {
+				prettyPrintInternal(str.getBytes(StandardCharsets.ISO_8859_1));
+				return;
+			}
+			
 			builder.append('"');
-			builder.append(o);
+			builder.append(str);
 			builder.append('"');
 			return;
 		}
@@ -161,7 +171,7 @@ public class PrettyPrinter {
 				dec.onUnmappableCharacter(CodingErrorAction.REPORT);
 				try {
 					String asString = dec.decode(ByteBuffer.wrap(bytes)).toString();
-					if(asString.codePoints().noneMatch(i -> i < 32 && i != '\r' && i != '\n')) {
+					if(!containsControls(asString)) {
 						builder.append('"').append(asString).append('"');
 						return;
 					}
@@ -173,9 +183,10 @@ public class PrettyPrinter {
 			
 			builder.append("0x");
 			if(truncate) {
-				Utils.toHex(bytes, builder, 20);
+				// btv2 uses 256bit hashes, so only truncate truncate > 32 bytes
+				Utils.toHex(bytes, builder, 32);
 				
-				if(bytes.length > 20) {
+				if(bytes.length > 32) {
 					builder.append('…');
 					builder.append('(');
 					builder.append(bytes.length);

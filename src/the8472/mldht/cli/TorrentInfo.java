@@ -202,8 +202,8 @@ public class TorrentInfo {
 				result.append(numFiles);
 			}
 			
-			
-			
+			result.append(" ih:");
+			result.append(ti.infoHash().toString(false));
 			
 			return result.toString();
 		}).forEach(printer::accept);

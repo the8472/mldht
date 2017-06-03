@@ -636,7 +636,7 @@ public class TorrentDumper implements Component {
 			int remaining = strides * 8 - added[0];
 			
 			// if we have not found enough stats on the filesystem steal directly from the unprocessed incoming messages
-			for(Iterator<Entry<Key, FetchStats>> it = fromMessages.entrySet().iterator();it.hasNext(); ) {
+			for(Iterator<Entry<Key, FetchStats>> it = fromMessages.subMap(Key.createRandomKey(), true, Key.MAX_KEY, true).entrySet().iterator();it.hasNext(); ) {
 				if(remaining <= 0)
 					break;
 				Map.Entry<Key, FetchStats> e = it.next();

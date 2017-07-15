@@ -732,6 +732,13 @@ public class DHT implements DHTBase {
 		// initialize as many RPC servers as we need
 		serverManager.refresh(System.currentTimeMillis());
 		
+		if(serverManager.getServerCount() == 0) {
+			logError("No network interfaces eligible for DHT sockets found during startup."
+					+ "\nAddress family: " + this.getType()
+					+ "\nmultihoming [requires public IP addresses if enabled]: " + config.allowMultiHoming()
+					+ "\nPublic IP addresses: " + AddressUtils.getAvailableGloballyRoutableAddrs(getType().PREFERRED_ADDRESS_TYPE)
+					+ "\nDefault route: " + AddressUtils.getDefaultRoute(getType().PREFERRED_ADDRESS_TYPE));
+		}
 		
 		started();
 
@@ -1015,6 +1022,9 @@ public class DHT implements DHTBase {
 			CompletableFuture<RPCCall> f = new CompletableFuture<>();
 			
 			RPCServer srv = serverManager.getRandomActiveServer(true);
+			if(srv == null)
+				continue;
+			
 			c.addListener(new RPCCallListener() {
 				@Override
 				public void stateTransition(RPCCall c, RPCState previous, RPCState current) {

@@ -74,8 +74,8 @@ public class DHTConstants {
 	}
 	
 	static {
-		// 0.1.0
-		setVersion(10);
+		// 0.1.1
+		setVersion(11);
 	}
 
 }

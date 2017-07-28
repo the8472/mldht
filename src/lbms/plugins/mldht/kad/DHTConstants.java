@@ -63,14 +63,19 @@ public class DHTConstants {
 			InetSocketAddress.createUnresolved("router.utorrent.com", 6881),
 			InetSocketAddress.createUnresolved("router.silotis.us", 6881),
 	};
-	private static String version = "AZ00";
+	private static String version = null;
 
 	public static String getVersion() {
 		return version;
 	}
 
 	public static void setVersion (int ver) {
-		version = "Az" + new String(new byte[] { (byte) (ver >> 8 & 0xFF) , (byte) (ver & 0xff) }, StandardCharsets.ISO_8859_1);
+		version = "ml" + new String(new byte[] { (byte) (ver >> 8 & 0xFF) , (byte) (ver & 0xff) }, StandardCharsets.ISO_8859_1);
+	}
+	
+	static {
+		// 0.1.0
+		setVersion(10);
 	}
 
 }

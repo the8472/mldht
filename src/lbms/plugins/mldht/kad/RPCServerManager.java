@@ -13,14 +13,16 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
-
+import java.util.stream.Stream;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 
@@ -77,6 +79,8 @@ public class RPCServerManager {
 			
 			newBindAddrs.add(AddressUtils.getAnyLocalAddress(type));
 			
+			newBindAddrs.removeIf(dht.getConfig().filterBindAddress().negate());
+			
 			validBindAddresses = newBindAddrs;
 			
 		} catch (SocketException e) {
@@ -95,15 +99,32 @@ public class RPCServerManager {
 		
 	}
 	
+	private Predicate<InetAddress> normalizedAddressPredicate() {
+		Predicate<InetAddress> pred = dht.config.filterBindAddress();
+		return (addr) -> {
+			if(pred.test(AddressUtils.getAnyLocalAddress(addr.getClass()))) {
+				return true;
+			}
+			return pred.test(addr);
+		};
+	}
+	
+	
+	
 	private void startNewServers() {
 		boolean multihome = dht.config.allowMultiHoming();
 		Class<? extends InetAddress> addressType = dht.getType().PREFERRED_ADDRESS_TYPE;
+		
+		Predicate<InetAddress> addressFilter = normalizedAddressPredicate();
 		
 		
 		if(multihome) {
 			// we only consider global unicast addresses in multihoming mode
 			// this is mostly meant for server configurations
-			List<InetAddress> addrs = new ArrayList<>(AddressUtils.getAvailableGloballyRoutableAddrs(addressType));
+			List<InetAddress> addrs = AddressUtils.getAvailableGloballyRoutableAddrs(addressType)
+				.stream()
+				.filter(addressFilter)
+				.collect(Collectors.toCollection(ArrayList::new));
 			addrs.removeAll(interfacesInUse.keySet());
 			// create new servers for all IPs we aren't currently haven't bound
 			addrs.forEach(addr -> newServer(addr));
@@ -115,6 +136,7 @@ public class RPCServerManager {
 		
 		// check if we have bound to an anylocaladdress because we didn't know any better and consensus converged on a local address
 		// that's mostly going to happen on v6 if we can't find a default route for v6
+		// no need to recheck address filter since it allowed any local address bind in the first place
 		if(current != null && current.getBindAddress().isAnyLocalAddress() && current.getConsensusExternalAddress() != null && AddressUtils.isValidBindAddress(current.getConsensusExternalAddress().getAddress()))
 		{
 			InetAddress rebindAddress = current.getConsensusExternalAddress().getAddress();
@@ -130,20 +152,34 @@ public class RPCServerManager {
 		// this is our default strategy. try to determine the default route
 		InetAddress defaultBind = AddressUtils.getDefaultRoute(addressType);
 		
-		if(defaultBind != null) {
+		if(defaultBind != null && addressFilter.test(defaultBind)) {
 			newServer(defaultBind);
 			return;
 		}
 		
 		// last resort for v6, try a random global unicast address, otherwise anylocal
 		if(addressType.isAssignableFrom(Inet6Address.class)) {
-			InetAddress addr = AddressUtils.getAvailableGloballyRoutableAddrs(addressType).stream().findAny().orElse(AddressUtils.getAnyLocalAddress(addressType));
-			newServer(addr);
+			InetAddress addr = AddressUtils.getAvailableGloballyRoutableAddrs(addressType)
+				.stream()
+				.filter(addressFilter)
+				.findAny()
+				.orElse(Optional.of(AddressUtils.getAnyLocalAddress(addressType))
+					.filter(addressFilter)
+					.orElse(null));
+			if(addr != null) {
+				newServer(addr);
+			}
 			return;
 		}
 		
-		// last resort for v4, bind to anylocal address since we don't know  how to pick among multiple NATed routes
-		newServer(AddressUtils.getAnyLocalAddress(addressType));
+		// last resort v4: try any-local address first. If the address filter forbids that we try any of the interface addresses including non-global ones
+		Stream.concat(Stream.of(AddressUtils.getAnyLocalAddress(addressType)), AddressUtils.nonlocalAddresses()
+			.filter(dht.getType()::canUseAddress))
+			.filter(addressFilter)
+			.findFirst()
+			.ifPresent(addr -> {
+				newServer(addr);
+		});
 	}
 	
 	private void newServer(InetAddress addr) {

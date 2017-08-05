@@ -79,7 +79,7 @@ public class RPCServerManager {
 			
 			newBindAddrs.add(AddressUtils.getAnyLocalAddress(type));
 			
-			newBindAddrs.removeIf(dht.getConfig().filterBindAddress().negate());
+			newBindAddrs.removeIf(normalizedAddressPredicate().negate());
 			
 			validBindAddresses = newBindAddrs;
 			

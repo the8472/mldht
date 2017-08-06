@@ -30,8 +30,8 @@ public class NodeFactory {
 		return unchecked(() -> InetAddress.getByAddress(addr));
 	}
 	
-	static DHT buildDHT() {
-		DHT dht = new DHT(DHTtype.IPV6_DHT);
+	static DHT buildDHT(DHT.DHTtype type) {
+		DHT dht = new DHT(type);
 		dht.config = new DHTConfiguration() {
 			
 			@Override
@@ -67,6 +67,11 @@ public class NodeFactory {
 		dht.populate();
 		
 		return dht;
+		
+	}
+	
+	static DHT buildDHT() {
+		return buildDHT(DHTtype.IPV6_DHT);
 	}
 
 	static void fillTable(Node node) {

@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -133,6 +134,7 @@ public class RPCServerManager {
 		
 		// single home
 		RPCServer current = interfacesInUse.values().stream().findAny().orElse(null);
+		InetAddress defaultBind = Optional.ofNullable(AddressUtils.getDefaultRoute(addressType)).filter(addressFilter).orElse(null);
 		
 		// check if we have bound to an anylocaladdress because we didn't know any better and consensus converged on a local address
 		// that's mostly going to happen on v6 if we can't find a default route for v6
@@ -145,14 +147,19 @@ public class RPCServerManager {
 			return;
 		}
 		
+		// default bind changed and server is not reachable anymore. this may happen when an interface is nominally still available but not routable anymore. e.g. ipv6 temporary addresses
+		if(current != null && defaultBind != null && !current.getBindAddress().equals(defaultBind) && !current.isReachable() && current.age().getSeconds() > TimeUnit.MINUTES.toSeconds(2)) {
+			current.stop();
+			newServer(defaultBind);
+			return;
+		}
+		
 		// single homed & already have a server -> no need for another one
 		if(current != null)
 			return;
 		
-		// this is our default strategy. try to determine the default route
-		InetAddress defaultBind = AddressUtils.getDefaultRoute(addressType);
-		
-		if(defaultBind != null && addressFilter.test(defaultBind)) {
+		// this is our default strategy.
+		if(defaultBind != null) {
 			newServer(defaultBind);
 			return;
 		}

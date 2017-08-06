@@ -827,7 +827,6 @@ public class RPCServer {
 				return;
 			writeState.set(CLOSED);
 			stop();
-			connectionManager.deRegister(this);
 			channel.close();
 		}
 		

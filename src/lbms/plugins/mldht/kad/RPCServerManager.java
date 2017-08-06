@@ -191,11 +191,14 @@ public class RPCServerManager {
 	
 	private void newServer(InetAddress addr) {
 		RPCServer srv = new RPCServer(this,addr,dht.config.getListeningPort(), dht.serverStats);
-		// doing the socket setup takes time, do it in the background
-		srv.setOutgoingThrottle(outgoingThrottle);
-		onServerRegistration.forEach(c -> c.accept(srv));
-		dht.getScheduler().execute(srv::start);
-		interfacesInUse.put(addr, srv);
+		if(interfacesInUse.putIfAbsent(addr, srv) == null)  {
+			srv.setOutgoingThrottle(outgoingThrottle);
+			onServerRegistration.forEach(c -> c.accept(srv));
+			// doing the socket setup takes time, do it in the background
+			dht.getScheduler().execute(srv::start);
+		} else {
+			srv.stop();
+		}
 	}
 	
 	List<Consumer<RPCServer>> onServerRegistration = new CopyOnWriteArrayList<>();

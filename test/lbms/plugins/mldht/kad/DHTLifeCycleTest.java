@@ -147,6 +147,8 @@ public class DHTLifeCycleTest {
 				
 				srv.sel.readEvent();
 				
+				assertEquals(1, srv.getNumReceived());
+				
 				CompletableFuture<RPCServer> cf = dhtInstance.getServerManager().awaitActiveServer().toCompletableFuture();
 				
 				dhtInstance.getServerManager().refresh(System.currentTimeMillis());

@@ -142,6 +142,7 @@ public class RPCServerManager {
 		if(current != null && current.getBindAddress().isAnyLocalAddress() && current.getConsensusExternalAddress() != null && AddressUtils.isValidBindAddress(current.getConsensusExternalAddress().getAddress()))
 		{
 			InetAddress rebindAddress = current.getConsensusExternalAddress().getAddress();
+			// TODO: avoid reentrancy into startNewServers
 			current.stop();
 			newServer(rebindAddress);
 			return;

@@ -9,6 +9,13 @@
 		<connection>scm:git:https://github.com/the8472/mldht.git</connection>
 		<url>https://github.com/the8472/mldht</url>
 	</scm>
+	<distributionManagement>
+		<repository>
+			<id>bintray-the8472-maven</id>
+			<name>the8472-maven</name>
+			<url>https://api.bintray.com/maven/the8472/maven/mldht/;publish=1</url>
+		</repository>
+	</distributionManagement>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>

@@ -180,7 +180,7 @@ public class RPCServer {
 			throw new IllegalStateException("already initialized");
 		startTime = Instant.now();
 		state = State.RUNNING;
-		DHT.logInfo("Starting RPC Server");
+		DHT.logInfo("Starting RPC Server " + addr + " " + derivedId.toString(false));
 		sel.start();
 		
 	}
@@ -204,6 +204,7 @@ public class RPCServer {
 		dh_table.getNode().removeId(derivedId);
 		manager.serverRemoved(this);
 		pipeline.clear();
+		DHT.logInfo("Stopped RPC Server " + addr + " " + derivedId.toString(false));
 	}
 	
 	

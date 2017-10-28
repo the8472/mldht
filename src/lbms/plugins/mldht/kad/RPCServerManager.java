@@ -93,7 +93,9 @@ public class RPCServerManager {
 	public void doBindChecks() {
 		updateBindAddrs();
 		getAllServers().forEach(srv -> {
-			if(!validBindAddresses.contains(srv.getBindAddress())) {
+			InetAddress addr = srv.getBindAddress();
+			if(!validBindAddresses.contains(addr)) {
+				DHT.logInfo("bind address no longer valid, removing from active set: " + addr);
 				srv.stop();
 			}
 		});
@@ -142,6 +144,7 @@ public class RPCServerManager {
 		if(current != null && current.getBindAddress().isAnyLocalAddress() && current.getConsensusExternalAddress() != null && AddressUtils.isValidBindAddress(current.getConsensusExternalAddress().getAddress()))
 		{
 			InetAddress rebindAddress = current.getConsensusExternalAddress().getAddress();
+			DHT.logInfo("rebinding any local to" + rebindAddress);
 			// TODO: avoid reentrancy into startNewServers
 			current.stop();
 			newServer(rebindAddress);
@@ -150,6 +153,7 @@ public class RPCServerManager {
 		
 		// default bind changed and server is not reachable anymore. this may happen when an interface is nominally still available but not routable anymore. e.g. ipv6 temporary addresses
 		if(current != null && defaultBind != null && !current.getBindAddress().equals(defaultBind) && !current.isReachable() && current.age().getSeconds() > TimeUnit.MINUTES.toSeconds(2)) {
+			DHT.logInfo("stopping currently unreachable " + current.getBindAddress() + "to bind to new default route" + defaultBind);
 			current.stop();
 			newServer(defaultBind);
 			return;
@@ -161,6 +165,7 @@ public class RPCServerManager {
 		
 		// this is our default strategy.
 		if(defaultBind != null) {
+			DHT.logInfo("selecting default route bind" + defaultBind);
 			newServer(defaultBind);
 			return;
 		}
@@ -176,6 +181,7 @@ public class RPCServerManager {
 					.orElse(null));
 			if(addr != null) {
 				newServer(addr);
+				DHT.logInfo("Last resort address selection" + addr);
 			}
 			return;
 		}
@@ -186,6 +192,7 @@ public class RPCServerManager {
 			.filter(addressFilter)
 			.findFirst()
 			.ifPresent(addr -> {
+				DHT.logInfo("last resort address selection " + addr);
 				newServer(addr);
 		});
 	}

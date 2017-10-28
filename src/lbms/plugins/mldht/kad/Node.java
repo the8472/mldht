@@ -882,6 +882,12 @@ public class Node {
 		if(!Files.isDirectory(saveTo.getParent()))
 			return;
 		
+		Key currentRootID = getRootID();
+		
+		// called in an uninitialized state, no point in overwriting the table
+		if(currentRootID == null)
+			return;
+		
 		ByteBuffer tableBuffer = AnonAllocator.allocate(50*1024*1024);
 		
 		
@@ -900,7 +906,7 @@ public class Node {
 		tableMap.put("log2estimate", doubleBuf);
 		
 		tableMap.put("timestamp", System.currentTimeMillis());
-		tableMap.put("oldKey", getRootID().getHash());
+		tableMap.put("oldKey", currentRootID.getHash());
 		
 		new BEncoder().encodeInto(tableMap, tableBuffer);
 		

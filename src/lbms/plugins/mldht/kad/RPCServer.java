@@ -48,6 +48,7 @@ import java.util.Collection;
 import java.util.Formatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -59,6 +60,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * @author The_8472, Damokles
@@ -203,6 +205,9 @@ public class RPCServer {
 		}
 		dh_table.getNode().removeId(derivedId);
 		manager.serverRemoved(this);
+		Stream.of(calls.values().stream(), call_queue.stream(), pipeline.stream().map(es -> es.associatedCall).filter(Objects::nonNull)).flatMap(s -> s).forEach(r -> {
+			r.cancel();
+		});
 		pipeline.clear();
 		DHT.logInfo("Stopped RPC Server " + addr + " " + derivedId.toString(false));
 	}

@@ -145,7 +145,6 @@ public class RPCServerManager {
 		{
 			InetAddress rebindAddress = current.getConsensusExternalAddress().getAddress();
 			DHT.logInfo("rebinding any local to" + rebindAddress);
-			// TODO: avoid reentrancy into startNewServers
 			current.stop();
 			newServer(rebindAddress);
 			return;
@@ -217,7 +216,6 @@ public class RPCServerManager {
 	
 	void serverRemoved(RPCServer srv) {
 		interfacesInUse.remove(srv.getBindAddress(),srv);
-		refresh(System.currentTimeMillis());
 		dht.getTaskManager().removeServer(srv);
 	}
 	

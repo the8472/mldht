@@ -12,8 +12,6 @@ matrix:
           packages:
             - oracle-java9-installer
             - oracle-java9-set-default
-  allow_failures:
-    - jdk: oraclejdk9
 
 before_install:
   - export MAVEN_SKIP_RC=true

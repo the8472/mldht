@@ -10,6 +10,7 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -24,6 +25,7 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
 import lbms.plugins.mldht.kad.utils.AddressUtils;
 import lbms.plugins.mldht.kad.utils.ThreadLocalUtils;
 
@@ -38,7 +40,7 @@ public class RPCServerManager {
 	
 	DHT dht;
 	private ConcurrentHashMap<InetAddress,RPCServer> interfacesInUse = new ConcurrentHashMap<>();
-	private List<InetAddress> validBindAddresses = Collections.emptyList();
+	private volatile List<InetAddress> validBindAddresses = Collections.emptyList();
 	private volatile RPCServer[] activeServers = new RPCServer[0];
 	private SpamThrottle outgoingThrottle = new SpamThrottle();
 	
@@ -98,9 +100,10 @@ public class RPCServerManager {
 	
 	public void doBindChecks() {
 		updateBindAddrs();
+		Collection<InetAddress> valid = validBindAddresses;
 		getAllServers().forEach(srv -> {
 			InetAddress addr = srv.getBindAddress();
-			if(!validBindAddresses.contains(addr)) {
+			if(!valid.contains(addr)) {
 				DHT.logInfo("bind address no longer valid, removing from active set: " + addr);
 				srv.stop();
 			}
@@ -117,7 +120,6 @@ public class RPCServerManager {
 			return pred.test(addr);
 		};
 	}
-	
 	
 	
 	private void startNewServers() {

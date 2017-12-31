@@ -71,6 +71,8 @@ public class RPCServerManager {
 		try {
 			Class<? extends InetAddress> type = dht.getType().PREFERRED_ADDRESS_TYPE;
 			
+			List<InetAddress> oldBindAddresses = validBindAddresses;
+			
 			List<InetAddress> newBindAddrs = Collections.list(NetworkInterface.getNetworkInterfaces()).stream()
 					.flatMap(iface -> iface.getInterfaceAddresses().stream())
 					.map(ifa -> ifa.getAddress())
@@ -81,6 +83,10 @@ public class RPCServerManager {
 			newBindAddrs.add(AddressUtils.getAnyLocalAddress(type));
 			
 			newBindAddrs.removeIf(normalizedAddressPredicate().negate());
+			
+			if(!oldBindAddresses.equals(newBindAddrs)) {
+				DHT.logInfo("updating set of valid bind addresses\n old: " + oldBindAddresses + "\n new: " + newBindAddrs);
+			}
 			
 			validBindAddresses = newBindAddrs;
 			

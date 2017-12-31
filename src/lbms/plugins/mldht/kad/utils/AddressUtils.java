@@ -52,16 +52,21 @@ public class AddressUtils {
 		return raw[0] == 0x20 && raw[1] == 0x01 && raw[2] == 0x00 && raw[3] == 0x00;
 	}
 	
+	private final static byte[] LOCAL_BROADCAST = new byte[] {(byte) 0xff, (byte) 0xff, (byte) 0xff, (byte) 0xff};
+	
 	public static boolean isGlobalUnicast(InetAddress addr)
 	{
+		// local identification block
 		if(addr instanceof Inet4Address && addr.getAddress()[0] == 0)
+			return false;
+		// this would be rejected by a socket with broadcast disabled anyway, but filter it to reduce exceptions
+		if(addr instanceof Inet4Address && java.util.Arrays.equals(addr.getAddress(), LOCAL_BROADCAST))
 			return false;
 		return !(addr.isAnyLocalAddress() || addr.isLinkLocalAddress() || addr.isLoopbackAddress() || addr.isMulticastAddress() || addr.isSiteLocalAddress());
 	}
 	
 	public static byte[] packAddress(InetSocketAddress addr) {
 		byte[] result = null;
-		int port = addr.getPort();
 		
 		if(addr.getAddress() instanceof Inet4Address) {
 			result = new byte[6];

@@ -3,15 +3,9 @@ language: java
 matrix:
   include:
     - jdk: oraclejdk8
-    - sudo: required
+    - sudo: false
       dist: trusty
-      group: edge
       jdk: oraclejdk9
-      addons:
-        apt:
-          packages:
-            - oracle-java9-installer
-            - oracle-java9-set-default
 
 before_install:
   - export MAVEN_SKIP_RC=true

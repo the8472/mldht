@@ -738,7 +738,8 @@ public class TorrentDumper implements Component {
 		
 		FetchTask t = fetcher.fetch(k, (fetch) -> {
 			fetch.configureLookup(lookup -> {
-				// XXX: lookup.setFastTerminate(true); // fast mode seems to be too aggressive, disable until we can investigate. relaxed taskmanager limits still lead to decent performance anyway
+				// fast termination seems to bail out too early sometimes. keep an eye on it
+				lookup.setFastTerminate(true);
 				lookup.filterKnownUnreachableNodes(true);
 				lookup.setLowPriority(true);
 			});

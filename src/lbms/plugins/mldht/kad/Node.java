@@ -290,6 +290,12 @@ public class Node {
 		Optional<Key> expectedId = associatedCall.map(RPCCall::getExpectedID);
 		Optional<Pair<KBucket, KBucketEntry>> entryByIp = bucketForIP(ip);
 		
+		// RPCServer only verifies IP equality for responses.
+		// we only want remote nodes with stable ports in our routing table, so appley a stricter check here
+		if(associatedCall.isPresent() && !associatedCall.filter(c -> c.getRequest().getDestination().equals(c.getResponse().getOrigin())).isPresent()) {
+			return;
+		}
+		
 		if(entryByIp.isPresent()) {
 			KBucket oldBucket = entryByIp.get().a;
 			KBucketEntry oldEntry = entryByIp.get().b;

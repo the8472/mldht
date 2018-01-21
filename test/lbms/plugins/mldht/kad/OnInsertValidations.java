@@ -5,7 +5,9 @@
  ******************************************************************************/
 package lbms.plugins.mldht.kad;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static the8472.utils.Functional.unchecked;
 
@@ -40,13 +42,30 @@ public class OnInsertValidations {
 	
 	private PingResponse buildResponse(Key k, InetSocketAddress origin) {
 		PingRequest req = new PingRequest();
+		req.setDestination(origin);
 		RPCCall call = new RPCCall(req);
 		PingResponse rsp = new PingResponse(new byte[0]);
 		rsp.setAssociatedCall(call);
 		rsp.setID(k);
 		rsp.setOrigin(origin);
+		call.response(rsp);
 		
 		return rsp;
+	}
+	
+	@Test
+	public void testPortMatching() {
+		PingResponse rsp = buildResponse(Key.createRandomKey(), new InetSocketAddress(NodeFactory.generateIp((byte)0x00), 1234));
+		
+		node.recieved(rsp);
+		KBucketEntry entry = node.table().get(0).getBucket().findByIPorID(null, rsp.getID()).orElseGet(null);
+		assertNotNull(entry);
+		assertEquals(0, entry.failedQueries());
+
+		entry.signalRequestTimeout();
+		rsp.setOrigin(new InetSocketAddress(rsp.getOrigin().getAddress(), 3456) );
+		node.recieved(rsp);
+		assertEquals("timeout does not reset if response port mismatches", 1, entry.failedQueries());
 	}
 
 	@Test
@@ -75,7 +94,7 @@ public class OnInsertValidations {
 		
 		Key newId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
 		PingResponse rsp = buildResponse(newId, new InetSocketAddress(NodeFactory.generateIp((byte)0x00), 1234));
-		
+
 		node.recieved(rsp);
 		
 		// doesn't get inserted because the replacement buckets only overwrite entries once every second and the main bucket is stable anyway
@@ -108,17 +127,10 @@ public class OnInsertValidations {
 	public void testTrustedNodes() {
 		NodeFactory.fillTable(node);
 		
-		Collection<Key> localIds = node.localIDs();
-		
 		RoutingTableEntry nonLocalFullBucket = node.table().stream().filter(e -> e.prefix.depth == 1).findAny().get();
 		
-		PingRequest req = new PingRequest();
-		RPCCall call = new RPCCall(req);
-		PingResponse rsp = new PingResponse(new byte[0]);
-		rsp.setAssociatedCall(call);
 		Key newId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
-		rsp.setID(newId);
-		rsp.setOrigin(new InetSocketAddress(NodeFactory.generateIp((byte)0x02), 1234));
+		PingResponse rsp = buildResponse(newId, new InetSocketAddress(NodeFactory.generateIp((byte)0x02), 1234));
 		
 		node.recieved(rsp);
 		assertFalse(node.table().stream().anyMatch(e -> e.getBucket().findByIPorID(null, newId).isPresent()));

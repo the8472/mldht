@@ -464,8 +464,8 @@ public class RPCServer {
 		
 		// message matches transaction ID and origin == destination
 		if(c != null) {
-										
-			if(c.getRequest().getDestination().equals(msg.getOrigin())) {
+			// we only check the IP address here. the routing table applies more strict checks to also verify a stable port
+			if(c.getRequest().getDestination().getAddress().equals(msg.getOrigin().getAddress())) {
 				// remove call first in case of exception
 				if(calls.remove(new ByteWrapper(msg.getMTID()),c)) {
 					msg.setAssociatedCall(c);

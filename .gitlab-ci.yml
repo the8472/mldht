@@ -1,0 +1,4 @@
+test:10:
+  image: maven:3-jdk-10
+  script:
+  - mvn install -B

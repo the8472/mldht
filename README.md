@@ -1,6 +1,7 @@
 # mldht
 
-[![Build Status](https://travis-ci.org/the8472/mldht.svg?branch=master)](https://travis-ci.org/the8472/mldht)
+[![Build Status (travis)](https://travis-ci.org/the8472/mldht.svg?branch=master)](https://travis-ci.org/the8472/mldht)
+[![Build Status (gitlab)](https://gitlab.com/the8472/mldht/badges/master/pipeline.svg)](https://gitlab.com/the8472/mldht/commits/master)
 [![Jitpack maven repo](https://jitpack.io/v/the8472/mldht.svg)](https://jitpack.io/#the8472/mldht)
 [![bintray maven repo](https://img.shields.io/badge/maven-bintray-green.svg?style=flat-square)](https://bintray.com/the8472/maven/mldht)
 

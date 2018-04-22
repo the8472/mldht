@@ -62,6 +62,8 @@ public class AddressUtils {
 		// this would be rejected by a socket with broadcast disabled anyway, but filter it to reduce exceptions
 		if(addr instanceof Inet4Address && java.util.Arrays.equals(addr.getAddress(), LOCAL_BROADCAST))
 			return false;
+		if(addr instanceof Inet6Address && (addr.getAddress()[0] & 0xfe) == 0xfc) // fc00::/7
+			return false;
 		return !(addr.isAnyLocalAddress() || addr.isLinkLocalAddress() || addr.isLoopbackAddress() || addr.isMulticastAddress() || addr.isSiteLocalAddress());
 	}
 	

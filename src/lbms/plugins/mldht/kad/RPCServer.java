@@ -710,6 +710,8 @@ public class RPCServer {
 			
 			ByteBuffer readBuffer = RPCServer.readBuffer.get();
 			
+			DHTtype type = dh_table.getType();
+			
 			while(true)
 			{
 				readBuffer.clear();
@@ -720,8 +722,9 @@ public class RPCServer {
 				// * no conceivable DHT message is smaller than 10 bytes
 				// * all DHT messages start with a 'd' for dictionary
 				// * port 0 is reserved
+				// * address family may mismatch due to autoconversion from v4-mapped v6 addresses to Inet4Address
 				// -> immediately discard junk on the read loop, don't even allocate a buffer for it
-				if(readBuffer.position() < 10 || readBuffer.get(0) != 'd' || soa.getPort() == 0)
+				if(readBuffer.position() < 10 || readBuffer.get(0) != 'd' || soa.getPort() == 0 || !type.canUseSocketAddress(soa))
 					continue;
 				if(throttle.addAndTest(soa.getAddress()))
 					continue;

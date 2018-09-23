@@ -8,6 +8,7 @@ package the8472.test;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.KBucketEntry;
 import lbms.plugins.mldht.kad.Key;
 import lbms.plugins.mldht.kad.NodeFactory;
@@ -41,7 +42,7 @@ public class Bep42 {
 		// lifted from LT source
 		assertTrue(new KBucketEntry(new InetSocketAddress(InetAddress.getByName("2001:b829:2123:be84:e16c:d6ae:5290:49f1"), 1), new Key("0a8ad123be84e16cd6ae529049f1f1bbe9ebb304")).hasSecureID());
 		
-		assertFalse(new KBucketEntry(new InetSocketAddress(NodeFactory.generateIp((byte) 1), 1), Key.createRandomKey()).hasSecureID());
+		assertFalse(new KBucketEntry(new InetSocketAddress(NodeFactory.generateIp(DHTtype.IPV6_DHT, (byte) 1), 1), Key.createRandomKey()).hasSecureID());
 		
 	}
 

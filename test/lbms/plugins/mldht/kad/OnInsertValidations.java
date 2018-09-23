@@ -20,6 +20,7 @@ import java.util.concurrent.Executors;
 import org.junit.Before;
 import org.junit.Test;
 
+import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
 import lbms.plugins.mldht.kad.messages.PingRequest;
 import lbms.plugins.mldht.kad.messages.PingResponse;
@@ -55,7 +56,7 @@ public class OnInsertValidations {
 	
 	@Test
 	public void testPortMatching() {
-		PingResponse rsp = buildResponse(Key.createRandomKey(), new InetSocketAddress(NodeFactory.generateIp((byte)0x00), 1234));
+		PingResponse rsp = buildResponse(Key.createRandomKey(), new InetSocketAddress(NodeFactory.generateIp(DHTtype.IPV6_DHT, (byte)0x00), 1234));
 		
 		node.recieved(rsp);
 		KBucketEntry entry = node.table().get(0).getBucket().findByIPorID(null, rsp.getID()).orElseGet(null);
@@ -93,7 +94,7 @@ public class OnInsertValidations {
 		RoutingTableEntry nonLocalFullBucket = node.table().stream().filter(e -> e.prefix.depth == 1).findAny().get();
 		
 		Key newId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
-		PingResponse rsp = buildResponse(newId, new InetSocketAddress(NodeFactory.generateIp((byte)0x00), 1234));
+		PingResponse rsp = buildResponse(newId, new InetSocketAddress(NodeFactory.generateIp(DHTtype.IPV6_DHT ,(byte)0x00), 1234));
 
 		node.recieved(rsp);
 		
@@ -112,7 +113,7 @@ public class OnInsertValidations {
 		assertTrue(nonLocalFullBucket.getBucket().getEntries().stream().anyMatch(e -> e.getID().equals(newId)));
 		
 		Key anotherId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
-		rsp = buildResponse(anotherId, new InetSocketAddress(NodeFactory.generateIp((byte)0x00), 1234));
+		rsp = buildResponse(anotherId, new InetSocketAddress(NodeFactory.generateIp(DHTtype.IPV6_DHT, (byte)0x00), 1234));
 		call = rsp.getAssociatedCall();
 		call.sentTime = now - 50;
 		call.responseTime = now;
@@ -130,7 +131,7 @@ public class OnInsertValidations {
 		RoutingTableEntry nonLocalFullBucket = node.table().stream().filter(e -> e.prefix.depth == 1).findAny().get();
 		
 		Key newId = nonLocalFullBucket.prefix.createRandomKeyFromPrefix();
-		PingResponse rsp = buildResponse(newId, new InetSocketAddress(NodeFactory.generateIp((byte)0x02), 1234));
+		PingResponse rsp = buildResponse(newId, new InetSocketAddress(NodeFactory.generateIp(DHTtype.IPV6_DHT,(byte)0x02), 1234));
 		
 		node.recieved(rsp);
 		assertFalse(node.table().stream().anyMatch(e -> e.getBucket().findByIPorID(null, newId).isPresent()));

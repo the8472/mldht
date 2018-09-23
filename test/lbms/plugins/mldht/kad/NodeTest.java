@@ -21,9 +21,9 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.stream.IntStream;
 
-import org.junit.Before;
 import org.junit.Test;
 
+import lbms.plugins.mldht.kad.DHT.DHTtype;
 import lbms.plugins.mldht.kad.Node.InsertOptions;
 import lbms.plugins.mldht.kad.Node.RoutingTable;
 import lbms.plugins.mldht.kad.Node.RoutingTableEntry;
@@ -33,9 +33,8 @@ public class NodeTest {
 	
 	Node node;
 	
-	@Before
-	public void setup() {
-		DHT dht = NodeFactory.buildDHT();
+	void setup(DHTtype type) {
+		DHT dht = NodeFactory.buildDHT(type);
 		node = dht.getNode();
 		node.initKey(null);
 		
@@ -45,12 +44,14 @@ public class NodeTest {
 	
 	@Test
 	public void testBucketMerges() {
+		setup(DHTtype.IPV6_DHT);
+		
 		Prefix p = new Prefix(Key.createRandomKey(), 20);
 		
 		List<KBucketEntry> added = new ArrayList<>();
 		
 		for(int i=0;i<100;i++) {
-			KBucketEntry e = new KBucketEntry(new InetSocketAddress(NodeFactory.generateIp((byte) 0), 1337), p.createRandomKeyFromPrefix());
+			KBucketEntry e = new KBucketEntry(new InetSocketAddress(NodeFactory.generateIp(DHTtype.IPV6_DHT,(byte) 0), 1337), p.createRandomKeyFromPrefix());
 			added.add(e);
 			e.signalResponse(0);
 			assertTrue(e.verifiedReachable());
@@ -81,12 +82,14 @@ public class NodeTest {
 	
 	@Test
 	public void testReplacementPings() throws UnknownHostException {
+		setup(DHTtype.IPV4_DHT);
+		
 		node.getDHT().setScheduler(new NeverRunsExecutor());
-		node.getDHT().getServerManager().newServer(InetAddress.getByName("::1"));
+		// a bit hacky. instantiates a v4 address on a v6 node, but travis doesn't support ipv6 at the moment.
+		node.getDHT().getServerManager().newServer(InetAddress.getByName("127.0.0.1"));
 		node.getDHT().connectionManager = new NIOConnectionManager("test");
 		RPCServer srv = node.getDHT().getServerManager().getRandomServer();
 		srv.start();
-		//RPCServer srv = new RPCServer(node.getDHT().getServerManager() ,  , 1337, node.getDHT().serverStats);
 		node.updateHomeBuckets();
 		RoutingTable table = node.table();
 		Diagnostics diag = new Diagnostics();
@@ -94,7 +97,7 @@ public class NodeTest {
 		
 		RoutingTableEntry homeBucket = Arrays.stream(table.entries).filter(e -> e.homeBucket).findAny().get();
 		
-		KBucketEntry replacement = new KBucketEntry(new InetSocketAddress(NodeFactory.generateIp((byte) 0),  13), homeBucket.prefix.createRandomKeyFromPrefix());
+		KBucketEntry replacement = new KBucketEntry(new InetSocketAddress(NodeFactory.generateIp(DHTtype.IPV4_DHT, (byte) 0),  13), homeBucket.prefix.createRandomKeyFromPrefix());
 		homeBucket.bucket.insertInReplacementBucket(replacement);
 		
 		node.doBucketChecks(0);

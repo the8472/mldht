@@ -660,7 +660,7 @@ public class Node {
 		
 		// don't spam the checks if we're not receiving anything.
 		// we don't want to cause too many stray packets somewhere in a network
-		if(survival && now - timeOfLastPingCheck > DHTConstants.BOOTSTRAP_MIN_INTERVAL)
+		if(survival && now - timeOfLastPingCheck < DHTConstants.BOOTSTRAP_MIN_INTERVAL)
 			return;
 		timeOfLastPingCheck = now;
 		
@@ -670,6 +670,7 @@ public class Node {
 		
 		for (RoutingTableEntry e : routingTableCOW.entries) {
 			KBucket b = e.bucket;
+			boolean isHome = e.homeBucket;
 
 			List<KBucketEntry> entries = b.getEntries();
 			
@@ -702,7 +703,7 @@ public class Node {
 			}
 			
 			boolean refreshNeeded = b.needsToBeRefreshed();
-			boolean replacementNeeded = b.needsReplacementPing();
+			boolean replacementNeeded = b.needsReplacementPing() || (isHome && b.findPingableReplacement().isPresent());
 			if(refreshNeeded || replacementNeeded)
 				tryPingMaintenance(b, "Refreshing Bucket #" + e.prefix, null, (task) -> {
 					task.probeUnverifiedReplacement(replacementNeeded);

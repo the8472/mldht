@@ -170,7 +170,7 @@ public class DHT implements DHTBase {
 	private DHTStatus						status;
 	private PopulationEstimator				estimator;
 	private AnnounceNodeCache				cache;
-	private NIOConnectionManager			connectionManager;
+	NIOConnectionManager					connectionManager;
 	
 	RPCStats								serverStats;
 

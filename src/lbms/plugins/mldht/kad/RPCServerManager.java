@@ -204,7 +204,7 @@ public class RPCServerManager {
 		});
 	}
 	
-	private void newServer(InetAddress addr) {
+	void newServer(InetAddress addr) {
 		RPCServer srv = new RPCServer(this,addr,dht.config.getListeningPort(), dht.serverStats);
 		if(interfacesInUse.putIfAbsent(addr, srv) == null)  {
 			srv.setOutgoingThrottle(outgoingThrottle);

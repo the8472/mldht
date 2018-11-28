@@ -708,9 +708,12 @@ public class DHT implements DHTBase {
 		node.loadTable(table_file);
 		
 
-		// these checks are fairly expensive on large servers (network interface enumeration)
+		// these checks query the available network interfaces, which can be expensive on some platforms
 		// schedule them separately
-		scheduledActions.add(scheduler.scheduleWithFixedDelay(serverManager::doBindChecks, 10, 10, TimeUnit.SECONDS));
+		scheduledActions.add(scheduler.scheduleWithFixedDelay(() -> {
+			serverManager.doBindChecks();
+			serverManager.startNewServers();
+		}, 10, 10, TimeUnit.SECONDS));
 		
 		scheduledActions.add(scheduler.scheduleWithFixedDelay(() -> {
 			// maintenance that should run all the time, before the first queries
@@ -721,13 +724,13 @@ public class DHT implements DHTBase {
 		}, 5000, DHTConstants.DHT_UPDATE_INTERVAL, TimeUnit.MILLISECONDS));
 
 		// initialize as many RPC servers as we need
-		serverManager.refresh(System.currentTimeMillis());
+		serverManager.startNewServers();
 		
 		if(serverManager.getServerCount() == 0) {
 			logError("No network interfaces eligible for DHT sockets found during startup."
 					+ "\nAddress family: " + this.getType()
 					+ "\nmultihoming [requires public IP addresses if enabled]: " + config.allowMultiHoming()
-					+ "\nPublic IP addresses: " + AddressUtils.getAvailableGloballyRoutableAddrs(getType().PREFERRED_ADDRESS_TYPE)
+					+ "\nPublic IP addresses: " + AddressUtils.availableGloballyRoutableAddrs(AddressUtils.allAddresses(), getType().PREFERRED_ADDRESS_TYPE).map(InetAddress::toString).collect(Collectors.joining(", "))
 					+ "\nDefault route: " + AddressUtils.getDefaultRoute(getType().PREFERRED_ADDRESS_TYPE));
 		}
 		
@@ -926,7 +929,7 @@ public class DHT implements DHTBase {
 		
 		long now = System.currentTimeMillis();
 		
-		serverManager.refresh(now);
+		serverManager.updateReachableEndpoints(now);
 		
 		if (!isRunning()) {
 			return;

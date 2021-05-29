@@ -19,7 +19,20 @@ IP
   IP address, any port
 socket address
   IP address, port tuple
-  
+
+
+Early packet sanitizing
+-----------------------
+
+A few things can be filtered very early to avoid wasting resources, DoS amplification or errors later into packet processing
+
+Under the following conditions an incoming packet can be ignored and no response or error should be sent:
+
+* It does not start with the character ``d``. All DHT messages must be bencoded dictionaries.
+* It is shorter than 15 bytes. Error messages are the shortest as they don't carry an ID field still take more than 15 bytes.
+* The ``id`` field equals the local node ID and its IP does not match the external IP of the local node. This indicates that the remote is a UDP reflector, which may be a cheap way to emulate valid-looking traffic.
+* The remote port is ``0``. Most socket APIs cannot send or bind to that port
+
 
 Expected ID for RPCs
 --------------------
@@ -27,7 +40,6 @@ Expected ID for RPCs
 Almost all outgoing RPCs should have an associated *expected ID*. For routing table maintenance this is the current ID of the routing table entry. For lookups it is the ID that was obtained from the ``nodes`` list. Only few pings such as those to bootstrap nodes or from BT PORT messages don't come with an associated ID.
 
 The trust placed in that expectation varies depending on the source. But violations are a good sign something is wrong.
-
 
 
 Routing table sanitizing
@@ -97,12 +109,21 @@ active detection
 
 This is how I found the polluted routing tables in LT nodes.
 
-
 The sanitizing and passive features work best on very active nodes which are likely to visit malicious nodes multiple times. The active mechanism is more suited for slow nodes which don't generate much traffic and can afford sending another validating RPC every now and then.
+
 
 Sanitizing Writes
 -----------------
 
-This one is easy. Derive token from origin IP, port, ID, target ID and a rotating secret.
+This one is reltively easy.
 
-If a remote node can't even keep its ID or port stable between two requests there is no point in storing its data.
+A write ``token`` offered in ``get_peers`` and ``get`` responses should be derived from the origin IP, port, ID, target ID and a rotating secret.
+When receiving a corresponding ``announce`` or ``put`` request the ``token`` can be compared against one re-derived from the same properties.
+This ensures that a remote node keeps its externally visible properties stable, does not collude in sharing write tokens with other nodes and does not abuse a writen token
+to spam store requests for many distnct keys.
+
+These should be reasonable restrictions because due to hashing it is quite unlikely that the same remote node would ask the local node to store multiple unrelated values and
+even in the very rare case that it does it's not unreasonable to require it to send independent requests to obtain separate tokens for each ``target`` or ``info_hash``.
+
+When the secret is rotated the previous value should be kept to provide some temporal overlap, otherwise tokens offered before the rotation would immediately become invalid.
+

@@ -535,8 +535,25 @@ public class RPCServer {
 			return;
 		synchronized (originPairs) {
 			originPairs.put(source, addr);
-			if(originPairs.size() > 20) {
-				originPairs.values().stream().collect(Collectors.groupingBy(o -> o, Collectors.counting())).entrySet().stream().max((a,b) -> (int)(a.getValue() - b.getValue())).ifPresent(e -> setConsensusAddress(e.getKey()));
+			//LETS DO BIG-O : O(1) ITS MUTCH BETTER AND FASTER.
+			if(originPairs.size() > 20 && !addr.equals(consensusExternalAddress)){
+				List<InetAddress> k = new ArrayList<>(originPairs.values()); // THIS COULD BE DONE BETTER
+				int res = 0, count = 1;
+
+				for(int i = 1; i < originPairs.size(); i++){
+				    if(k.get(i) == k.get(res)){
+					count++;
+				    }else{
+					count--;
+				    }
+
+				    if(count == 0){
+					res = i;
+					count = 1;
+				    }
+				}
+
+				consensusExternalAddress = k.get(res);
 			}
 		}
 				

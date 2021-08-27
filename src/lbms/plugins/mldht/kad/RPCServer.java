@@ -535,7 +535,7 @@ public class RPCServer {
 			return;
 		synchronized (originPairs) {
 			originPairs.put(source, addr);
-			if(originPairs.size() > 20) {
+			if(originPairs.size() > 20 && !addr.equals(consensusExternalAddress)) {
 				originPairs.values().stream().collect(Collectors.groupingBy(o -> o, Collectors.counting())).entrySet().stream().max((a,b) -> (int)(a.getValue() - b.getValue())).ifPresent(e -> setConsensusAddress(e.getKey()));
 			}
 		}

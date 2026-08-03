@@ -20,6 +20,7 @@ import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.Signature;
 import java.security.SignatureException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Formatter;
 import java.util.Map;
@@ -262,6 +263,8 @@ public class GenericStorage {
 				if(!newItem.mutable())
 					return UpdateResult.IMMUTABLE_SUBSTITUTION_FAIL;
 				if(newItem.sequenceNumber < oldItem.sequenceNumber)
+					return UpdateResult.SEQ_FAIL;
+				if(newItem.sequenceNumber == oldItem.sequenceNumber && !Arrays.equals(newItem.value, oldItem.value))
 					return UpdateResult.SEQ_FAIL;
 				if(expected >= 0 && oldItem.sequenceNumber >= 0 && oldItem.sequenceNumber != expected)
 					return UpdateResult.CAS_FAIL;
